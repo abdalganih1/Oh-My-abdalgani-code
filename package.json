@@ -1,0 +1,16 @@
+{
+  "name": "oh-my-abdalgani-code",
+  "version": "1.0.0",
+  "description": "Interactive CLI Setup for OpenCode, KiloCLI, and ClaudeCode",
+  "main": "setup.js",
+  "type": "module",
+  "scripts": {
+    "start": "node setup.js"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.3.1",
+    "@ai-sdk/openai-compatible": "^0.1.0",
+    "chalk": "^5.4.1",
+    "ora": "^8.2.0"
+  }
+}
