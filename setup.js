@@ -13,6 +13,7 @@ const i18n = {
         opencode: '💻 OpenCode',
         kilocli: '⌨️  KiloCLI',
         claudecode: '🤖 ClaudeCode',
+        openclaw: '🐾 OpenClaw',
         exitOption: '❌ إنهاء البرنامج',
         goodbye: 'إلى اللقاء! 👋',
         cancelled: '\nتم إلغاء العملية. إلى اللقاء! 👋',
@@ -57,6 +58,7 @@ const i18n = {
         opencode: '💻 OpenCode',
         kilocli: '⌨️  KiloCLI',
         claudecode: '🤖 ClaudeCode',
+        openclaw: '🐾 OpenClaw',
         exitOption: '❌ Exit',
         goodbye: 'Goodbye! 👋',
         cancelled: '\nOperation cancelled. Goodbye! 👋',
@@ -206,6 +208,7 @@ async function configureTool(toolName) {
     let exeName = toolName.toLowerCase();
     if (toolName === 'ClaudeCode') exeName = 'claude';
     if (toolName === 'KiloCLI') exeName = 'kilo';
+    if (toolName === 'OpenClaw') exeName = 'openclaw';
 
     const isInstalled = checkInstalled(exeName);
     if (!isInstalled) {
@@ -381,6 +384,87 @@ async function configureTool(toolName) {
         console.log(chalk.white(`   🟢 Haiku  → ${claudeHaiku}`));
         console.log(chalk.white(`   ⭐ Default→ ${selectedModel}`));
         console.log(chalk.gray(t('apiKeyRemoved')));
+    } else if (toolName === 'OpenClaw') {
+        const clawDir = path.join(os.homedir(), '.openclaw');
+        const clawFile = path.join(clawDir, 'openclaw.json');
+
+        if (!fs.existsSync(clawDir)) fs.mkdirSync(clawDir, { recursive: true });
+
+        let clawConfig = { models: { providers: {} }, auth: { profiles: {} }, agents: { defaults: { model: {}, models: {} } } };
+        if (fs.existsSync(clawFile)) {
+            try { 
+                const existing = JSON.parse(fs.readFileSync(clawFile, 'utf8')); 
+                clawConfig = { ...clawConfig, ...existing };
+                if (!clawConfig.models) clawConfig.models = { providers: {} };
+                if (!clawConfig.models.providers) clawConfig.models.providers = {};
+                if (!clawConfig.auth) clawConfig.auth = { profiles: {} };
+                if (!clawConfig.auth.profiles) clawConfig.auth.profiles = {};
+                if (!clawConfig.agents) clawConfig.agents = { defaults: { model: {}, models: {} } };
+                if (!clawConfig.agents.defaults) clawConfig.agents.defaults = { model: {}, models: {} };
+                if (!clawConfig.agents.defaults.model) clawConfig.agents.defaults.model = {};
+                if (!clawConfig.agents.defaults.models) clawConfig.agents.defaults.models = {};
+            } catch (_) {}
+        }
+
+        const clawModelsList = [];
+        const allowedModels = {};
+        
+        models.forEach(m => {
+            const parts = m.name.split('│');
+            const cleanName = parts[0].trim();
+            const ctxStr = parts[1] ? parts[1].replace(/[^0-9]/g, '') : '128000';
+            const outStr = parts[2] ? parts[2].replace(/[^0-9]/g, '') : '32768';
+            let contextWindow = parseInt(ctxStr, 10);
+            let maxTokens = parseInt(outStr, 10);
+
+            clawModelsList.push({
+                id: m.value,
+                name: cleanName,
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: contextWindow,
+                maxTokens: maxTokens
+            });
+            allowedModels[`litellm/${m.value}`] = {};
+            allowedModels[`abdalgani/${m.value}`] = {};
+        });
+
+        clawConfig.models.providers["litellm"] = {
+            baseUrl: "https://api.abdalgani.com/v1",
+            apiKey: apiKey,
+            auth: "api-key",
+            api: "openai-completions",
+            authHeader: true,
+            models: clawModelsList
+        };
+
+        clawConfig.auth.profiles["litellm:default"] = {
+            provider: "litellm",
+            mode: "api_key"
+        };
+
+        let primaryModel = selectedModel || 'glm-4.7';
+        clawConfig.agents.defaults.model.primary = `litellm/${primaryModel}`;
+        clawConfig.agents.defaults.model.fallbacks = [`abdalgani/${primaryModel}`];
+        
+        clawConfig.agents.defaults.models = { ...clawConfig.agents.defaults.models, ...allowedModels };
+
+        fs.writeFileSync(clawFile, JSON.stringify(clawConfig, null, 2));
+        console.log(chalk.green(t('writtenTo', clawFile)));
+
+        const cacheFile = path.join(clawDir, 'agents', 'main', 'agent', 'models.json');
+        if (fs.existsSync(cacheFile)) {
+            try { fs.unlinkSync(cacheFile); } catch(e) {}
+        }
+
+        console.log(chalk.cyan('\\nRestarting openclaw-gateway...'));
+        try {
+            execSync("systemctl --user restart openclaw-gateway", { stdio: 'ignore' });
+            console.log(chalk.green("✅ OpenClaw Gateway restarted successfully."));
+        } catch(e) {
+            console.log(chalk.yellow("⚠️ Could not restart openclaw-gateway. It might not be running or systemctl is not available."));
+        }
     }
 
     // === Launch Tool After Setup ===
@@ -413,6 +497,7 @@ async function main() {
                 { name: t('opencode'), value: 'OpenCode' },
                 { name: t('kilocli'), value: 'KiloCLI' },
                 { name: t('claudecode'), value: 'ClaudeCode' },
+                { name: t('openclaw'), value: 'OpenClaw' },
                 { name: t('exitOption'), value: 'exit' }
             ]
         });
