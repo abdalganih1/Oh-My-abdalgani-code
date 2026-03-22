@@ -127,6 +127,7 @@ const models = [
     { value: "nvidia/qwen3-next-thinking",     name: "Qwen3 Next Thinking     │ CTX: 262,144 │ OUT:  81,920" },
     { value: "nvidia/nemotron-ultra-253b",     name: "Nemotron Ultra 253B    │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nvidia/nemotron-super-49b",      name: "Nemotron Super 49B     │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B  │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nvidia/deepseek-r1",             name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
     { value: "nvidia/gpt-oss-120b",            name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
     { value: "nvidia/step-3.5-flash",          name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
@@ -153,6 +154,7 @@ const models = [
     { value: "kimi-k2.5:cloud",                name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
     { value: "glm-4.7:cloud",                  name: "GLM-4.7 (Ollama)        │ CTX: 205,000 │ OUT: 128,000" },
     { value: "deepseek-v3.2:cloud",            name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nemotron-3-super:cloud",         name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
 ];
 
 // ==================== Utilities ====================
@@ -225,6 +227,32 @@ async function configureTool(toolName) {
 
     const apiKey = await input({ message: t('enterApiKey') });
 
+    // === الدقة والتحديث التلقائي للنماذج من الـ API (Dynamic Model Fetching) ===
+    console.log(chalk.gray("\n🔄 Fetching latest dynamic models from api.abdalgani.com..."));
+    try {
+        const res = await fetch("https://api.abdalgani.com/v1/models", {
+            headers: { "Authorization": `Bearer ${apiKey}` },
+            // timeout safe handling optional, native fetch used natively
+        });
+        if (res.ok) {
+            const data = await res.json();
+            const customModels = data.data || [];
+            let addedCount = 0;
+            customModels.forEach(m => {
+                const modelId = m.id;
+                if (!models.find(mod => mod.value === modelId)) {
+                    models.push({ value: modelId, name: `${modelId} (Dynamic) │ CTX: 128,000 │ OUT: 8,192` });
+                    addedCount++;
+                }
+            });
+            if (addedCount > 0) {
+                console.log(chalk.green(`✅ Dynamically added ${addedCount} new models from API.`));
+            }
+        }
+    } catch (e) {
+        console.log(chalk.yellow("⚠️ Could not fetch dynamic models due to network. Proceeding with offline list."));
+    }
+
     // === Model Selection: فقط لـ ClaudeCode بثلاثة أسئلة، OpenCode/Kilo تلقائياً ===
     let selectedModel = DEFAULT_MODEL;
     let claudeOpus   = 'nvidia/glm-5';
@@ -293,6 +321,7 @@ async function configureTool(toolName) {
             "nvidia/qwen3-next-thinking":  { name: "Qwen3 Next Thinking (NVIDIA)", limit: { context: 262144,  output:  81920 } },
             "nvidia/nemotron-ultra-253b": { name: "Nemotron Ultra 253B (NVIDIA)", limit: { context: 131072,  output:  32768 } },
             "nvidia/nemotron-super-49b":  { name: "Nemotron Super 49B (NVIDIA)",  limit: { context: 131072,  output:  32768 } },
+            "nvidia/nemotron-3-super-120b-a12b": { name: "Nemotron 3 Super 120B (NVIDIA)", limit: { context: 131072,  output:  32768 } },
             "nvidia/deepseek-r1":         { name: "DeepSeek R1 (NVIDIA)",         limit: { context: 163840,  output:  32768 } },
             "nvidia/gpt-oss-120b":        { name: "GPT-OSS 120B (NVIDIA)",        limit: { context: 128000,  output:  16384 } },
             "nvidia/step-3.5-flash":      { name: "Step 3.5 Flash (NVIDIA)",      limit: { context: 128000,  output:  32768 } },
@@ -330,7 +359,17 @@ async function configureTool(toolName) {
             "kimi-k2.5:cloud":    { name: "Kimi K2.5 (Ollama)", limit: { context: 262144, output: 65535 } },
             "glm-4.7:cloud":      { name: "GLM-4.7 (Ollama)", limit: { context: 205000, output: 128000 } },
             "deepseek-v3.2:cloud":{ name: "DeepSeek V3.2 (Ollama)", limit: { context: 131072, output: 32768 } },
+            "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
         };
+
+        // Sync dynamically fetched models
+        models.forEach(m => {
+            if (!providerModels[m.value]) {
+                const parts = m.name.split('│');
+                const cleanName = parts[0].trim();
+                providerModels[m.value] = { name: cleanName, limit: { context: 128000, output: 8192 } };
+            }
+        });
 
         // أضف/حدّث مزود abdalgani بدون المساس بالمزودين الآخرين (litellm, google, ollama...)
         config.provider['abdalgani'] = {
