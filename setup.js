@@ -21,10 +21,21 @@ const i18n = {
         setupAnother: 'هل تريد إعداد أداة أخرى؟',
         allDone: '\n🎉 انتهى الإعداد. تم تحسين بيئتك بنجاح!',
         configuringTool: (t) => `\n=== ⚙️ إعداد ${t} ===`,
-        toolNotInstalled: (t) => `أداة ${t} غير مثبتة في النظام. سيتم تثبيتها تلقائياً عبر npm...`,
-        installing: (t) => `جاري تثبيت ${t}...`,
+        toolNotInstalled: (t) => `أداة ${t} غير مثبتة في النظام. سيتم تثبيتها تلقائياً...`,
+        installing: (t, method) => `جاري تثبيت ${t} عبر ${method}...`,
         installFailed: (t) => `فشل في تثبيت ${t}`,
+        installFailedAll: (t) => `❌ فشلت جميع طرق تثبيت ${t}. يرجى التثبيت يدوياً.`,
+        tryingFallback: (method) => `⚠️ فشلت الطريقة الأولى، جاري تجربة: ${method}...`,
+        manualInstall: (cmds) => `\n📋 أوامر التثبيت اليدوي:\n${cmds}`,
         skipped: (t) => `تم تخطي إعداد ${t} بطلب منك.`,
+        nodeNotFound: '❌ Node.js غير مثبت! يجب تثبيته أولاً.',
+        nodeVersion: (v) => `✅ Node.js: ${v}`,
+        npmVersion: (v) => `✅ npm: ${v}`,
+        npmOld: (v) => `⚠️ إصدار npm قديم (${v}). جاري التحديث...`,
+        npmFixing: 'جاري إصلاح npm...',
+        npmFixed: '✅ تم إصلاح/تحديث npm بنجاح.',
+        npmFixFailed: '⚠️ فشل تحديث npm. قد تواجه مشاكل في التثبيت.',
+        envCheck: '\n🔍 فحص البيئة...',
         toolReady: (t) => `✔️ أداة ${t} مثبتة مسبقاً وجاهزة للإعداد.`,
         enterApiKey: '⌨️ أدخل مفتاح الـ API الخاص بـ abdalgani.com:',
         selectModel: 'اختر النموذج (Model) الافتراضي (استخدم الأسهم أعلى/أسفل للتنقل):',
@@ -66,10 +77,21 @@ const i18n = {
         setupAnother: 'Do you want to configure another tool?',
         allDone: '\n🎉 Setup complete. Your environment is ready!',
         configuringTool: (t) => `\n=== ⚙️ Configuring ${t} ===`,
-        toolNotInstalled: (t) => `${t} is not installed. It will be installed automatically via npm...`,
-        installing: (t) => `Installing ${t}...`,
+        toolNotInstalled: (t) => `${t} is not installed. It will be installed automatically...`,
+        installing: (t, method) => `Installing ${t} via ${method}...`,
         installFailed: (t) => `Failed to install ${t}`,
+        installFailedAll: (t) => `❌ All installation methods failed for ${t}. Please install manually.`,
+        tryingFallback: (method) => `⚠️ Primary method failed, trying: ${method}...`,
+        manualInstall: (cmds) => `\n📋 Manual install commands:\n${cmds}`,
         skipped: (t) => `Skipped ${t} setup as requested.`,
+        nodeNotFound: '❌ Node.js is not installed! Please install it first.',
+        nodeVersion: (v) => `✅ Node.js: ${v}`,
+        npmVersion: (v) => `✅ npm: ${v}`,
+        npmOld: (v) => `⚠️ npm version is old (${v}). Updating...`,
+        npmFixing: 'Fixing npm...',
+        npmFixed: '✅ npm updated/fixed successfully.',
+        npmFixFailed: '⚠️ Failed to update npm. You may experience installation issues.',
+        envCheck: '\n🔍 Checking environment...',
         toolReady: (t) => `✔️ ${t} is already installed and ready to configure.`,
         enterApiKey: '⌨️ Enter your abdalgani.com API key:',
         selectModel: 'Select the default model (use arrow keys to navigate):',
@@ -159,6 +181,62 @@ const models = [
     { value: "nemotron-3-super:cloud",         name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
 ];
 
+// ==================== Tool Installation Map ====================
+const isWin = os.platform() === 'win32';
+const TOOL_INSTALL_MAP = {
+    OpenCode: {
+        exeName: 'opencode',
+        methods: isWin
+            ? [
+                { label: 'npm',  cmd: 'npm install -g opencode-ai' },
+              ]
+            : [
+                { label: 'curl', cmd: 'curl -fsSL https://opencode.ai/install | bash' },
+                { label: 'npm',  cmd: 'npm install -g opencode-ai' },
+              ],
+        manual: isWin
+            ? '  npm install -g opencode-ai'
+            : '  curl -fsSL https://opencode.ai/install | bash\n  # or: npm install -g opencode-ai',
+    },
+    KiloCLI: {
+        exeName: 'kilo',
+        methods: [
+            { label: 'npm', cmd: 'npm install -g @kilocode/cli' },
+        ],
+        manual: '  npm install -g @kilocode/cli',
+    },
+    ClaudeCode: {
+        exeName: 'claude',
+        methods: isWin
+            ? [
+                { label: 'PowerShell', cmd: 'powershell -Command "irm https://claude.ai/install.ps1 | iex"' },
+                { label: 'npm (deprecated)', cmd: 'npm install -g @anthropic-ai/claude-code' },
+              ]
+            : [
+                { label: 'curl', cmd: 'curl -fsSL https://claude.ai/install.sh | bash' },
+                { label: 'npm (deprecated)', cmd: 'npm install -g @anthropic-ai/claude-code' },
+              ],
+        manual: isWin
+            ? '  irm https://claude.ai/install.ps1 | iex\n  # or: winget install Anthropic.ClaudeCode'
+            : '  curl -fsSL https://claude.ai/install.sh | bash\n  # or: brew install --cask claude-code',
+    },
+    OpenClaw: {
+        exeName: 'openclaw',
+        methods: isWin
+            ? [
+                { label: 'PowerShell', cmd: 'powershell -Command "irm https://openclaw.ai/install.ps1 | iex"' },
+                { label: 'npm (beta)', cmd: 'npm install -g openclaw@beta' },
+              ]
+            : [
+                { label: 'curl', cmd: 'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git' },
+                { label: 'npm (beta)', cmd: 'npm install -g openclaw@beta' },
+              ],
+        manual: isWin
+            ? '  powershell -c "irm https://openclaw.ai/install.ps1 | iex"\n  # or: npm i -g openclaw@beta'
+            : '  curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git\n  # or: npm i -g openclaw@beta',
+    },
+};
+
 // ==================== Utilities ====================
 async function runCommand(command) {
     try {
@@ -170,9 +248,17 @@ async function runCommand(command) {
     }
 }
 
+function runSilent(command) {
+    try {
+        return execSync(command, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }).trim();
+    } catch (e) {
+        return null;
+    }
+}
+
 function checkInstalled(command) {
     try {
-        if (os.platform() === 'win32') {
+        if (isWin) {
             execSync(`where ${command}`, { stdio: 'ignore' });
         } else {
             execSync(`which ${command}`, { stdio: 'ignore' });
@@ -181,6 +267,89 @@ function checkInstalled(command) {
     } catch (e) {
         return false;
     }
+}
+
+// ==================== Environment Pre-flight ====================
+function ensureNodeNpm() {
+    console.log(chalk.cyan(t('envCheck')));
+
+    // Check Node.js
+    const nodeV = runSilent('node -v');
+    if (!nodeV) {
+        console.log(chalk.red(t('nodeNotFound')));
+        if (isWin) {
+            console.log(chalk.yellow('  → Install nvm-windows: https://github.com/coreybutler/nvm-windows/releases'));
+            console.log(chalk.yellow('    nvm install lts && nvm use lts'));
+        } else {
+            console.log(chalk.yellow('  → curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash'));
+            console.log(chalk.yellow('    nvm install --lts && nvm use --lts'));
+        }
+        process.exit(1);
+    }
+    console.log(chalk.green(t('nodeVersion', nodeV)));
+
+    // Check npm
+    const npmV = runSilent('npm -v');
+    if (!npmV) {
+        console.log(chalk.red('❌ npm not found! Attempting fix...'));
+        try {
+            execSync('node -e "process.exit(0)"', { stdio: 'ignore' });
+            console.log(chalk.yellow(t('npmFixing')));
+            execSync('npm install -g npm@latest', { stdio: 'inherit' });
+        } catch (_) {
+            console.log(chalk.red(t('npmFixFailed')));
+        }
+    } else {
+        console.log(chalk.green(t('npmVersion', npmV)));
+        // If npm < 9, suggest upgrade
+        const npmMajor = parseInt(npmV.split('.')[0], 10);
+        if (npmMajor < 9) {
+            console.log(chalk.yellow(t('npmOld', npmV)));
+            try {
+                execSync('npm install -g npm@latest', { stdio: 'inherit' });
+                console.log(chalk.green(t('npmFixed')));
+            } catch (_) {
+                console.log(chalk.yellow(t('npmFixFailed')));
+            }
+        }
+    }
+    console.log('');
+}
+
+// ==================== Smart Tool Installer ====================
+async function installTool(toolName) {
+    const map = TOOL_INSTALL_MAP[toolName];
+    if (!map) {
+        console.log(chalk.red(`Unknown tool: ${toolName}`));
+        return false;
+    }
+
+    for (let i = 0; i < map.methods.length; i++) {
+        const method = map.methods[i];
+        if (i > 0) {
+            console.log(chalk.yellow(t('tryingFallback', method.label)));
+        }
+        console.log(chalk.yellow(t('installing', toolName, method.label)));
+        try {
+            execSync(method.cmd, { stdio: 'inherit' });
+            // Verify it actually installed
+            if (checkInstalled(map.exeName)) {
+                return true;
+            }
+            // If cmd succeeded but binary not found, try npm cache fix then retry
+            console.log(chalk.yellow('⚠️ Command succeeded but binary not found in PATH. Trying npm cache fix...'));
+            try {
+                execSync('npm cache clean --force', { stdio: 'ignore' });
+            } catch (_) {}
+        } catch (e) {
+            console.log(chalk.red(t('installFailed', `${toolName} (${method.label})`)));
+        }
+    }
+
+    // All methods failed
+    console.log(chalk.red(t('installFailedAll', toolName)));
+    console.log(chalk.cyan(t('manualInstall', map.manual)));
+    return false;
 }
 
 // ==================== Launch After Setup ====================
@@ -209,18 +378,14 @@ async function launchAfterSetup(toolName, exeName) {
 async function configureTool(toolName) {
     console.log(chalk.cyan(t('configuringTool', toolName)));
 
-    let exeName = toolName.toLowerCase();
-    if (toolName === 'ClaudeCode') exeName = 'claude';
-    if (toolName === 'KiloCLI') exeName = 'kilo';
-    if (toolName === 'OpenClaw') exeName = 'openclaw';
+    const map = TOOL_INSTALL_MAP[toolName];
+    const exeName = map ? map.exeName : toolName.toLowerCase();
 
     const isInstalled = checkInstalled(exeName);
     if (!isInstalled) {
         console.log(chalk.yellow(t('toolNotInstalled', toolName)));
-        console.log(chalk.yellow(t('installing', toolName)));
-        const success = await runCommand(`npm install -g ${exeName}`);
+        const success = await installTool(toolName);
         if (!success) {
-            console.log(chalk.red(t('installFailed', toolName)));
             return;
         }
     } else {
@@ -520,6 +685,9 @@ async function main() {
     console.log(chalk.cyan.bold('===================================================='));
     console.log(chalk.cyan.bold('      🚀 Oh-My-abdalgani-code Setup Tool 🚀'));
     console.log(chalk.cyan.bold('====================================================\n'));
+
+    // Pre-flight: ensure Node.js + npm are healthy
+    ensureNodeNpm();
 
     // === Language Selection (first prompt) ===
     lang = await select({
