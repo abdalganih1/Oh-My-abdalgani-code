@@ -531,12 +531,17 @@ async function configureTool(toolName) {
             "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
         };
 
-        // Sync dynamically fetched models
+        // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
         models.forEach(m => {
             if (!providerModels[m.value]) {
                 const parts = m.name.split('│');
                 const cleanName = parts[0].trim();
-                providerModels[m.value] = { name: cleanName, limit: { context: 128000, output: 8192 } };
+                const ctxStr = parts[1] ? parts[1].replace(/[^0-9]/g, '') : '128000';
+                const outStr = parts[2] ? parts[2].replace(/[^0-9]/g, '') : '8192';
+                providerModels[m.value] = {
+                    name: cleanName,
+                    limit: { context: parseInt(ctxStr, 10), output: parseInt(outStr, 10) }
+                };
             }
         });
 
@@ -647,8 +652,24 @@ async function configureTool(toolName) {
             models: clawModelsList
         };
 
+        // Register abdalgani as a separate provider with the SAME model list
+        // This ensures abdalgani/ models get correct context windows instead of defaults
+        clawConfig.models.providers["abdalgani"] = {
+            baseUrl: "https://api.abdalgani.com/v1",
+            apiKey: apiKey,
+            auth: "api-key",
+            api: "openai-completions",
+            authHeader: true,
+            models: clawModelsList
+        };
+
         clawConfig.auth.profiles["litellm:default"] = {
             provider: "litellm",
+            mode: "api_key"
+        };
+
+        clawConfig.auth.profiles["abdalgani:default"] = {
+            provider: "abdalgani",
             mode: "api_key"
         };
 
