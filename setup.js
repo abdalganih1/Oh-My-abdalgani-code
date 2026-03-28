@@ -172,6 +172,10 @@ const models = [
     { value: "deepseek-v3.2",                  name: "DeepSeek V3.2(NanoGPT) │ CTX: 131,072 │ OUT:  32,768" },
     { value: "mistral-small-4",                name: "Mistral Small 4        │ CTX: 128,000 │ OUT:  32,768" },
     { value: "nano-gpt-oss-120b",              name: "NanoGPT OSS 120B       │ CTX: 128,000 │ OUT:  16,384" },
+    { value: "doubao-1.5-vision-pro",          name: "Doubao 1.5 Vision Pro  │ CTX: 128,000 │ OUT:  32,768" },
+    // ── Gemini (via LiteLLM) ─────────────────────────────────────────────────
+    { value: "gemini-3.1-pro",                 name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash",               name: "Gemini 3.1 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
     // ── abdalgani (ollama) - ابحث بكلمة ollama ──────────────────────────────
     { value: "glm-5:cloud",                    name: "GLM-5 abdalgani (ollama)│ CTX: 202,752 │ OUT: 131,072" },
     { value: "minimax-m2.7:cloud",             name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
@@ -511,6 +515,10 @@ async function configureTool(toolName) {
             "deepseek-v3.2":       { name: "DeepSeek V3.2 (NanoGPT)",  limit: { context: 131072,  output:  32768 } },
             "mistral-small-4":     { name: "Mistral Small 4",          limit: { context: 128000,  output:  32768 } },
             "nano-gpt-oss-120b":   { name: "NanoGPT OSS 120B",         limit: { context: 128000,  output:  16384 } },
+            "doubao-1.5-vision-pro": { name: "Doubao 1.5 Vision Pro",  limit: { context: 128000,  output:  32768 } },
+            // ── Gemini ───────────────────────────────────────────────────────────
+            "gemini-3.1-pro":      { name: "Gemini 3.1 Pro",           limit: { context: 1048576, output:  65536 } },
+            "gemini-3.1-flash":    { name: "Gemini 3.1 Flash",         limit: { context: 1048576, output:  65536 } },
             // ── نماذج الصور ────────────────────────────────────────────────────
             "nvidia/stable-diffusion-3": {
                 name: "Stable Diffusion 3 (NVIDIA)", attachment: false,
