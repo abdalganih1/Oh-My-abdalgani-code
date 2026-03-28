@@ -134,6 +134,8 @@ const models = [
     // ── NanoGPT ──────────────────────────────────────────────────────────────
     { value: "glm-5",                          name: "GLM-5       (NanoGPT)  │ CTX: 202,752 │ OUT: 131,072" },
     { value: "glm-5:thinking",                 name: "GLM-5 Think (NanoGPT)  │ CTX: 202,752 │ OUT: 131,072" },
+    { value: "glm-5.1",                        name: "GLM-5.1     (NanoGPT)  │ CTX: 200,000 │ OUT: 131,072" },
+    { value: "glm-5.1:thinking",               name: "GLM-5.1 T.  (NanoGPT)  │ CTX: 200,000 │ OUT: 131,072" },
     { value: "glm-4.7",                        name: "GLM-4.7     (NanoGPT)  │ CTX: 205,000 │ OUT: 128,000" },
     { value: "glm-4.7:thinking",               name: "GLM-4.7 T.  (NanoGPT)  │ CTX: 205,000 │ OUT: 128,000" },
     { value: "glm-4.7-flash",                  name: "GLM-4.7 Flash(NanoGPT) │ CTX: 202,752 │ OUT: 131,072" },
@@ -328,6 +330,8 @@ async function configureTool(toolName) {
             // ── NanoGPT ────────────────────────────────────────────────────────
             "glm-5":               { name: "GLM-5 (NanoGPT)",          limit: { context: 202752,  output: 131072 } },
             "glm-5:thinking":      { name: "GLM-5 Thinking (NanoGPT)", limit: { context: 202752,  output: 131072 } },
+            "glm-5.1":             { name: "GLM-5.1 (NanoGPT)",        limit: { context: 200000,  output: 131072 } },
+            "glm-5.1:thinking":    { name: "GLM-5.1 Thinking (NanoGPT)",limit: { context: 200000, output: 131072 } },
             "glm-4.7":             { name: "GLM-4.7 (NanoGPT)",        limit: { context: 205000,  output: 128000 } },
             "glm-4.7:thinking":    { name: "GLM-4.7 Thinking (NanoGPT)",limit: { context: 205000, output: 128000 } },
             "glm-4.7-flash":       { name: "GLM-4.7 Flash (NanoGPT)",  limit: { context: 202752,  output: 131072 } },
