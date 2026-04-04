@@ -134,8 +134,8 @@ const DEFAULT_MODEL = 'nvidia/glm-4.7';
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
 const models = [
     // ── NVIDIA NIM ───────────────────────────────────────────────────────────
-    { value: "nvidia/glm-5",                   name: "GLM-5                  │ CTX: 205,000 │ OUT: 131,072" },
-    { value: "nvidia/glm-4.7",                 name: "GLM-4.7                │ CTX: 205,000 │ OUT: 128,000" },
+    { value: "nvidia/glm-5",                   name: "GLM-5                  │ CTX: 200,000 │ OUT:  32,000" },
+    { value: "nvidia/glm-4.7",                 name: "GLM-4.7                │ CTX: 200,000 │ OUT:  32,000" },
     { value: "nvidia/kimi-k2.5",               name: "Kimi K2.5 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
     // ── Moonshot & MiniMax ───────────────────────────────────────────────────
     { value: "moonshotai/kimi-k2.5",           name: "Kimi K2.5 (Moonshot)   │ CTX: 262,144 │ OUT:  65,535" },
@@ -158,8 +158,8 @@ const models = [
     { value: "glm-5:thinking",                 name: "GLM-5 Think (NanoGPT)  │ CTX: 202,752 │ OUT: 131,072" },
     { value: "glm-5.1",                        name: "GLM-5.1     (NanoGPT)  │ CTX: 200,000 │ OUT: 131,072" },
     { value: "glm-5.1:thinking",               name: "GLM-5.1 T.  (NanoGPT)  │ CTX: 200,000 │ OUT: 131,072" },
-    { value: "glm-4.7",                        name: "GLM-4.7     (NanoGPT)  │ CTX: 205,000 │ OUT: 128,000" },
-    { value: "glm-4.7:thinking",               name: "GLM-4.7 T.  (NanoGPT)  │ CTX: 205,000 │ OUT: 128,000" },
+    { value: "glm-4.7",                        name: "GLM-4.7     (NanoGPT)  │ CTX: 200,000 │ OUT: 128,000" },
+    { value: "glm-4.7:thinking",               name: "GLM-4.7 T.  (NanoGPT)  │ CTX: 200,000 │ OUT: 128,000" },
     { value: "glm-4.7-flash",                  name: "GLM-4.7 Flash(NanoGPT) │ CTX: 202,752 │ OUT: 131,072" },
     { value: "glm-4.7-flash:thinking",         name: "GLM-4.7 F.T.(NanoGPT)  │ CTX: 202,752 │ OUT: 131,072" },
     { value: "glm-4.6",                        name: "GLM-4.6     (NanoGPT)  │ CTX: 128,000 │ OUT:  32,768" },
@@ -180,7 +180,7 @@ const models = [
     { value: "glm-5:cloud",                    name: "GLM-5 abdalgani (ollama)│ CTX: 202,752 │ OUT: 131,072" },
     { value: "minimax-m2.7:cloud",             name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
     { value: "kimi-k2.5:cloud",                name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "glm-4.7:cloud",                  name: "GLM-4.7 (Ollama)        │ CTX: 205,000 │ OUT: 128,000" },
+    { value: "glm-4.7:cloud",                  name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
     { value: "deepseek-v3.2:cloud",            name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nemotron-3-super:cloud",         name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
 ];
@@ -480,8 +480,8 @@ async function configureTool(toolName) {
             "moonshotai/kimi-k2.5":       { name: "Kimi K2.5 (Moonshot)",         limit: { context: 262144,  output:  65535 } },
             "minimaxai/minimax-m2.5":     { name: "MiniMax M2.5 (MiniMax)",       limit: { context: 196608,  output: 196608 } },
             // ── NVIDIA NIM ────────────────────────────────────────────────────
-            "nvidia/glm-5":               { name: "GLM-5 (NVIDIA)",               limit: { context: 205000,  output: 131072 } },
-            "nvidia/glm-4.7":             { name: "GLM-4.7 (NVIDIA)",             limit: { context: 205000,  output: 128000 } },
+            "nvidia/glm-5":               { name: "GLM-5 (NVIDIA)",               limit: { context: 200000,  output: 32000 } },
+            "nvidia/glm-4.7":             { name: "GLM-4.7 (NVIDIA)",             limit: { context: 200000,  output: 32000 } },
             "nvidia/kimi-k2.5":           { name: "Kimi K2.5 (NVIDIA)",           limit: { context: 262144,  output:  65535 } },
             "nvidia/qwen3.5-397b":        { name: "Qwen 3.5 397B (NVIDIA)",       limit: { context: 262144,  output:  81920 } },
             "qwen":                       { name: "Qwen 3.5 397B (NVIDIA)",       limit: { context: 262144,  output:  81920 } },
@@ -501,8 +501,8 @@ async function configureTool(toolName) {
             "glm-5:thinking":      { name: "GLM-5 Thinking (NanoGPT)", limit: { context: 202752,  output: 131072 } },
             "glm-5.1":             { name: "GLM-5.1 (NanoGPT)",        limit: { context: 200000,  output: 131072 } },
             "glm-5.1:thinking":    { name: "GLM-5.1 Thinking (NanoGPT)",limit: { context: 200000, output: 131072 } },
-            "glm-4.7":             { name: "GLM-4.7 (NanoGPT)",        limit: { context: 205000,  output: 128000 } },
-            "glm-4.7:thinking":    { name: "GLM-4.7 Thinking (NanoGPT)",limit: { context: 205000, output: 128000 } },
+            "glm-4.7":             { name: "GLM-4.7 (NanoGPT)",        limit: { context: 200000,  output: 128000 } },
+            "glm-4.7:thinking":    { name: "GLM-4.7 Thinking (NanoGPT)",limit: { context: 200000, output: 128000 } },
             "glm-4.7-flash":       { name: "GLM-4.7 Flash (NanoGPT)",  limit: { context: 202752,  output: 131072 } },
             "glm-4.7-flash:thinking":{ name: "GLM-4.7 Flash Thinking (NanoGPT)", limit: { context: 202752, output: 131072 } },
             "glm-4.6":             { name: "GLM-4.6 (NanoGPT)",        limit: { context: 128000,  output:  32768 } },
@@ -534,7 +534,7 @@ async function configureTool(toolName) {
             "glm-5:cloud":  { name: "GLM-5 Cloud (Ollama)", limit: { context: 202752, output: 131072 } },
             "minimax-m2.7:cloud": { name: "MiniMax M2.7 (Ollama)", limit: { context: 196608, output: 196608 } },
             "kimi-k2.5:cloud":    { name: "Kimi K2.5 (Ollama)", limit: { context: 262144, output: 65535 } },
-            "glm-4.7:cloud":      { name: "GLM-4.7 (Ollama)", limit: { context: 205000, output: 128000 } },
+            "glm-4.7:cloud":      { name: "GLM-4.7 (Ollama)", limit: { context: 200000, output: 128000 } },
             "deepseek-v3.2:cloud":{ name: "DeepSeek V3.2 (Ollama)", limit: { context: 131072, output: 32768 } },
             "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
         };
