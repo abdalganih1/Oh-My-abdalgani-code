@@ -38,6 +38,9 @@ const i18n = {
         envCheck: '\n🔍 فحص البيئة...',
         toolReady: (t) => `✔️ أداة ${t} مثبتة مسبقاً وجاهزة للإعداد.`,
         enterApiKey: '⌨️ أدخل مفتاح الـ API الخاص بـ abdalgani.com:',
+        foundExistingKey: '🔑 تم العثور على مفتاح API محفوظ. هل تريد استخدامه؟',
+        useExistingKeyYes: '✅ نعم، استخدم المفتاح المحفوظ',
+        useExistingKeyNo: '❌ لا، أريد إدخال مفتاح جديد',
         selectModel: 'اختر النموذج (Model) الافتراضي (استخدم الأسهم أعلى/أسفل للتنقل):',
         applying: '🔄 جاري تطبيق الإعدادات ودمجها بسلاسة...',
         configReadError: 'تعذر قراءة ملف الإعدادات القديم، سيتم إنشاء واحد جديد.',
@@ -94,6 +97,9 @@ const i18n = {
         envCheck: '\n🔍 Checking environment...',
         toolReady: (t) => `✔️ ${t} is already installed and ready to configure.`,
         enterApiKey: '⌨️ Enter your abdalgani.com API key:',
+        foundExistingKey: '🔑 Found a saved API key. Do you want to use it?',
+        useExistingKeyYes: '✅ Yes, use saved key',
+        useExistingKeyNo: '❌ No, enter a new key',
         selectModel: 'Select the default model (use arrow keys to navigate):',
         applying: '🔄 Applying settings and merging seamlessly...',
         configReadError: 'Could not read old config file, creating a new one.',
@@ -282,6 +288,60 @@ function checkInstalled(command) {
     }
 }
 
+const G_CONFIG_PATH = path.join(os.homedir(), '.abdalgani-code.json');
+
+function saveGlobalApiKey(key) {
+    let data = {};
+    if (fs.existsSync(G_CONFIG_PATH)) {
+        try { data = JSON.parse(fs.readFileSync(G_CONFIG_PATH, 'utf8')); } catch(e){}
+    }
+    data.apiKey = key;
+    fs.writeFileSync(G_CONFIG_PATH, JSON.stringify(data, null, 2));
+}
+
+function findExistingApiKey() {
+    if (fs.existsSync(G_CONFIG_PATH)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(G_CONFIG_PATH, 'utf8'));
+            if (data.apiKey) return data.apiKey;
+        } catch(e){}
+    }
+
+    try {
+        const p = path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (data?.provider?.abdalgani?.options?.apiKey) return data.provider.abdalgani.options.apiKey;
+        }
+    } catch(e){}
+    
+    try {
+        const p = path.join(os.homedir(), '.config', 'kilo', 'kilo.json');
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (data?.provider?.abdalgani?.options?.apiKey) return data.provider.abdalgani.options.apiKey;
+        }
+    } catch(e){}
+
+    try {
+        const p = path.join(os.homedir(), '.claude', 'settings.json');
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (data?.env?.ANTHROPIC_AUTH_TOKEN) return data.env.ANTHROPIC_AUTH_TOKEN;
+        }
+    } catch(e){}
+
+    try {
+        const p = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (data?.models?.providers?.abdalgani?.apiKey) return data.models.providers.abdalgani.apiKey;
+        }
+    } catch(e){}
+
+    return null;
+}
+
 // ==================== Environment Pre-flight ====================
 function ensureNodeNpm() {
     console.log(chalk.cyan(t('envCheck')));
@@ -405,7 +465,25 @@ async function configureTool(toolName) {
         console.log(chalk.green(t('toolReady', toolName)));
     }
 
-    const apiKey = await input({ message: t('enterApiKey') });
+    let apiKey = null;
+    const existingKey = findExistingApiKey();
+    if (existingKey) {
+        const useExisting = await select({
+            message: t('foundExistingKey'),
+            choices: [
+                { name: t('useExistingKeyYes'), value: true },
+                { name: t('useExistingKeyNo'), value: false }
+            ]
+        });
+        if (useExisting) {
+            apiKey = existingKey;
+        }
+    }
+
+    if (!apiKey) {
+        apiKey = await input({ message: t('enterApiKey') });
+        saveGlobalApiKey(apiKey);
+    }
 
     // === الدقة والتحديث التلقائي للنماذج من الـ API (Dynamic Model Fetching) ===
     console.log(chalk.gray("\n🔄 Fetching latest dynamic models from api.abdalgani.com..."));
