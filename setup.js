@@ -183,6 +183,15 @@ const models = [
     { value: "glm-4.7:cloud",                  name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
     { value: "deepseek-v3.2:cloud",            name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nemotron-3-super:cloud",         name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
+    // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
+    { value: "zai/glm-5.1",                   name: "GLM-5.1 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5.1",                        name: "GLM-5.1 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-5-turbo",                name: "GLM-5-Turbo (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5-turbo",                    name: "GLM-5-Turbo (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.7",                    name: "GLM-4.7 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.7",                        name: "GLM-4.7 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.5-air",                name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.5-air",                    name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
 ];
 
 // ==================== Tool Installation Map ====================
@@ -537,6 +546,15 @@ async function configureTool(toolName) {
             "glm-4.7:cloud":      { name: "GLM-4.7 (Ollama)", limit: { context: 200000, output: 128000 } },
             "deepseek-v3.2:cloud":{ name: "DeepSeek V3.2 (Ollama)", limit: { context: 131072, output: 32768 } },
             "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
+            // ── Z.AI Coding Plan ─────────────────────────────────────────────
+            "zai/glm-5.1":      { name: "GLM-5.1 (Z.AI Coding Plan)",  limit: { context: 204800, output: 131072 } },
+            "glm-5.1":          { name: "GLM-5.1 (Z.AI Direct)",       limit: { context: 204800, output: 131072 } },
+            "zai/glm-5-turbo":  { name: "GLM-5-Turbo (Z.AI Coding)",   limit: { context: 204800, output: 131072 } },
+            "glm-5-turbo":      { name: "GLM-5-Turbo (Z.AI Direct)",   limit: { context: 204800, output: 131072 } },
+            "zai/glm-4.7":      { name: "GLM-4.7 (Z.AI Coding Plan)",  limit: { context: 204800, output: 131072 } },
+            "glm-4.7":          { name: "GLM-4.7 (Z.AI Direct)",       limit: { context: 204800, output: 131072 } },
+            "zai/glm-4.5-air":  { name: "GLM-4.5-Air (Z.AI Coding)",   limit: { context: 204800, output: 131072 } },
+            "glm-4.5-air":      { name: "GLM-4.5-Air (Z.AI Direct)",   limit: { context: 204800, output: 131072 } },
         };
 
         // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
