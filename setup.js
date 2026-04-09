@@ -687,6 +687,7 @@ async function configureTool(toolName) {
             ANTHROPIC_DEFAULT_OPUS_MODEL:   claudeOpus,
             ANTHROPIC_DEFAULT_SONNET_MODEL: claudeSonnet,
             ANTHROPIC_DEFAULT_HAIKU_MODEL:  claudeHaiku,
+            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
         };
 
         // Remove conflicting key if present (ANTHROPIC_API_KEY causes the auth conflict warning)
