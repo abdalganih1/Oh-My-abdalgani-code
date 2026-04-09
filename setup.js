@@ -157,6 +157,22 @@ const models = [
     // ── Gemini (via LiteLLM) ─────────────────────────────────────────────────
     { value: "gemini-3.1-pro",                 name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
     { value: "gemini-3.1-flash",               name: "Gemini 3.1 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
+    // ── Google AI Studio (Direct API) ────────────────────────────────────────
+    { value: "gemini-3-flash-preview",          name: "Gemini 3 Flash Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-pro-preview",          name: "Gemini 3.1 Pro Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash-lite-preview",   name: "Gemini 3.1 Flash Lite   │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash-image-preview",  name: "Gemini 3.1 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3-pro-image-preview",      name: "Gemini 3 Pro Image      │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-2.5-flash-image",          name: "Gemini 2.5 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-2.5-pro",                  name: "Gemini 2.5 Pro          │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-pro-latest",               name: "Gemini Pro Latest       │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-flash-latest",             name: "Gemini Flash Latest     │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-flash-lite-latest",        name: "Gemini Flash Lite Latest│ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-2.5-flash",                name: "Gemini 2.5 Flash        │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash-live-preview",   name: "Gemini 3.1 Flash Live   │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "veo-3.1-generate-preview",        name: "Veo 3.1 Video Gen       │ CTX:     8,192 │ OUT:  4,096" },
+    { value: "lyria-3-pro-preview",             name: "Lyria 3 Pro Audio       │ CTX:     8,192 │ OUT:  4,096" },
+    { value: "gemma-4-31b-it",                  name: "Gemma 4 31B IT          │ CTX:   131,072 │ OUT: 32,768" },
     // ── abdalgani (ollama) - ابحث بكلمة ollama ──────────────────────────────
     { value: "glm-5.1:cloud",                  name: "GLM-5.1 (Ollama Cloud)  │ CTX: 200,000 │ OUT: 131,072" },
     { value: "glm-5:cloud",                    name: "GLM-5 (Ollama Cloud)    │ CTX: 202,752 │ OUT: 131,072" },
@@ -484,6 +500,22 @@ async function configureTool(toolName) {
             // ── Gemini ───────────────────────────────────────────────────────────
             "gemini-3.1-pro":      { name: "Gemini 3.1 Pro",           limit: { context: 1048576, output:  65536 } },
             "gemini-3.1-flash":    { name: "Gemini 3.1 Flash",         limit: { context: 1048576, output:  65536 } },
+            // ── Google AI Studio (Direct API) ────────────────────────────────────
+            "gemini-3-flash-preview":         { name: "Gemini 3 Flash Preview",  limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-pro-preview":         { name: "Gemini 3.1 Pro Preview",  limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash-lite-preview":  { name: "Gemini 3.1 Flash Lite",   limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash-image-preview": { name: "Gemini 3.1 Flash Image",  limit: { context: 1048576, output: 65536 } },
+            "gemini-3-pro-image-preview":     { name: "Gemini 3 Pro Image",      limit: { context: 1048576, output: 65536 } },
+            "gemini-2.5-flash-image":         { name: "Gemini 2.5 Flash Image",  limit: { context: 1048576, output: 65536 } },
+            "gemini-2.5-pro":                 { name: "Gemini 2.5 Pro",          limit: { context: 1048576, output: 65536 } },
+            "gemini-pro-latest":              { name: "Gemini Pro Latest",       limit: { context: 1048576, output: 65536 } },
+            "gemini-flash-latest":            { name: "Gemini Flash Latest",     limit: { context: 1048576, output: 65536 } },
+            "gemini-flash-lite-latest":       { name: "Gemini Flash Lite Latest",limit: { context: 1048576, output: 65536 } },
+            "gemini-2.5-flash":               { name: "Gemini 2.5 Flash",        limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash-live-preview":  { name: "Gemini 3.1 Flash Live",   limit: { context: 1048576, output: 65536 } },
+            "veo-3.1-generate-preview":       { name: "Veo 3.1 Video Gen",       limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["video"] } },
+            "lyria-3-pro-preview":            { name: "Lyria 3 Pro Audio",       limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["audio"] } },
+            "gemma-4-31b-it":                 { name: "Gemma 4 31B IT",          limit: { context: 131072, output: 32768 } },
             // ── نماذج الصور ────────────────────────────────────────────────────
             "nvidia/stable-diffusion-3": {
                 name: "Stable Diffusion 3 (NVIDIA)", attachment: false,
