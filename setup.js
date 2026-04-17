@@ -86,6 +86,10 @@ const i18n = {
         nodeInstallSuccess: '✅ تم تثبيت Node.js + npm بنجاح!',
         nodeInstallFailed: (method) => `❌ فشل التثبيت عبر ${method}.`,
         restartTerminal: '💡 يرجى إعادة فتح الطرفية بعد التثبيت.',
+        psFixing: '🔧 إصلاح سياسة PowerShell...',
+        psFixed: '✅ تم إصلاح سياسة PowerShell (RemoteSigned).',
+        psFixFailed: '⚠️ فشل إصلاح سياسة PowerShell. قد تواجه مشاكل عند استخدام npm.',
+        psRestricted: '⚠️ سياسة PowerShell مقيدة! npm قد لا يعمل. جاري الإصلاح...',
     },
     en: {
         header: '🚀 Oh-My-abdalgani-code Setup Tool 🚀',
@@ -160,6 +164,10 @@ const i18n = {
         nodeInstallSuccess: '✅ Node.js + npm installed successfully!',
         nodeInstallFailed: (method) => `❌ Installation via ${method} failed.`,
         restartTerminal: '💡 Please restart your terminal after installation.',
+        psFixing: '🔧 Fixing PowerShell execution policy...',
+        psFixed: '✅ PowerShell execution policy fixed (RemoteSigned).',
+        psFixFailed: '⚠️ Failed to fix PowerShell execution policy. npm may not work properly.',
+        psRestricted: '⚠️ PowerShell execution policy is restricted! npm may fail. Fixing...',
     }
 };
 
@@ -606,8 +614,28 @@ function findFile(dir, filename) {
 }
 
 // ==================== Environment Pre-flight ====================
+function fixPowerShellPolicy() {
+    if (!isWin) return true;
+    try {
+        const policy = runSilent('powershell -Command "Get-ExecutionPolicy -Scope CurrentUser"');
+        if (policy && (policy.trim() === 'Restricted' || policy.trim() === 'Undefined')) {
+            console.log(chalk.yellow(t('psRestricted')));
+            console.log(chalk.cyan(t('psFixing')));
+            execSync('powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force"', { stdio: 'inherit' });
+            console.log(chalk.green(t('psFixed')));
+        }
+        return true;
+    } catch (e) {
+        console.log(chalk.yellow(t('psFixFailed')));
+        console.log(chalk.gray('   Run manually: powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser"'));
+        return false;
+    }
+}
+
 function ensureNodeNpm() {
     console.log(chalk.cyan(t('envCheck')));
+
+    if (isWin) fixPowerShellPolicy();
 
     const nodeV = runSilent('node -v');
     if (!nodeV) {
