@@ -1,9 +1,15 @@
 import { select, input, search } from '@inquirer/prompts';
 import chalk from 'chalk';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import https from 'https';
+import http from 'http';
+import { createWriteStream, mkdirSync, rmSync, existsSync } from 'fs';
+import { pipeline } from 'stream/promises';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 // ==================== Localization ====================
 const i18n = {
@@ -65,6 +71,21 @@ const i18n = {
         writtenTo: (f) => `\n✅ تم الكتابة إلى: ${f}`,
         modelsMap: '\n📦 خريطة النماذج الثلاثة:',
         apiKeyRemoved: '\n💡 تم حذف ANTHROPIC_API_KEY لتجنب تعارض المصادقة.',
+        avxNotSupported: '⚠️ المعالج لا يدعم تعليمات AVX. جاري تحميل نسخة baseline...',
+        downloadingBaseline: (url) => `⬇️ جاري تحميل Kilo Baseline:\n   ${url}`,
+        extractingBaseline: '📦 جاري فك الضغط...',
+        installingBaseline: '🔧 جاري تثبيت Kilo Baseline...',
+        baselineInstallSuccess: '✅ تم تثبيت Kilo Baseline بنجاح!',
+        baselineInstallFailed: '❌ فشل تثبيت Kilo Baseline.',
+        checkingAvx: '🔍 فحص دعم المعالج لـ AVX...',
+        avxSupported: '✅ المعالج يدعم AVX.',
+        avxCheckingKilo: '🔍 فحص Kilo بعد التثبيت...',
+        kiloCrashDetected: '⚠️ Kilo تعطل (لا يدعم المعالج). جاري التحول للنسخة Baseline...',
+        npmMissing: '⚠️ npm غير مثبت! جاري المحاولة...',
+        installingNodeNpm: (method) => `📦 جاري تثبيت Node.js + npm عبر ${method}...`,
+        nodeInstallSuccess: '✅ تم تثبيت Node.js + npm بنجاح!',
+        nodeInstallFailed: (method) => `❌ فشل التثبيت عبر ${method}.`,
+        restartTerminal: '💡 يرجى إعادة فتح الطرفية بعد التثبيت.',
     },
     en: {
         header: '🚀 Oh-My-abdalgani-code Setup Tool 🚀',
@@ -124,6 +145,21 @@ const i18n = {
         writtenTo: (f) => `\n✅ Written to: ${f}`,
         modelsMap: '\n📦 Map of the three models:',
         apiKeyRemoved: '\n💡 ANTHROPIC_API_KEY removed to avoid authentication conflict.',
+        avxNotSupported: '⚠️ CPU does not support AVX instructions. Downloading baseline variant...',
+        downloadingBaseline: (url) => `⬇️ Downloading Kilo Baseline:\n   ${url}`,
+        extractingBaseline: '📦 Extracting...',
+        installingBaseline: '🔧 Installing Kilo Baseline...',
+        baselineInstallSuccess: '✅ Kilo Baseline installed successfully!',
+        baselineInstallFailed: '❌ Failed to install Kilo Baseline.',
+        checkingAvx: '🔍 Checking CPU AVX support...',
+        avxSupported: '✅ CPU supports AVX.',
+        avxCheckingKilo: '🔍 Verifying Kilo after install...',
+        kiloCrashDetected: '⚠️ Kilo crashed (CPU incompatible). Switching to Baseline variant...',
+        npmMissing: '⚠️ npm is not installed! Attempting to install...',
+        installingNodeNpm: (method) => `📦 Installing Node.js + npm via ${method}...`,
+        nodeInstallSuccess: '✅ Node.js + npm installed successfully!',
+        nodeInstallFailed: (method) => `❌ Installation via ${method} failed.`,
+        restartTerminal: '💡 Please restart your terminal after installation.',
     }
 };
 
@@ -140,64 +176,64 @@ const DEFAULT_MODEL = 'nvidia/glm-4.7';
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
 const models = [
     // ── NVIDIA NIM ───────────────────────────────────────────────────────────
-    { value: "nvidia/glm-5",                   name: "GLM-5                  │ CTX: 200,000 │ OUT:  32,000" },
-    { value: "nvidia/glm-4.7",                 name: "GLM-4.7                │ CTX: 200,000 │ OUT:  32,000" },
-    { value: "nvidia/kimi-k2.5",               name: "Kimi K2.5 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
+    { value: "nvidia/glm-5", name: "GLM-5                  │ CTX: 200,000 │ OUT:  32,000" },
+    { value: "nvidia/glm-4.7", name: "GLM-4.7                │ CTX: 200,000 │ OUT:  32,000" },
+    { value: "nvidia/kimi-k2.5", name: "Kimi K2.5 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
     // ── Moonshot & MiniMax ───────────────────────────────────────────────────
-    { value: "moonshotai/kimi-k2.5",           name: "Kimi K2.5 (Moonshot)   │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "minimaxai/minimax-m2.5",         name: "MiniMax M2.5           │ CTX: 196,608 │ OUT: 196,608" },
-    { value: "nvidia/qwen3.5-397b",            name: "Qwen 3.5 397B          │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "qwen",                           name: "Qwen 3.5 397B (Alias)  │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "qwen/qwen3.5-397b-a17b",         name: "Qwen 3.5 397B a17b     │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/qwen3-coder-480b",        name: "Qwen3 Coder 480B       │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/qwen3.5-122b",            name: "Qwen 3.5 122B          │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/qwq-32b",                 name: "QwQ 32B                │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/qwen3-next-thinking",     name: "Qwen3 Next Thinking     │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/nemotron-ultra-253b",     name: "Nemotron Ultra 253B    │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/nemotron-super-49b",      name: "Nemotron Super 49B     │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "moonshotai/kimi-k2.5", name: "Kimi K2.5 (Moonshot)   │ CTX: 262,144 │ OUT:  65,535" },
+    { value: "minimaxai/minimax-m2.5", name: "MiniMax M2.5           │ CTX: 196,608 │ OUT: 196,608" },
+    { value: "nvidia/qwen3.5-397b", name: "Qwen 3.5 397B          │ CTX: 262,144 │ OUT:  81,920" },
+    { value: "qwen", name: "Qwen 3.5 397B (Alias)  │ CTX: 262,144 │ OUT:  81,920" },
+    { value: "qwen/qwen3.5-397b-a17b", name: "Qwen 3.5 397B a17b     │ CTX: 262,144 │ OUT:  81,920" },
+    { value: "nvidia/qwen3-coder-480b", name: "Qwen3 Coder 480B       │ CTX: 262,144 │ OUT:  81,920" },
+    { value: "nvidia/qwen3.5-122b", name: "Qwen 3.5 122B          │ CTX: 262,144 │ OUT:  81,920" },
+    { value: "nvidia/qwq-32b", name: "QwQ 32B                │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nvidia/qwen3-next-thinking", name: "Qwen3 Next Thinking     │ CTX: 262,144 │ OUT:  81,920" },
+    { value: "nvidia/nemotron-ultra-253b", name: "Nemotron Ultra 253B    │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nvidia/nemotron-super-49b", name: "Nemotron Super 49B     │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B  │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/deepseek-r1",             name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
-    { value: "nvidia/gpt-oss-120b",            name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
-    { value: "nvidia/step-3.5-flash",          name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
+    { value: "nvidia/deepseek-r1", name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
+    { value: "nvidia/gpt-oss-120b", name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
+    { value: "nvidia/step-3.5-flash", name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
 
     // ── Gemini (via LiteLLM) ─────────────────────────────────────────────────
-    { value: "gemini-3.1-pro",                 name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash",               name: "Gemini 3.1 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-pro", name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash", name: "Gemini 3.1 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
     // ── Google AI Studio (Direct API) ────────────────────────────────────────
-    { value: "gemini-3-flash-preview",          name: "Gemini 3 Flash Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-pro-preview",          name: "Gemini 3.1 Pro Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash-lite-preview",   name: "Gemini 3.1 Flash Lite   │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash-image-preview",  name: "Gemini 3.1 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3-pro-image-preview",      name: "Gemini 3 Pro Image      │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-2.5-flash-image",          name: "Gemini 2.5 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-2.5-pro",                  name: "Gemini 2.5 Pro          │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-pro-latest",               name: "Gemini Pro Latest       │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-flash-latest",             name: "Gemini Flash Latest     │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-flash-lite-latest",        name: "Gemini Flash Lite Latest│ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-2.5-flash",                name: "Gemini 2.5 Flash        │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash-live-preview",   name: "Gemini 3.1 Flash Live   │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "veo-3.1-generate-preview",        name: "Veo 3.1 Video Gen       │ CTX:     8,192 │ OUT:  4,096" },
-    { value: "lyria-3-pro-preview",             name: "Lyria 3 Pro Audio       │ CTX:     8,192 │ OUT:  4,096" },
-    { value: "gemma-4-31b-it",                  name: "Gemma 4 31B IT          │ CTX:   131,072 │ OUT: 32,768" },
+    { value: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite   │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash-image-preview", name: "Gemini 3.1 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3-pro-image-preview", name: "Gemini 3 Pro Image      │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-2.5-flash-image", name: "Gemini 2.5 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-2.5-pro", name: "Gemini 2.5 Pro          │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-pro-latest", name: "Gemini Pro Latest       │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-flash-latest", name: "Gemini Flash Latest     │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-flash-lite-latest", name: "Gemini Flash Lite Latest│ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-2.5-flash", name: "Gemini 2.5 Flash        │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.1-flash-live-preview", name: "Gemini 3.1 Flash Live   │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "veo-3.1-generate-preview", name: "Veo 3.1 Video Gen       │ CTX:     8,192 │ OUT:  4,096" },
+    { value: "lyria-3-pro-preview", name: "Lyria 3 Pro Audio       │ CTX:     8,192 │ OUT:  4,096" },
+    { value: "gemma-4-31b-it", name: "Gemma 4 31B IT          │ CTX:   131,072 │ OUT: 32,768" },
     // ── abdalgani (ollama) - ابحث بكلمة ollama ──────────────────────────────
-    { value: "glm-5.1:cloud",                  name: "GLM-5.1 (Ollama Cloud)  │ CTX: 200,000 │ OUT: 131,072" },
-    { value: "glm-5:cloud",                    name: "GLM-5 (Ollama Cloud)    │ CTX: 202,752 │ OUT: 131,072" },
-    { value: "gemma4",                          name: "Gemma 4 (Ollama)        │ CTX: 128,000 │ OUT:  32,768" },
-    { value: "qwen3.5",                         name: "Qwen 3.5 (Ollama)       │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "minimax-m2.7:cloud",             name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
-    { value: "kimi-k2.5:cloud",                name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "glm-4.7:cloud",                  name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
-    { value: "deepseek-v3.2:cloud",            name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nemotron-3-super:cloud",         name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
+    { value: "glm-5.1:cloud", name: "GLM-5.1 (Ollama Cloud)  │ CTX: 200,000 │ OUT: 131,072" },
+    { value: "glm-5:cloud", name: "GLM-5 (Ollama Cloud)    │ CTX: 202,752 │ OUT: 131,072" },
+    { value: "gemma4", name: "Gemma 4 (Ollama)        │ CTX: 128,000 │ OUT:  32,768" },
+    { value: "qwen3.5", name: "Qwen 3.5 (Ollama)       │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "minimax-m2.7:cloud", name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
+    { value: "kimi-k2.5:cloud", name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
+    { value: "glm-4.7:cloud", name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
+    { value: "deepseek-v3.2:cloud", name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nemotron-3-super:cloud", name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
     // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
-    { value: "zai/glm-5.1",                   name: "GLM-5.1 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-5.1",                        name: "GLM-5.1 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "zai/glm-5-turbo",                name: "GLM-5-Turbo (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-5-turbo",                    name: "GLM-5-Turbo (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "zai/glm-4.7",                    name: "GLM-4.7 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.7",                        name: "GLM-4.7 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "zai/glm-4.5-air",                name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.5-air",                    name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-5.1", name: "GLM-5.1 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5.1", name: "GLM-5.1 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-5-turbo", name: "GLM-5-Turbo (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5-turbo", name: "GLM-5-Turbo (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.7", name: "GLM-4.7 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.7", name: "GLM-4.7 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.5-air", name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
 ];
 
 // ==================== Tool Installation Map ====================
@@ -207,12 +243,12 @@ const TOOL_INSTALL_MAP = {
         exeName: 'opencode',
         methods: isWin
             ? [
-                { label: 'npm',  cmd: 'npm install -g opencode-ai' },
-              ]
+                { label: 'npm', cmd: 'npm install -g opencode-ai' },
+            ]
             : [
                 { label: 'curl', cmd: 'curl -fsSL https://opencode.ai/install | bash' },
-                { label: 'npm',  cmd: 'npm install -g opencode-ai' },
-              ],
+                { label: 'npm', cmd: 'npm install -g opencode-ai' },
+            ],
         manual: isWin
             ? '  npm install -g opencode-ai'
             : '  curl -fsSL https://opencode.ai/install | bash\n  # or: npm install -g opencode-ai',
@@ -222,7 +258,13 @@ const TOOL_INSTALL_MAP = {
         methods: [
             { label: 'npm', cmd: 'npm install -g @kilocode/cli' },
         ],
+        baselineAsset: {
+            win32: 'kilo-windows-x64-baseline.zip',
+            linux: 'kilo-linux-x64-baseline.tar.gz',
+            darwin: 'kilo-darwin-x64-baseline.zip',
+        },
         manual: '  npm install -g @kilocode/cli',
+        repo: 'Kilo-Org/kilocode',
     },
     ClaudeCode: {
         exeName: 'claude',
@@ -230,11 +272,11 @@ const TOOL_INSTALL_MAP = {
             ? [
                 { label: 'PowerShell', cmd: 'powershell -Command "irm https://claude.ai/install.ps1 | iex"' },
                 { label: 'npm (deprecated)', cmd: 'npm install -g @anthropic-ai/claude-code' },
-              ]
+            ]
             : [
                 { label: 'curl', cmd: 'curl -fsSL https://claude.ai/install.sh | bash' },
                 { label: 'npm (deprecated)', cmd: 'npm install -g @anthropic-ai/claude-code' },
-              ],
+            ],
         manual: isWin
             ? '  irm https://claude.ai/install.ps1 | iex\n  # or: winget install Anthropic.ClaudeCode'
             : '  curl -fsSL https://claude.ai/install.sh | bash\n  # or: brew install --cask claude-code',
@@ -245,11 +287,11 @@ const TOOL_INSTALL_MAP = {
             ? [
                 { label: 'PowerShell', cmd: 'powershell -Command "irm https://openclaw.ai/install.ps1 | iex"' },
                 { label: 'npm (beta)', cmd: 'npm install -g openclaw@beta' },
-              ]
+            ]
             : [
                 { label: 'curl', cmd: 'curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git' },
                 { label: 'npm (beta)', cmd: 'npm install -g openclaw@beta' },
-              ],
+            ],
         manual: isWin
             ? '  powershell -c "irm https://openclaw.ai/install.ps1 | iex"\n  # or: npm i -g openclaw@beta'
             : '  curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git\n  # or: npm i -g openclaw@beta',
@@ -269,7 +311,7 @@ async function runCommand(command) {
 
 function runSilent(command) {
     try {
-        return execSync(command, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }).trim();
+        return execSync(command, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     } catch (e) {
         return null;
     }
@@ -293,7 +335,7 @@ const G_CONFIG_PATH = path.join(os.homedir(), '.abdalgani-code.json');
 function saveGlobalApiKey(key) {
     let data = {};
     if (fs.existsSync(G_CONFIG_PATH)) {
-        try { data = JSON.parse(fs.readFileSync(G_CONFIG_PATH, 'utf8')); } catch(e){}
+        try { data = JSON.parse(fs.readFileSync(G_CONFIG_PATH, 'utf8')); } catch (e) { }
     }
     data.apiKey = key;
     fs.writeFileSync(G_CONFIG_PATH, JSON.stringify(data, null, 2));
@@ -304,7 +346,7 @@ function findExistingApiKey() {
         try {
             const data = JSON.parse(fs.readFileSync(G_CONFIG_PATH, 'utf8'));
             if (data.apiKey) return data.apiKey;
-        } catch(e){}
+        } catch (e) { }
     }
 
     try {
@@ -313,15 +355,15 @@ function findExistingApiKey() {
             const data = JSON.parse(fs.readFileSync(p, 'utf8'));
             if (data?.provider?.abdalgani?.options?.apiKey) return data.provider.abdalgani.options.apiKey;
         }
-    } catch(e){}
-    
+    } catch (e) { }
+
     try {
         const p = path.join(os.homedir(), '.config', 'kilo', 'kilo.json');
         if (fs.existsSync(p)) {
             const data = JSON.parse(fs.readFileSync(p, 'utf8'));
             if (data?.provider?.abdalgani?.options?.apiKey) return data.provider.abdalgani.options.apiKey;
         }
-    } catch(e){}
+    } catch (e) { }
 
     try {
         const p = path.join(os.homedir(), '.claude', 'settings.json');
@@ -329,7 +371,7 @@ function findExistingApiKey() {
             const data = JSON.parse(fs.readFileSync(p, 'utf8'));
             if (data?.env?.ANTHROPIC_AUTH_TOKEN) return data.env.ANTHROPIC_AUTH_TOKEN;
         }
-    } catch(e){}
+    } catch (e) { }
 
     try {
         const p = path.join(os.homedir(), '.openclaw', 'openclaw.json');
@@ -337,8 +379,229 @@ function findExistingApiKey() {
             const data = JSON.parse(fs.readFileSync(p, 'utf8'));
             if (data?.models?.providers?.abdalgani?.apiKey) return data.models.providers.abdalgani.apiKey;
         }
-    } catch(e){}
+    } catch (e) { }
 
+    return null;
+}
+
+// ==================== AVX Detection ====================
+function hasAVXSupport() {
+    console.log(chalk.cyan(t('checkingAvx')));
+    try {
+        if (isWin) {
+            const result = runSilent('powershell -Command "(Get-CimInstance Win32_Processor).Caption"');
+            if (result) {
+                const yearMatch = result.match(/\b(20\d{2})\b/);
+                const cpuFamily = result.toLowerCase();
+                if (yearMatch) {
+                    const year = parseInt(yearMatch[1], 10);
+                    if (year >= 2013) {
+                        console.log(chalk.green(t('avxSupported')));
+                        return true;
+                    }
+                }
+                if (cpuFamily.includes('xeon') || cpuFamily.includes('opteron') || cpuFamily.includes('athlon') || cpuFamily.includes('sempron')) {
+                    console.log(chalk.yellow(t('avxNotSupported')));
+                    return false;
+                }
+            }
+            const flags = runSilent('powershell -Command "[System.Runtime.Intrinsics.X86.Avx]::IsSupported"');
+            if (flags && flags.trim() === 'True') {
+                console.log(chalk.green(t('avxSupported')));
+                return true;
+            }
+            if (flags && flags.trim() === 'False') {
+                console.log(chalk.yellow(t('avxNotSupported')));
+                return false;
+            }
+        } else if (process.platform === 'darwin') {
+            const flags = runSilent("sysctl -a 2>/dev/null | grep -o 'AVX[^ ]*' | head -1");
+            if (flags) {
+                console.log(chalk.green(t('avxSupported')));
+                return true;
+            }
+            const machdep = runSilent("sysctl -n machdep.cpu.brand_string 2>/dev/null");
+            if (machdep && !machdep.includes('Intel') && !machdep.includes('Xeon')) {
+                console.log(chalk.green(t('avxSupported')));
+                return true;
+            }
+        } else {
+            const flags = runSilent("grep -o 'avx' /proc/cpuinfo | head -1");
+            if (flags && flags.trim() === 'avx') {
+                console.log(chalk.green(t('avxSupported')));
+                return true;
+            }
+        }
+    } catch (_) { }
+    console.log(chalk.gray('⚠️ Could not determine AVX support, assuming supported.'));
+    return true;
+}
+
+function verifyKiloWorks() {
+    console.log(chalk.cyan(t('avxCheckingKilo')));
+    try {
+        const result = spawnSync('kilo', ['--version'], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: 10000,
+            shell: true,
+        });
+        if (result.status === 0 && result.stdout) {
+            console.log(chalk.green(`✅ Kilo ${result.stdout.toString().trim()} working.`));
+            return true;
+        }
+        if (result.status !== 0 && result.stderr) {
+            const stderr = result.stderr.toString();
+            if (stderr.includes('Illegal instruction') || stderr.includes('illegal instruction') || result.status === 132) {
+                console.log(chalk.red(t('kiloCrashDetected')));
+                return false;
+            }
+        }
+        if (result.status === 132) {
+            console.log(chalk.red(t('kiloCrashDetected')));
+            return false;
+        }
+        return result.status === 0;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function downloadFile(url, destPath) {
+    return new Promise((resolve, reject) => {
+        const client = url.startsWith('https') ? https : http;
+        const file = createWriteStream(destPath);
+        client.get(url, { followAllRedirects: true }, (response) => {
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                file.close();
+                rmSync(destPath, { force: true });
+                downloadFile(response.headers.location, destPath).then(resolve).catch(reject);
+                return;
+            }
+            if (response.statusCode !== 200) {
+                file.close();
+                rmSync(destPath, { force: true });
+                reject(new Error(`HTTP ${response.statusCode}`));
+                return;
+            }
+            response.pipe(file);
+            file.on('finish', () => {
+                file.close();
+                resolve();
+            });
+        }).on('error', (err) => {
+            rmSync(destPath, { force: true });
+            reject(err);
+        });
+    });
+}
+
+async function getLatestReleaseAsset(repo, assetName) {
+    try {
+        const url = `https://api.github.com/repos/${repo}/releases/latest`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
+        const data = await res.json();
+        const asset = data.assets?.find(a => a.name === assetName);
+        if (asset) return { browserDownloadUrl: asset.browser_download_url, tagName: data.tag_name };
+        throw new Error(`Asset "${assetName}" not found in release ${data.tag_name}`);
+    } catch (e) {
+        console.log(chalk.yellow(`⚠️ Could not fetch release info: ${e.message}`));
+        return null;
+    }
+}
+
+async function installKiloBaseline() {
+    const map = TOOL_INSTALL_MAP['KiloCLI'];
+    const assetName = map.baselineAsset[process.platform];
+    if (!assetName) {
+        console.log(chalk.red(`❌ No baseline asset defined for platform: ${process.platform}`));
+        return false;
+    }
+
+    const releaseInfo = await getLatestReleaseAsset(map.repo, assetName);
+    if (!releaseInfo) return false;
+
+    const downloadUrl = releaseInfo.browserDownloadUrl;
+    console.log(chalk.cyan(t('downloadingBaseline', downloadUrl)));
+
+    const tmpDir = path.join(os.tmpdir(), 'kilo-baseline-install');
+    if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true, force: true });
+    mkdirSync(tmpDir, { recursive: true });
+
+    const ext = path.extname(assetName);
+    const archivePath = path.join(tmpDir, assetName);
+
+    try {
+        await downloadFile(downloadUrl, archivePath);
+        console.log(chalk.green('✅ Download complete.'));
+        console.log(chalk.cyan(t('extractingBaseline')));
+
+        if (ext === '.zip') {
+            if (isWin) {
+                execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}/extract' -Force"`, { stdio: 'inherit' });
+            } else {
+                execSync(`unzip -o "${archivePath}" -d "${tmpDir}/extract"`, { stdio: 'inherit' });
+            }
+        } else if (ext === '.gz') {
+            execSync(`tar -xzf "${archivePath}" -C "${tmpDir}/extract"`, { stdio: 'inherit' });
+            mkdirSync(`${tmpDir}/extract`, { recursive: true });
+        }
+
+        console.log(chalk.cyan(t('installingBaseline')));
+
+        const binDir = isWin
+            ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'npm')
+            : '/usr/local/bin';
+
+        if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
+
+        if (isWin) {
+            const kiloExe = path.join(binDir, 'kilo.exe');
+            if (existsSync(kiloExe)) rmSync(kiloExe, { force: true });
+            const found = findFile(tmpDir + '/extract', 'kilo.exe');
+            if (found) {
+                fs.copyFileSync(found, kiloExe);
+                console.log(chalk.green(t('baselineInstallSuccess')));
+                console.log(chalk.gray(`   Installed to: ${kiloExe}`));
+                return true;
+            }
+        } else {
+            const kiloBin = path.join(binDir, 'kilo');
+            if (existsSync(kiloBin)) rmSync(kiloBin, { force: true });
+            const found = findFile(tmpDir + '/extract', 'kilo');
+            if (found) {
+                fs.copyFileSync(found, kiloBin);
+                fs.chmodSync(kiloBin, 0o755);
+                console.log(chalk.green(t('baselineInstallSuccess')));
+                console.log(chalk.gray(`   Installed to: ${kiloBin}`));
+                return true;
+            }
+        }
+
+        console.log(chalk.red('❌ kilo binary not found in archive.'));
+        return false;
+    } catch (e) {
+        console.log(chalk.red(t('baselineInstallFailed')));
+        console.log(chalk.red(`   Error: ${e.message}`));
+        return false;
+    } finally {
+        if (existsSync(tmpDir)) {
+            try { rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+        }
+    }
+}
+
+function findFile(dir, filename) {
+    if (!existsSync(dir)) return null;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isFile() && entry.name === filename) return fullPath;
+        if (entry.isDirectory()) {
+            const found = findFile(fullPath, filename);
+            if (found) return found;
+        }
+    }
     return null;
 }
 
@@ -346,35 +609,114 @@ function findExistingApiKey() {
 function ensureNodeNpm() {
     console.log(chalk.cyan(t('envCheck')));
 
-    // Check Node.js
     const nodeV = runSilent('node -v');
     if (!nodeV) {
         console.log(chalk.red(t('nodeNotFound')));
+        console.log(chalk.yellow(t('npmMissing')));
         if (isWin) {
-            console.log(chalk.yellow('  → Install nvm-windows: https://github.com/coreybutler/nvm-windows/releases'));
-            console.log(chalk.yellow('    nvm install lts && nvm use lts'));
+            const installMethods = [
+                { label: 'winget', cmd: 'winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements' },
+                { label: 'choco', cmd: 'choco install nodejs-lts -y' },
+            ];
+            let installed = false;
+            for (const method of installMethods) {
+                const hasInstaller = checkInstalled(method.label === 'winget' ? 'winget' : 'choco');
+                if (hasInstaller) {
+                    console.log(chalk.yellow(t('installingNodeNpm', method.label)));
+                    try {
+                        execSync(method.cmd, { stdio: 'inherit' });
+                        console.log(chalk.green(t('nodeInstallSuccess')));
+                        console.log(chalk.yellow(t('restartTerminal')));
+                        installed = true;
+                        break;
+                    } catch (_) {
+                        console.log(chalk.red(t('nodeInstallFailed', method.label)));
+                    }
+                }
+            }
+            if (!installed) {
+                console.log(chalk.yellow('  → Install nvm-windows: https://github.com/coreybutler/nvm-windows/releases'));
+                console.log(chalk.yellow('    nvm install lts && nvm use lts'));
+                process.exit(1);
+            }
         } else {
-            console.log(chalk.yellow('  → curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash'));
-            console.log(chalk.yellow('    nvm install --lts && nvm use --lts'));
+            const pkgManagers = [
+                { check: 'apt-get', install: 'curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs' },
+                { check: 'dnf', install: 'sudo dnf install -y nodejs npm' },
+                { check: 'pacman', install: 'sudo pacman -S --noconfirm nodejs npm' },
+                { check: 'apk', install: 'sudo apk add --no-cache nodejs npm' },
+            ];
+            let installed = false;
+            for (const pm of pkgManagers) {
+                if (checkInstalled(pm.check)) {
+                    console.log(chalk.yellow(t('installingNodeNpm', pm.check)));
+                    try {
+                        execSync(pm.install, { stdio: 'inherit' });
+                        console.log(chalk.green(t('nodeInstallSuccess')));
+                        console.log(chalk.yellow(t('restartTerminal')));
+                        installed = true;
+                        break;
+                    } catch (_) {
+                        console.log(chalk.red(t('nodeInstallFailed', pm.check)));
+                    }
+                }
+            }
+            if (!installed) {
+                console.log(chalk.yellow('  → curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash'));
+                console.log(chalk.yellow('    nvm install --lts && nvm use --lts'));
+                process.exit(1);
+            }
         }
-        process.exit(1);
+        process.exit(0);
     }
     console.log(chalk.green(t('nodeVersion', nodeV)));
 
-    // Check npm
     const npmV = runSilent('npm -v');
     if (!npmV) {
-        console.log(chalk.red('❌ npm not found! Attempting fix...'));
-        try {
-            execSync('node -e "process.exit(0)"', { stdio: 'ignore' });
-            console.log(chalk.yellow(t('npmFixing')));
-            execSync('npm install -g npm@latest', { stdio: 'inherit' });
-        } catch (_) {
-            console.log(chalk.red(t('npmFixFailed')));
+        console.log(chalk.red(t('npmMissing')));
+        if (isWin) {
+            const hasNpm = checkInstalled('npm');
+            if (!hasNpm) {
+                console.log(chalk.yellow('  → Node.js was found but npm is missing. Reinstalling Node.js...'));
+                try {
+                    execSync('winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements', { stdio: 'inherit' });
+                } catch (_) {
+                    try {
+                        execSync('choco install nodejs-lts -y', { stdio: 'inherit' });
+                    } catch (__) {
+                        console.log(chalk.red(t('npmFixFailed')));
+                    }
+                }
+                console.log(chalk.yellow(t('restartTerminal')));
+                process.exit(0);
+            }
+        } else {
+            const pkgManagers = [
+                { check: 'apt-get', install: 'sudo apt-get install -y npm' },
+                { check: 'dnf', install: 'sudo dnf install -y npm' },
+                { check: 'pacman', install: 'sudo pacman -S --noconfirm npm' },
+                { check: 'apk', install: 'sudo apk add --no-cache npm' },
+            ];
+            let installed = false;
+            for (const pm of pkgManagers) {
+                if (checkInstalled(pm.check)) {
+                    console.log(chalk.yellow(t('installingNodeNpm', pm.check)));
+                    try {
+                        execSync(pm.install, { stdio: 'inherit' });
+                        console.log(chalk.green(t('nodeInstallSuccess')));
+                        installed = true;
+                        break;
+                    } catch (_) {
+                        console.log(chalk.red(t('nodeInstallFailed', pm.check)));
+                    }
+                }
+            }
+            if (!installed) {
+                console.log(chalk.red(t('npmFixFailed')));
+            }
         }
     } else {
         console.log(chalk.green(t('npmVersion', npmV)));
-        // If npm < 9, suggest upgrade
         const npmMajor = parseInt(npmV.split('.')[0], 10);
         if (npmMajor < 9) {
             console.log(chalk.yellow(t('npmOld', npmV)));
@@ -405,21 +747,33 @@ async function installTool(toolName) {
         console.log(chalk.yellow(t('installing', toolName, method.label)));
         try {
             execSync(method.cmd, { stdio: 'inherit' });
-            // Verify it actually installed
             if (checkInstalled(map.exeName)) {
+                if (toolName === 'KiloCLI') {
+                    if (!verifyKiloWorks()) {
+                        console.log(chalk.yellow(t('avxNotSupported')));
+                        const baselineOk = await installKiloBaseline();
+                        if (baselineOk) return true;
+                        console.log(chalk.red(t('baselineInstallFailed')));
+                        return false;
+                    }
+                }
                 return true;
             }
-            // If cmd succeeded but binary not found, try npm cache fix then retry
             console.log(chalk.yellow('⚠️ Command succeeded but binary not found in PATH. Trying npm cache fix...'));
             try {
                 execSync('npm cache clean --force', { stdio: 'ignore' });
-            } catch (_) {}
+            } catch (_) { }
         } catch (e) {
             console.log(chalk.red(t('installFailed', `${toolName} (${method.label})`)));
         }
     }
 
-    // All methods failed
+    if (toolName === 'KiloCLI' && map.baselineAsset) {
+        console.log(chalk.yellow(t('tryingFallback', 'GitHub Baseline')));
+        const baselineOk = await installKiloBaseline();
+        if (baselineOk) return true;
+    }
+
     console.log(chalk.red(t('installFailedAll', toolName)));
     console.log(chalk.cyan(t('manualInstall', map.manual)));
     return false;
@@ -432,7 +786,7 @@ async function launchAfterSetup(toolName, exeName) {
         message: chalk.cyan(t('launchPrompt', toolName)),
         choices: [
             { name: lang === 'ar' ? '✅ نعم' : '✅ Yes', value: true },
-            { name: lang === 'ar' ? '❌ لا' : '❌ No',  value: false }
+            { name: lang === 'ar' ? '❌ لا' : '❌ No', value: false }
         ]
     });
     if (!launch) return;
@@ -513,9 +867,9 @@ async function configureTool(toolName) {
 
     // === Model Selection: فقط لـ ClaudeCode بثلاثة أسئلة، OpenCode/Kilo تلقائياً ===
     let selectedModel = DEFAULT_MODEL;
-    let claudeOpus   = 'nvidia/glm-5';
+    let claudeOpus = 'nvidia/glm-5';
     let claudeSonnet = 'moonshotai/kimi-k2.5';
-    let claudeHaiku  = 'minimaxai/minimax-m2.5';
+    let claudeHaiku = 'minimaxai/minimax-m2.5';
 
     if (toolName === 'ClaudeCode') {
         // helper: prompt بحث لكل tier
@@ -539,9 +893,9 @@ async function configureTool(toolName) {
         };
 
         console.log(chalk.cyan(t('chooseModelTier')));
-        claudeOpus   = await pickModel(t('tierOpus'), 'nvidia/glm-5');
+        claudeOpus = await pickModel(t('tierOpus'), 'nvidia/glm-5');
         claudeSonnet = await pickModel(t('tierSonnet'), 'moonshotai/kimi-k2.5');
-        claudeHaiku  = await pickModel(t('tierHaiku'), 'minimaxai/minimax-m2.5');
+        claudeHaiku = await pickModel(t('tierHaiku'), 'minimaxai/minimax-m2.5');
         selectedModel = claudeOpus; // الافتراضي = Opus
     }
 
@@ -549,7 +903,7 @@ async function configureTool(toolName) {
 
     if (toolName === 'OpenCode' || toolName === 'KiloCLI') {
         const folderName = exeName === 'kilo' ? 'kilo' : 'opencode';
-        const configDir  = path.join(os.homedir(), '.config', folderName);
+        const configDir = path.join(os.homedir(), '.config', folderName);
         const configFile = path.join(configDir, `${folderName}.json`);
 
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
@@ -564,45 +918,45 @@ async function configureTool(toolName) {
         // بناء نماذج المزود مع limit الصحيح لكل نموذج
         const providerModels = {
             // ── Providers ──────────────────────────────────────────────────────
-            "moonshotai/kimi-k2.5":       { name: "Kimi K2.5 (Moonshot)",         limit: { context: 262144,  output:  65535 } },
-            "minimaxai/minimax-m2.5":     { name: "MiniMax M2.5 (MiniMax)",       limit: { context: 196608,  output: 196608 } },
+            "moonshotai/kimi-k2.5": { name: "Kimi K2.5 (Moonshot)", limit: { context: 262144, output: 65535 } },
+            "minimaxai/minimax-m2.5": { name: "MiniMax M2.5 (MiniMax)", limit: { context: 196608, output: 196608 } },
             // ── NVIDIA NIM ────────────────────────────────────────────────────
-            "nvidia/glm-5":               { name: "GLM-5 (NVIDIA)",               limit: { context: 200000,  output: 32000 } },
-            "nvidia/glm-4.7":             { name: "GLM-4.7 (NVIDIA)",             limit: { context: 200000,  output: 32000 } },
-            "nvidia/kimi-k2.5":           { name: "Kimi K2.5 (NVIDIA)",           limit: { context: 262144,  output:  65535 } },
-            "nvidia/qwen3.5-397b":        { name: "Qwen 3.5 397B (NVIDIA)",       limit: { context: 262144,  output:  81920 } },
-            "qwen":                       { name: "Qwen 3.5 397B (NVIDIA)",       limit: { context: 262144,  output:  81920 } },
-            "qwen/qwen3.5-397b-a17b":     { name: "Qwen 3.5 397B a17b (NVIDIA)",  limit: { context: 262144,  output:  81920 } },
-            "nvidia/qwen3.5-122b":        { name: "Qwen 3.5 122B (NVIDIA)",       limit: { context: 262144,  output:  81920 } },
-            "nvidia/qwen3-coder-480b":    { name: "Qwen3 Coder 480B (NVIDIA)",    limit: { context: 262144,  output:  81920 } },
-            "nvidia/qwq-32b":             { name: "QwQ 32B (NVIDIA)",             limit: { context: 131072,  output:  32768 } },
-            "nvidia/qwen3-next-thinking":  { name: "Qwen3 Next Thinking (NVIDIA)", limit: { context: 262144,  output:  81920 } },
-            "nvidia/nemotron-ultra-253b": { name: "Nemotron Ultra 253B (NVIDIA)", limit: { context: 131072,  output:  32768 } },
-            "nvidia/nemotron-super-49b":  { name: "Nemotron Super 49B (NVIDIA)",  limit: { context: 131072,  output:  32768 } },
-            "nvidia/nemotron-3-super-120b-a12b": { name: "Nemotron 3 Super 120B (NVIDIA)", limit: { context: 131072,  output:  32768 } },
-            "nvidia/deepseek-r1":         { name: "DeepSeek R1 (NVIDIA)",         limit: { context: 163840,  output:  32768 } },
-            "nvidia/gpt-oss-120b":        { name: "GPT-OSS 120B (NVIDIA)",        limit: { context: 128000,  output:  16384 } },
-            "nvidia/step-3.5-flash":      { name: "Step 3.5 Flash (NVIDIA)",      limit: { context: 128000,  output:  32768 } },
+            "nvidia/glm-5": { name: "GLM-5 (NVIDIA)", limit: { context: 200000, output: 32000 } },
+            "nvidia/glm-4.7": { name: "GLM-4.7 (NVIDIA)", limit: { context: 200000, output: 32000 } },
+            "nvidia/kimi-k2.5": { name: "Kimi K2.5 (NVIDIA)", limit: { context: 262144, output: 65535 } },
+            "nvidia/qwen3.5-397b": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
+            "qwen": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
+            "qwen/qwen3.5-397b-a17b": { name: "Qwen 3.5 397B a17b (NVIDIA)", limit: { context: 262144, output: 81920 } },
+            "nvidia/qwen3.5-122b": { name: "Qwen 3.5 122B (NVIDIA)", limit: { context: 262144, output: 81920 } },
+            "nvidia/qwen3-coder-480b": { name: "Qwen3 Coder 480B (NVIDIA)", limit: { context: 262144, output: 81920 } },
+            "nvidia/qwq-32b": { name: "QwQ 32B (NVIDIA)", limit: { context: 131072, output: 32768 } },
+            "nvidia/qwen3-next-thinking": { name: "Qwen3 Next Thinking (NVIDIA)", limit: { context: 262144, output: 81920 } },
+            "nvidia/nemotron-ultra-253b": { name: "Nemotron Ultra 253B (NVIDIA)", limit: { context: 131072, output: 32768 } },
+            "nvidia/nemotron-super-49b": { name: "Nemotron Super 49B (NVIDIA)", limit: { context: 131072, output: 32768 } },
+            "nvidia/nemotron-3-super-120b-a12b": { name: "Nemotron 3 Super 120B (NVIDIA)", limit: { context: 131072, output: 32768 } },
+            "nvidia/deepseek-r1": { name: "DeepSeek R1 (NVIDIA)", limit: { context: 163840, output: 32768 } },
+            "nvidia/gpt-oss-120b": { name: "GPT-OSS 120B (NVIDIA)", limit: { context: 128000, output: 16384 } },
+            "nvidia/step-3.5-flash": { name: "Step 3.5 Flash (NVIDIA)", limit: { context: 128000, output: 32768 } },
 
             // ── Gemini ───────────────────────────────────────────────────────────
-            "gemini-3.1-pro":      { name: "Gemini 3.1 Pro",           limit: { context: 1048576, output:  65536 } },
-            "gemini-3.1-flash":    { name: "Gemini 3.1 Flash",         limit: { context: 1048576, output:  65536 } },
+            "gemini-3.1-pro": { name: "Gemini 3.1 Pro", limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash": { name: "Gemini 3.1 Flash", limit: { context: 1048576, output: 65536 } },
             // ── Google AI Studio (Direct API) ────────────────────────────────────
-            "gemini-3-flash-preview":         { name: "Gemini 3 Flash Preview",  limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-pro-preview":         { name: "Gemini 3.1 Pro Preview",  limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash-lite-preview":  { name: "Gemini 3.1 Flash Lite",   limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash-image-preview": { name: "Gemini 3.1 Flash Image",  limit: { context: 1048576, output: 65536 } },
-            "gemini-3-pro-image-preview":     { name: "Gemini 3 Pro Image",      limit: { context: 1048576, output: 65536 } },
-            "gemini-2.5-flash-image":         { name: "Gemini 2.5 Flash Image",  limit: { context: 1048576, output: 65536 } },
-            "gemini-2.5-pro":                 { name: "Gemini 2.5 Pro",          limit: { context: 1048576, output: 65536 } },
-            "gemini-pro-latest":              { name: "Gemini Pro Latest",       limit: { context: 1048576, output: 65536 } },
-            "gemini-flash-latest":            { name: "Gemini Flash Latest",     limit: { context: 1048576, output: 65536 } },
-            "gemini-flash-lite-latest":       { name: "Gemini Flash Lite Latest",limit: { context: 1048576, output: 65536 } },
-            "gemini-2.5-flash":               { name: "Gemini 2.5 Flash",        limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash-live-preview":  { name: "Gemini 3.1 Flash Live",   limit: { context: 1048576, output: 65536 } },
-            "veo-3.1-generate-preview":       { name: "Veo 3.1 Video Gen",       limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["video"] } },
-            "lyria-3-pro-preview":            { name: "Lyria 3 Pro Audio",       limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["audio"] } },
-            "gemma-4-31b-it":                 { name: "Gemma 4 31B IT",          limit: { context: 131072, output: 32768 } },
+            "gemini-3-flash-preview": { name: "Gemini 3 Flash Preview", limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-pro-preview": { name: "Gemini 3.1 Pro Preview", limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash-lite-preview": { name: "Gemini 3.1 Flash Lite", limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash-image-preview": { name: "Gemini 3.1 Flash Image", limit: { context: 1048576, output: 65536 } },
+            "gemini-3-pro-image-preview": { name: "Gemini 3 Pro Image", limit: { context: 1048576, output: 65536 } },
+            "gemini-2.5-flash-image": { name: "Gemini 2.5 Flash Image", limit: { context: 1048576, output: 65536 } },
+            "gemini-2.5-pro": { name: "Gemini 2.5 Pro", limit: { context: 1048576, output: 65536 } },
+            "gemini-pro-latest": { name: "Gemini Pro Latest", limit: { context: 1048576, output: 65536 } },
+            "gemini-flash-latest": { name: "Gemini Flash Latest", limit: { context: 1048576, output: 65536 } },
+            "gemini-flash-lite-latest": { name: "Gemini Flash Lite Latest", limit: { context: 1048576, output: 65536 } },
+            "gemini-2.5-flash": { name: "Gemini 2.5 Flash", limit: { context: 1048576, output: 65536 } },
+            "gemini-3.1-flash-live-preview": { name: "Gemini 3.1 Flash Live", limit: { context: 1048576, output: 65536 } },
+            "veo-3.1-generate-preview": { name: "Veo 3.1 Video Gen", limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["video"] } },
+            "lyria-3-pro-preview": { name: "Lyria 3 Pro Audio", limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["audio"] } },
+            "gemma-4-31b-it": { name: "Gemma 4 31B IT", limit: { context: 131072, output: 32768 } },
             // ── نماذج الصور ────────────────────────────────────────────────────
             "nvidia/stable-diffusion-3": {
                 name: "Stable Diffusion 3 (NVIDIA)", attachment: false,
@@ -615,24 +969,24 @@ async function configureTool(toolName) {
                 modalities: { input: ["text"], output: ["image"] }
             },
             // ── Ollama ─────────────────────────────────────────────────────────
-            "glm-5.1:cloud":  { name: "GLM-5.1 Cloud (Ollama)", limit: { context: 200000, output: 131072 } },
-            "glm-5:cloud":  { name: "GLM-5 Cloud (Ollama)", limit: { context: 202752, output: 131072 } },
-            "gemma4":       { name: "Gemma 4 (Ollama)", limit: { context: 128000, output: 32768 } },
-            "qwen3.5":      { name: "Qwen 3.5 (Ollama)", limit: { context: 131072, output: 32768 } },
+            "glm-5.1:cloud": { name: "GLM-5.1 Cloud (Ollama)", limit: { context: 200000, output: 131072 } },
+            "glm-5:cloud": { name: "GLM-5 Cloud (Ollama)", limit: { context: 202752, output: 131072 } },
+            "gemma4": { name: "Gemma 4 (Ollama)", limit: { context: 128000, output: 32768 } },
+            "qwen3.5": { name: "Qwen 3.5 (Ollama)", limit: { context: 131072, output: 32768 } },
             "minimax-m2.7:cloud": { name: "MiniMax M2.7 (Ollama)", limit: { context: 196608, output: 196608 } },
-            "kimi-k2.5:cloud":    { name: "Kimi K2.5 (Ollama)", limit: { context: 262144, output: 65535 } },
-            "glm-4.7:cloud":      { name: "GLM-4.7 (Ollama)", limit: { context: 200000, output: 128000 } },
-            "deepseek-v3.2:cloud":{ name: "DeepSeek V3.2 (Ollama)", limit: { context: 131072, output: 32768 } },
+            "kimi-k2.5:cloud": { name: "Kimi K2.5 (Ollama)", limit: { context: 262144, output: 65535 } },
+            "glm-4.7:cloud": { name: "GLM-4.7 (Ollama)", limit: { context: 200000, output: 128000 } },
+            "deepseek-v3.2:cloud": { name: "DeepSeek V3.2 (Ollama)", limit: { context: 131072, output: 32768 } },
             "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
             // ── Z.AI Coding Plan ─────────────────────────────────────────────
-            "zai/glm-5.1":      { name: "GLM-5.1 (Z.AI Coding Plan)",  limit: { context: 204800, output: 131072 } },
-            "glm-5.1":          { name: "GLM-5.1 (Z.AI Direct)",       limit: { context: 204800, output: 131072 } },
-            "zai/glm-5-turbo":  { name: "GLM-5-Turbo (Z.AI Coding)",   limit: { context: 204800, output: 131072 } },
-            "glm-5-turbo":      { name: "GLM-5-Turbo (Z.AI Direct)",   limit: { context: 204800, output: 131072 } },
-            "zai/glm-4.7":      { name: "GLM-4.7 (Z.AI Coding Plan)",  limit: { context: 204800, output: 131072 } },
-            "glm-4.7":          { name: "GLM-4.7 (Z.AI Direct)",       limit: { context: 204800, output: 131072 } },
-            "zai/glm-4.5-air":  { name: "GLM-4.5-Air (Z.AI Coding)",   limit: { context: 204800, output: 131072 } },
-            "glm-4.5-air":      { name: "GLM-4.5-Air (Z.AI Direct)",   limit: { context: 204800, output: 131072 } },
+            "zai/glm-5.1": { name: "GLM-5.1 (Z.AI Coding Plan)", limit: { context: 204800, output: 131072 } },
+            "glm-5.1": { name: "GLM-5.1 (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "zai/glm-5-turbo": { name: "GLM-5-Turbo (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
+            "glm-5-turbo": { name: "GLM-5-Turbo (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "zai/glm-4.7": { name: "GLM-4.7 (Z.AI Coding Plan)", limit: { context: 204800, output: 131072 } },
+            "glm-4.7": { name: "GLM-4.7 (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "zai/glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
+            "glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
         };
 
         // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
@@ -652,10 +1006,10 @@ async function configureTool(toolName) {
         // أضف/حدّث مزود abdalgani بدون المساس بالمزودين الآخرين (litellm, google, ollama...)
         config.provider['abdalgani'] = {
             name: "abdalgani",
-            npm:  "@ai-sdk/openai-compatible",
+            npm: "@ai-sdk/openai-compatible",
             options: {
                 baseURL: "https://api.abdalgani.com/v1",
-                apiKey:  apiKey,
+                apiKey: apiKey,
             },
             models: providerModels,
         };
@@ -666,7 +1020,7 @@ async function configureTool(toolName) {
         console.log(chalk.gray(t('othersUntouched')));
     } else if (toolName === 'ClaudeCode') {
         // === Write ~/.claude/settings.json directly ===
-        const claudeDir  = path.join(os.homedir(), '.claude');
+        const claudeDir = path.join(os.homedir(), '.claude');
         const claudeFile = path.join(claudeDir, 'settings.json');
 
         if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
@@ -681,12 +1035,12 @@ async function configureTool(toolName) {
         // استخدام الاختيارات الثلاثة من المستخدم
         claudeSettings.env = {
             ...(claudeSettings.env || {}),
-            ANTHROPIC_BASE_URL:             'https://api.abdalgani.com/',
-            ANTHROPIC_AUTH_TOKEN:           apiKey,
-            ANTHROPIC_MODEL:                selectedModel,
-            ANTHROPIC_DEFAULT_OPUS_MODEL:   claudeOpus,
+            ANTHROPIC_BASE_URL: 'https://api.abdalgani.com/',
+            ANTHROPIC_AUTH_TOKEN: apiKey,
+            ANTHROPIC_MODEL: selectedModel,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: claudeOpus,
             ANTHROPIC_DEFAULT_SONNET_MODEL: claudeSonnet,
-            ANTHROPIC_DEFAULT_HAIKU_MODEL:  claudeHaiku,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: claudeHaiku,
             CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
         };
 
@@ -710,8 +1064,8 @@ async function configureTool(toolName) {
 
         let clawConfig = { models: { providers: {} }, auth: { profiles: {} }, agents: { defaults: { model: {}, models: {} } } };
         if (fs.existsSync(clawFile)) {
-            try { 
-                const existing = JSON.parse(fs.readFileSync(clawFile, 'utf8')); 
+            try {
+                const existing = JSON.parse(fs.readFileSync(clawFile, 'utf8'));
                 clawConfig = { ...clawConfig, ...existing };
                 if (!clawConfig.models) clawConfig.models = { providers: {} };
                 if (!clawConfig.models.providers) clawConfig.models.providers = {};
@@ -721,12 +1075,12 @@ async function configureTool(toolName) {
                 if (!clawConfig.agents.defaults) clawConfig.agents.defaults = { model: {}, models: {} };
                 if (!clawConfig.agents.defaults.model) clawConfig.agents.defaults.model = {};
                 if (!clawConfig.agents.defaults.models) clawConfig.agents.defaults.models = {};
-            } catch (_) {}
+            } catch (_) { }
         }
 
         const clawModelsList = [];
         const allowedModels = {};
-        
+
         models.forEach(m => {
             const parts = m.name.split('│');
             const cleanName = parts[0].trim();
@@ -781,7 +1135,7 @@ async function configureTool(toolName) {
         let primaryModel = selectedModel || 'glm-4.7';
         clawConfig.agents.defaults.model.primary = `litellm/${primaryModel}`;
         clawConfig.agents.defaults.model.fallbacks = [`abdalgani/${primaryModel}`];
-        
+
         clawConfig.agents.defaults.models = { ...clawConfig.agents.defaults.models, ...allowedModels };
 
         fs.writeFileSync(clawFile, JSON.stringify(clawConfig, null, 2));
@@ -789,14 +1143,14 @@ async function configureTool(toolName) {
 
         const cacheFile = path.join(clawDir, 'agents', 'main', 'agent', 'models.json');
         if (fs.existsSync(cacheFile)) {
-            try { fs.unlinkSync(cacheFile); } catch(e) {}
+            try { fs.unlinkSync(cacheFile); } catch (e) { }
         }
 
         console.log(chalk.cyan('\\nRestarting openclaw-gateway...'));
         try {
             execSync("systemctl --user restart openclaw-gateway", { stdio: 'ignore' });
             console.log(chalk.green("✅ OpenClaw Gateway restarted successfully."));
-        } catch(e) {
+        } catch (e) {
             console.log(chalk.yellow("⚠️ Could not restart openclaw-gateway. It might not be running or systemctl is not available."));
         }
     }
@@ -852,7 +1206,7 @@ async function main() {
             message: t('setupAnother'),
             choices: [
                 { name: lang === 'ar' ? '✅ نعم' : '✅ Yes', value: true },
-                { name: lang === 'ar' ? '❌ لا' : '❌ No',  value: false }
+                { name: lang === 'ar' ? '❌ لا' : '❌ No', value: false }
             ]
         });
     }
