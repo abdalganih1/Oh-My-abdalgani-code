@@ -201,6 +201,8 @@ const models = [
     { value: "nvidia/nemotron-super-49b", name: "Nemotron Super 49B     │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B  │ CTX: 131,072 │ OUT:  32,768" },
     { value: "nvidia/deepseek-r1", name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
+    { value: "nvidia/deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "nvidia/deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nvidia/gpt-oss-120b", name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
     { value: "nvidia/step-3.5-flash", name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
 
@@ -229,6 +231,7 @@ const models = [
     { value: "gemma4", name: "Gemma 4 (Ollama)        │ CTX: 128,000 │ OUT:  32,768" },
     { value: "qwen3.5", name: "Qwen 3.5 (Ollama)       │ CTX: 131,072 │ OUT:  32,768" },
     { value: "minimax-m2.7:cloud", name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
+    { value: "kimi-k2.6:cloud", name: "Kimi K2.6 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
     { value: "kimi-k2.5:cloud", name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
     { value: "glm-4.7:cloud", name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
     { value: "deepseek-v3.2:cloud", name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
