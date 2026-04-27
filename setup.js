@@ -235,6 +235,8 @@ const models = [
     { value: "kimi-k2.5:cloud", name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
     { value: "glm-4.7:cloud", name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
     { value: "deepseek-v3.2:cloud", name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "deepseek-v4-pro:cloud", name: "DeepSeek V4 Pro (Ollama)│ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "deepseek-v4-flash:cloud", name: "DeepSeek V4 Flsh(Ollama)│ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nemotron-3-super:cloud", name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
     // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
     { value: "zai/glm-5.1", name: "GLM-5.1 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
