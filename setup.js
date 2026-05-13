@@ -111,6 +111,8 @@ const i18n = {
         envVarSet: (f) => `✅ تم تعيين متغيرات البيئة وسيتم كتابتها إلى: ${f}`,
         pipNote: '📦 ملاحظة: يتطلب تثبيت هذا pip/Python. سيتم محاولة التثبيت تلقائياً.',
         shellProfileNote: '💡 أضف هذه الأوامر إلى ملف .bashrc أو .zshrc أو PowerShell Profile لجعلها دائمة.',
+        deepseektui: '🔮 DeepSeek TUI',
+        qwencode: '🌐 Qwen Code',
     },
     en: {
         header: '🚀 Oh-My-abdalgani-code Setup Tool 🚀',
@@ -208,6 +210,8 @@ const i18n = {
         envVarSet: (f) => `✅ Environment variables set and will be written to: ${f}`,
         pipNote: '📦 Note: This requires pip/Python. Installation will be attempted automatically.',
         shellProfileNote: '💡 Add these commands to your .bashrc, .zshrc, or PowerShell Profile for persistence.',
+        deepseektui: '🔮 DeepSeek TUI',
+        qwencode: '🌐 Qwen Code',
     }
 };
 
@@ -379,7 +383,8 @@ const TOOL_INSTALL_MAP = {
         configFormat: 'yaml',
     },
     KimiCode: {
-        exeName: 'kimi-code',
+        exeName: 'kimi',
+        altExeNames: ['kimi-cli', 'kimi-code'],
         methods: isWin
             ? [
                 { label: 'PowerShell', cmd: 'powershell -Command "Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression"' },
@@ -391,6 +396,7 @@ const TOOL_INSTALL_MAP = {
             ? '  powershell -Command "Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression"'
             : '  curl -LsSf https://code.kimi.com/install.sh | bash',
         configFormat: 'toml',
+        uvTool: true,
     },
     GeminiCLI: {
         exeName: 'gemini',
@@ -433,9 +439,30 @@ const TOOL_INSTALL_MAP = {
             : '  curl -fsSL https://raw.githubusercontent.com/block/goose/main/download/install.sh | bash\n  # or: brew install goose',
         configFormat: 'yaml',
     },
+    DeepSeekTUI: {
+        exeName: 'deepseek',
+        methods: [
+            { label: 'npm', cmd: 'npm install -g deepseek-tui' },
+        ],
+        manual: '  npm install -g deepseek-tui',
+        configFormat: 'toml',
+    },
+    QwenCode: {
+        exeName: 'qwen',
+        methods: isWin
+            ? [
+                { label: 'npm', cmd: 'npm install -g @qwen-code/qwen-code@latest' },
+            ]
+            : [
+                { label: 'curl', cmd: 'bash -c "$(curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh)"' },
+                { label: 'npm', cmd: 'npm install -g @qwen-code/qwen-code@latest' },
+            ],
+        manual: isWin
+            ? '  npm install -g @qwen-code/qwen-code@latest'
+            : '  bash -c "$(curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh)"\n  # or: npm i -g @qwen-code/qwen-code@latest',
+        configFormat: 'json',
+    },
 };
-
-// ==================== Utilities ====================
 async function runCommand(command) {
     try {
         execSync(command, { stdio: 'inherit' });
@@ -463,6 +490,21 @@ function checkInstalled(command) {
         }
         return true;
     } catch (e) {
+        // Fallback: check common binary paths for tools installed by uv/pip/cargo
+        const fallbackPaths = isWin
+            ? [
+                path.join(os.homedir(), '.local', 'bin', `${command}.exe`),
+                path.join(os.homedir(), '.local', 'bin', command),
+                path.join(os.homedir(), '.cargo', 'bin', `${command}.exe`),
+                path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', '**', 'Scripts', `${command}.exe`),
+            ]
+            : [
+                path.join(os.homedir(), '.local', 'bin', command),
+                path.join(os.homedir(), '.cargo', 'bin', command),
+            ];
+        for (const p of fallbackPaths) {
+            if (p && fs.existsSync(p)) return true;
+        }
         return false;
     }
 }
@@ -565,6 +607,25 @@ function findExistingApiKey() {
             const content = fs.readFileSync(p, 'utf8');
             const parsed = yaml.load(content);
             if (parsed?.['openai-api-key']) return parsed['openai-api-key'];
+        }
+    } catch (e) { }
+
+    // DeepSeek TUI config (~/.deepseek/config.toml)
+    try {
+        const p = path.join(os.homedir(), '.deepseek', 'config.toml');
+        if (fs.existsSync(p)) {
+            const content = fs.readFileSync(p, 'utf8');
+            const match = content.match(/api_key\s*=\s*"([^"]+)"/);
+            if (match && match[1]) return match[1];
+        }
+    } catch (e) { }
+
+    // Qwen Code config (~/.qwen/settings.json)
+    try {
+        const p = path.join(os.homedir(), '.qwen', 'settings.json');
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (data?.env?.ABDALGANI_API_KEY) return data.env.ABDALGANI_API_KEY;
         }
     } catch (e) { }
 
@@ -954,7 +1015,14 @@ async function installTool(toolName) {
         console.log(chalk.yellow(t('installing', toolName, method.label)));
         try {
             execSync(method.cmd, { stdio: 'inherit' });
-            if (checkInstalled(map.exeName)) {
+            // Check primary exe name and alt names
+            let found = checkInstalled(map.exeName);
+            if (!found && map.altExeNames) {
+                for (const alt of map.altExeNames) {
+                    if (checkInstalled(alt)) { found = true; break; }
+                }
+            }
+            if (found) {
                 if (toolName === 'KiloCLI') {
                     if (!verifyKiloWorks()) {
                         console.log(chalk.yellow(t('avxNotSupported')));
@@ -963,6 +1031,13 @@ async function installTool(toolName) {
                         console.log(chalk.red(t('baselineInstallFailed')));
                         return false;
                     }
+                }
+                // For uv-installed tools, remind user to add ~/.local/bin to PATH
+                if (map.uvTool && !checkInstalled(map.exeName)) {
+                    const localBin = path.join(os.homedir(), '.local', 'bin');
+                    console.log(chalk.yellow(`⚠️ Binary found in ${localBin} but not in system PATH.`));
+                    console.log(chalk.cyan(`   Add to PATH: ${isWin ? `setx PATH "%PATH%;${localBin}"` : `export PATH="${localBin}:$PATH"`}`));
+                    console.log(chalk.green(`✅ ${toolName} installed successfully. Restart terminal for PATH changes.`));
                 }
                 return true;
             }
@@ -1079,7 +1154,7 @@ async function configureTool(toolName) {
     let claudeHaiku = 'minimaxai/minimax-m2.5';
 
     // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي ===
-    if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI'].includes(toolName)) {
+    if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode'].includes(toolName)) {
         const pickOpenClawModel = async () => {
             const chosen = await search({
                 message: t('selectOpenClawModel'),
@@ -1632,6 +1707,90 @@ capabilities = ["thinking", "image_in"]
 
         fs.writeFileSync(gooseFile, yaml.dump(gooseConfig, { lineWidth: -1 }));
         console.log(chalk.green(t('writtenTo', gooseFile)));
+    } else if (toolName === 'DeepSeekTUI') {
+        const dsDir = path.join(os.homedir(), '.deepseek');
+        const dsFile = path.join(dsDir, 'config.toml');
+        if (!fs.existsSync(dsDir)) fs.mkdirSync(dsDir, { recursive: true });
+
+        let dsConfig = `# DeepSeek TUI Configuration — Generated by Oh-My-abdalgani-code
+
+[providers.abdalgani]
+api_key = "${apiKey}"
+base_url = "https://api.abdalgani.com/v1"
+
+[default]
+provider = "abdalgani"
+model = "${selectedModel}"
+`;
+
+        // Merge with existing config
+        if (fs.existsSync(dsFile)) {
+            try {
+                const existing = fs.readFileSync(dsFile, 'utf8');
+                if (!existing.includes('[providers.abdalgani]')) {
+                    dsConfig = existing.trimEnd() + '\n\n' + dsConfig;
+                } else {
+                    dsConfig = existing;
+                    // Update values
+                    if (dsConfig.includes('api_key')) {
+                        dsConfig = dsConfig.replace(/api_key\s*=\s*"[^"]*"/, `api_key = "${apiKey}"`);
+                    }
+                    if (dsConfig.includes('base_url')) {
+                        dsConfig = dsConfig.replace(/base_url\s*=\s*"[^"]*"/, `base_url = "https://api.abdalgani.com/v1"`);
+                    }
+                    if (dsConfig.includes('model')) {
+                        dsConfig = dsConfig.replace(/model\s*=\s*"[^"]*"/, `model = "${selectedModel}"`);
+                    }
+                }
+            } catch (_) { }
+        }
+
+        fs.writeFileSync(dsFile, dsConfig);
+        console.log(chalk.green(t('writtenTo', dsFile)));
+
+    } else if (toolName === 'QwenCode') {
+        const qwenDir = path.join(os.homedir(), '.qwen');
+        const qwenFile = path.join(qwenDir, 'settings.json');
+        if (!fs.existsSync(qwenDir)) fs.mkdirSync(qwenDir, { recursive: true });
+
+        let qwenConfig = {};
+        if (fs.existsSync(qwenFile)) {
+            try { qwenConfig = JSON.parse(fs.readFileSync(qwenFile, 'utf8')); }
+            catch (_) { }
+        }
+
+        // Build model provider entries from the selected model
+        const modelEntry = {
+            id: selectedModel,
+            name: `${selectedModel} via Abdalgani`,
+            baseUrl: "https://api.abdalgani.com/v1",
+            description: `${selectedModel} via abdalgani proxy`,
+            envKey: "ABDALGANI_API_KEY"
+        };
+
+        if (!qwenConfig.modelProviders) qwenConfig.modelProviders = {};
+        if (!qwenConfig.modelProviders.openai) qwenConfig.modelProviders.openai = [];
+
+        // Replace or add the model entry
+        const existingIdx = qwenConfig.modelProviders.openai.findIndex(m => m.id === selectedModel);
+        if (existingIdx >= 0) {
+            qwenConfig.modelProviders.openai[existingIdx] = modelEntry;
+        } else {
+            qwenConfig.modelProviders.openai.push(modelEntry);
+        }
+
+        if (!qwenConfig.env) qwenConfig.env = {};
+        qwenConfig.env.ABDALGANI_API_KEY = apiKey;
+
+        if (!qwenConfig.security) qwenConfig.security = {};
+        if (!qwenConfig.security.auth) qwenConfig.security.auth = {};
+        qwenConfig.security.auth.selectedType = "openai";
+
+        if (!qwenConfig.model) qwenConfig.model = {};
+        qwenConfig.model.name = selectedModel;
+
+        fs.writeFileSync(qwenFile, JSON.stringify(qwenConfig, null, 2));
+        console.log(chalk.green(t('writtenTo', qwenFile)));
     }
 
     // === Launch Tool After Setup ===
@@ -1675,6 +1834,8 @@ async function main() {
                 { name: t('codexcli'), value: 'CodexCLI' },
                 { name: t('aider'), value: 'Aider' },
                 { name: t('goose'), value: 'Goose' },
+                { name: t('deepseektui'), value: 'DeepSeekTUI' },
+                { name: t('qwencode'), value: 'QwenCode' },
                 { name: t('exitOption'), value: 'exit' }
             ]
         });
