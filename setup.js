@@ -374,14 +374,14 @@ const TOOL_INSTALL_MAP = {
         exeName: 'hermes',
         methods: isWin
             ? [
-                { label: 'PowerShell', cmd: 'powershell -Command "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex"' },
+                { label: 'PowerShell', cmd: 'powershell -Command "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex -SkipSetup"' },
             ]
             : [
-                { label: 'curl', cmd: 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash' },
+                { label: 'curl', cmd: 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup' },
             ],
         manual: isWin
-            ? '  powershell -Command "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex"'
-            : '  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash',
+            ? '  powershell -Command "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex -SkipSetup"'
+            : '  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup',
         configFormat: 'yaml',
     },
     KimiCode: {
@@ -573,13 +573,15 @@ function findExistingApiKey() {
         }
     } catch (e) { }
 
-    // Hermes config (~/.hermes/cli-config.yaml)
+    // Hermes config (~/.hermes/config.yaml or HERMES_HOME)
     try {
-        const p = path.join(os.homedir(), '.hermes', 'cli-config.yaml');
-        if (fs.existsSync(p)) {
-            const content = fs.readFileSync(p, 'utf8');
-            const parsed = yaml.load(content);
-            if (parsed?.model?.api_key) return parsed.model.api_key;
+        const hermesHome = process.env.HERMES_HOME
+            || (isWin ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'hermes') : path.join(os.homedir(), '.hermes'));
+        const envFile = path.join(hermesHome, '.env');
+        if (fs.existsSync(envFile)) {
+            const content = fs.readFileSync(envFile, 'utf8');
+            const match = content.match(/^OPENAI_API_KEY=(.+)$/m);
+            if (match && match[1].trim()) return match[1].trim();
         }
     } catch (e) { }
 
@@ -1573,26 +1575,53 @@ model = "${selectedModel}"
         console.log(chalk.green(t('writtenTo', zcFile)));
 
     } else if (toolName === 'Hermes') {
-        const hermesDir = path.join(os.homedir(), '.hermes');
-        const hermesFile = path.join(hermesDir, 'cli-config.yaml');
-        if (!fs.existsSync(hermesDir)) fs.mkdirSync(hermesDir, { recursive: true });
+        // Hermes uses HERMES_HOME (set during install) — default: %LOCALAPPDATA%\hermes on Windows, ~/.hermes on Linux/Mac
+        const hermesHome = process.env.HERMES_HOME
+            || (isWin ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'hermes') : path.join(os.homedir(), '.hermes'));
+        const hermesConfigFile = path.join(hermesHome, 'config.yaml');
+        const hermesEnvFile = path.join(hermesHome, '.env');
 
+        if (!fs.existsSync(hermesHome)) fs.mkdirSync(hermesHome, { recursive: true });
+
+        // --- Write config.yaml: set model provider to custom OpenAI-compatible ---
         let hermesConfig = {};
-        if (fs.existsSync(hermesFile)) {
-            try { hermesConfig = yaml.load(fs.readFileSync(hermesFile, 'utf8')) || {}; }
-            catch (_) { }
+        if (fs.existsSync(hermesConfigFile)) {
+            try { hermesConfig = yaml.load(fs.readFileSync(hermesConfigFile, 'utf8')) || {}; }
+            catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
         }
 
         hermesConfig.model = {
             ...(hermesConfig.model || {}),
-            default: selectedModel,
             provider: "custom",
-            api_key: apiKey,
             base_url: "https://api.abdalgani.com/v1",
+            default: selectedModel,
         };
 
-        fs.writeFileSync(hermesFile, yaml.dump(hermesConfig, { lineWidth: -1 }));
-        console.log(chalk.green(t('writtenTo', hermesFile)));
+        fs.writeFileSync(hermesConfigFile, yaml.dump(hermesConfig, { lineWidth: -1 }));
+        console.log(chalk.green(t('writtenTo', hermesConfigFile)));
+
+        // --- Write .env: set OPENAI_API_KEY (Hermes reads this for custom provider) ---
+        let envContent = '';
+        if (fs.existsSync(hermesEnvFile)) {
+            envContent = fs.readFileSync(hermesEnvFile, 'utf8');
+        }
+
+        // Update or add OPENAI_API_KEY
+        if (envContent.includes('OPENAI_API_KEY=')) {
+            envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${apiKey}`);
+        } else {
+            envContent = envContent.trimEnd() + `\nOPENAI_API_KEY=${apiKey}\n`;
+        }
+
+        // Update or add OPENAI_BASE_URL
+        if (envContent.includes('OPENAI_BASE_URL=')) {
+            envContent = envContent.replace(/OPENAI_BASE_URL=.*/, `OPENAI_BASE_URL=https://api.abdalgani.com/v1`);
+        } else {
+            envContent = envContent.trimEnd() + `\nOPENAI_BASE_URL=https://api.abdalgani.com/v1\n`;
+        }
+
+        fs.writeFileSync(hermesEnvFile, envContent);
+        console.log(chalk.green(t('writtenTo', hermesEnvFile)));
 
     } else if (toolName === 'KimiCode') {
         const kimiDir = path.join(os.homedir(), '.kimi');
