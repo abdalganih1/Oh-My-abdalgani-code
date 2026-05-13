@@ -113,6 +113,7 @@ const i18n = {
         shellProfileNote: '💡 أضف هذه الأوامر إلى ملف .bashrc أو .zshrc أو PowerShell Profile لجعلها دائمة.',
         deepseektui: '🔮 DeepSeek TUI',
         qwencode: '🌐 Qwen Code',
+        winNotSupported: (t) => `⚠️ ${t} لا يدعم التشغيل التفاعلي على Windows حالياً. الإعداد تم بنجاح — شغّله من WSL أو Linux.`,
     },
     en: {
         header: '🚀 Oh-My-abdalgani-code Setup Tool 🚀',
@@ -212,6 +213,7 @@ const i18n = {
         shellProfileNote: '💡 Add these commands to your .bashrc, .zshrc, or PowerShell Profile for persistence.',
         deepseektui: '🔮 DeepSeek TUI',
         qwencode: '🌐 Qwen Code',
+        winNotSupported: (t) => `⚠️ ${t} does not support interactive launch on Windows yet. Config was saved successfully — run it from WSL or Linux.`,
     }
 };
 
@@ -397,6 +399,7 @@ const TOOL_INSTALL_MAP = {
             : '  curl -LsSf https://code.kimi.com/install.sh | bash',
         configFormat: 'toml',
         uvTool: true,
+        noLaunchOnWin: true,
     },
     GeminiCLI: {
         exeName: 'gemini',
@@ -1063,6 +1066,14 @@ async function installTool(toolName) {
 
 // ==================== Launch After Setup ====================
 async function launchAfterSetup(toolName, exeName) {
+    const map = TOOL_INSTALL_MAP[toolName];
+
+    // Skip launch for tools that don't work interactively on this platform
+    if (isWin && map?.noLaunchOnWin) {
+        console.log(chalk.yellow(t('winNotSupported', toolName)));
+        return;
+    }
+
     console.log('');
     const launch = await select({
         message: chalk.cyan(t('launchPrompt', toolName)),
