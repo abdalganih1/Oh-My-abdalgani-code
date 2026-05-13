@@ -580,7 +580,8 @@ function findExistingApiKey() {
         const envFile = path.join(hermesHome, '.env');
         if (fs.existsSync(envFile)) {
             const content = fs.readFileSync(envFile, 'utf8');
-            const match = content.match(/^OPENAI_API_KEY=(.+)$/m);
+            // Prefer ABDALGANI_API_KEY (named custom provider), fallback to OPENAI_API_KEY
+            const match = content.match(/^ABDALGANI_API_KEY=(.+)$/m) || content.match(/^OPENAI_API_KEY=(.+)$/m);
             if (match && match[1].trim()) return match[1].trim();
         }
     } catch (e) { }
@@ -1576,6 +1577,7 @@ model = "${selectedModel}"
 
     } else if (toolName === 'Hermes') {
         // Hermes uses HERMES_HOME (set during install) — default: %LOCALAPPDATA%\hermes on Windows, ~/.hermes on Linux/Mac
+        // Recommended config: named custom_providers (see https://hermes-agent.nousresearch.com/docs/integrations/providers)
         const hermesHome = process.env.HERMES_HOME
             || (isWin ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'hermes') : path.join(os.homedir(), '.hermes'));
         const hermesConfigFile = path.join(hermesHome, 'config.yaml');
@@ -1583,41 +1585,87 @@ model = "${selectedModel}"
 
         if (!fs.existsSync(hermesHome)) fs.mkdirSync(hermesHome, { recursive: true });
 
-        // --- Write config.yaml: set model provider to custom OpenAI-compatible ---
+        // --- Write config.yaml: use named custom_providers + custom:abdalgani provider ---
         let hermesConfig = {};
         if (fs.existsSync(hermesConfigFile)) {
             try { hermesConfig = yaml.load(fs.readFileSync(hermesConfigFile, 'utf8')) || {}; }
             catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
         }
 
+        // Add or update the abdalgani named custom provider
+        // models dictionary: lists available models so they appear in Hermes /mod picker
+        // Format per Hermes docs: { model_id: {} } or { model_id: { context_length: N } }
+        const abdalganiModels = {
+            "glm-5.1": {},
+            "glm-5": {},
+            "glm-4.7": {},
+            "kimi-k2.6": {},
+            "kimi-k2.5": {},
+            "qwen3.5-397b": {},
+            "qwen3.5-122b": {},
+            "qwen3-coder-480b": {},
+            "qwq-32b": {},
+            "qwen3-next-thinking": {},
+            "nemotron-ultra-253b": {},
+            "nemotron-super-49b": {},
+            "nemotron-3-super-120b-a12b": {},
+            "deepseek-r1": {},
+            "deepseek-v4-pro": {},
+            "deepseek-v4-flash": {},
+            "gpt-oss-120b": {},
+            "step-3.5-flash": {},
+        };
+
+        const abdalganiProvider = {
+            name: "abdalgani",
+            base_url: "https://api.abdalgani.com/v1",
+            key_env: "ABDALGANI_API_KEY",
+            api_mode: "chat_completions",
+            models: abdalganiModels,
+        };
+
+        if (!hermesConfig.custom_providers || !Array.isArray(hermesConfig.custom_providers)) {
+            hermesConfig.custom_providers = [abdalganiProvider];
+        } else {
+            // Replace existing abdalgani provider or add new one
+            const idx = hermesConfig.custom_providers.findIndex(p => p.name === 'abdalgani');
+            if (idx >= 0) {
+                hermesConfig.custom_providers[idx] = abdalganiProvider;
+            } else {
+                hermesConfig.custom_providers.push(abdalganiProvider);
+            }
+        }
+
+        // Set model to use the named custom provider
         hermesConfig.model = {
             ...(hermesConfig.model || {}),
-            provider: "custom",
-            base_url: "https://api.abdalgani.com/v1",
             default: selectedModel,
+            provider: "custom:abdalgani",
         };
+        // Remove old base_url from model section (now in custom_providers)
+        delete hermesConfig.model.base_url;
 
         fs.writeFileSync(hermesConfigFile, yaml.dump(hermesConfig, { lineWidth: -1 }));
         console.log(chalk.green(t('writtenTo', hermesConfigFile)));
 
-        // --- Write .env: set OPENAI_API_KEY (Hermes reads this for custom provider) ---
+        // --- Write .env: set ABDALGANI_API_KEY for the named custom provider ---
         let envContent = '';
         if (fs.existsSync(hermesEnvFile)) {
             envContent = fs.readFileSync(hermesEnvFile, 'utf8');
         }
 
-        // Update or add OPENAI_API_KEY
+        // Update or add ABDALGANI_API_KEY (matches key_env in custom_providers)
+        if (envContent.includes('ABDALGANI_API_KEY=')) {
+            envContent = envContent.replace(/ABDALGANI_API_KEY=.*/, `ABDALGANI_API_KEY=${apiKey}`);
+        } else {
+            envContent = envContent.trimEnd() + `\nABDALGANI_API_KEY=${apiKey}\n`;
+        }
+
+        // Also update OPENAI_API_KEY for backward compatibility (Hermes may read this for some provider modes)
         if (envContent.includes('OPENAI_API_KEY=')) {
             envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${apiKey}`);
         } else {
             envContent = envContent.trimEnd() + `\nOPENAI_API_KEY=${apiKey}\n`;
-        }
-
-        // Update or add OPENAI_BASE_URL
-        if (envContent.includes('OPENAI_BASE_URL=')) {
-            envContent = envContent.replace(/OPENAI_BASE_URL=.*/, `OPENAI_BASE_URL=https://api.abdalgani.com/v1`);
-        } else {
-            envContent = envContent.trimEnd() + `\nOPENAI_BASE_URL=https://api.abdalgani.com/v1\n`;
         }
 
         fs.writeFileSync(hermesEnvFile, envContent);
