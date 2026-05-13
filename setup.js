@@ -92,7 +92,7 @@ const i18n = {
         psFixed: '✅ تم إصلاح سياسة PowerShell (RemoteSigned).',
         psFixFailed: '⚠️ فشل إصلاح سياسة PowerShell. قد تواجه مشاكل عند استخدام npm.',
         psRestricted: '⚠️ سياسة PowerShell مقيدة! npm قد لا يعمل. جاري الإصلاح...',
-        selectOpenClawModel: '🎯 اختر النموذج الأساسي (Primary) لـ OpenClaw:',
+        selectToolModel: (tool) => `🎯 اختر النموذج الأساسي لـ ${tool}:`,
         selectOpenClawModelDefault: 'nvidia/glm-4.7',
         openClawPrimarySet: (m) => `✅ النموذج الأساسي: ${m}`,
         openClawFallbackNone: '   ← لم يتم تعيين نماذج احتياطية — لن يتم الرجوع لنموذج لم تختره',
@@ -191,7 +191,7 @@ const i18n = {
         psFixed: '✅ PowerShell execution policy fixed (RemoteSigned).',
         psFixFailed: '⚠️ Failed to fix PowerShell execution policy. npm may not work properly.',
         psRestricted: '⚠️ PowerShell execution policy is restricted! npm may fail. Fixing...',
-        selectOpenClawModel: '🎯 Choose the primary model for OpenClaw:',
+        selectToolModel: (tool) => `🎯 Choose the primary model for ${tool}:`,
         selectOpenClawModelDefault: 'nvidia/glm-4.7',
         openClawPrimarySet: (m) => `✅ Primary model: ${m}`,
         openClawFallbackNone: '   ← No fallback models set — won\'t fall back to a model you didn\'t choose',
@@ -1157,7 +1157,7 @@ async function configureTool(toolName) {
     if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode'].includes(toolName)) {
         const pickOpenClawModel = async () => {
             const chosen = await search({
-                message: t('selectOpenClawModel'),
+                message: t('selectToolModel', toolName),
                 source: (input) => {
                     const q = (input || '').toLowerCase();
                     const filtered = models.filter(
