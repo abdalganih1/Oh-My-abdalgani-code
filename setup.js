@@ -10,6 +10,8 @@ import { createWriteStream, mkdirSync, rmSync, existsSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import yaml from 'js-yaml';
+import TOML from '@iarna/toml';
 
 // ==================== Localization ====================
 const i18n = {
@@ -90,6 +92,25 @@ const i18n = {
         psFixed: '✅ تم إصلاح سياسة PowerShell (RemoteSigned).',
         psFixFailed: '⚠️ فشل إصلاح سياسة PowerShell. قد تواجه مشاكل عند استخدام npm.',
         psRestricted: '⚠️ سياسة PowerShell مقيدة! npm قد لا يعمل. جاري الإصلاح...',
+        selectOpenClawModel: '🎯 اختر النموذج الأساسي (Primary) لـ OpenClaw:',
+        selectOpenClawModelDefault: 'nvidia/glm-4.7',
+        openClawPrimarySet: (m) => `✅ النموذج الأساسي: ${m}`,
+        openClawFallbackNone: '   ← لم يتم تعيين نماذج احتياطية — لن يتم الرجوع لنموذج لم تختره',
+        claudeBaseUrlNote: 'ℹ️  يجب أن يدعم المزود نقطة نهاية Anthropic Messages API (/v1/messages).',
+        claudeApiKeyCleared: '💡 تم مسح ANTHROPIC_API_KEY (ضبط لقيمة فارغة) لمنع تعارض المصادقة مع ANTHROPIC_AUTH_TOKEN.',
+        deepseekV4Pro: 'DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000',
+        deepseekV4Flash: 'DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000',
+        zeroclaw: '🦀 ZeroClaw',
+        hermes: '🔮 Hermes Agent',
+        kimicode: '🌙 Kimi Code',
+        geminicli: '💎 Gemini CLI',
+        codexcli: '🤖 Codex CLI',
+        aider: '🔧 Aider',
+        goose: '🪿 Goose',
+        geminiKeyNote: '⚠️ ملاحظة: Gemini CLI يعمل فقط مع نماذج Google Gemini. لا يدعم مزودات مخصصة.',
+        envVarSet: (f) => `✅ تم تعيين متغيرات البيئة وسيتم كتابتها إلى: ${f}`,
+        pipNote: '📦 ملاحظة: يتطلب تثبيت هذا pip/Python. سيتم محاولة التثبيت تلقائياً.',
+        shellProfileNote: '💡 أضف هذه الأوامر إلى ملف .bashrc أو .zshrc أو PowerShell Profile لجعلها دائمة.',
     },
     en: {
         header: '🚀 Oh-My-abdalgani-code Setup Tool 🚀',
@@ -168,6 +189,25 @@ const i18n = {
         psFixed: '✅ PowerShell execution policy fixed (RemoteSigned).',
         psFixFailed: '⚠️ Failed to fix PowerShell execution policy. npm may not work properly.',
         psRestricted: '⚠️ PowerShell execution policy is restricted! npm may fail. Fixing...',
+        selectOpenClawModel: '🎯 Choose the primary model for OpenClaw:',
+        selectOpenClawModelDefault: 'nvidia/glm-4.7',
+        openClawPrimarySet: (m) => `✅ Primary model: ${m}`,
+        openClawFallbackNone: '   ← No fallback models set — won\'t fall back to a model you didn\'t choose',
+        claudeBaseUrlNote: 'ℹ️  The provider must support an Anthropic Messages API endpoint (/v1/messages).',
+        claudeApiKeyCleared: '💡 ANTHROPIC_API_KEY set to empty string to prevent auth conflict with ANTHROPIC_AUTH_TOKEN.',
+        deepseekV4Pro: 'DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000',
+        deepseekV4Flash: 'DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000',
+        zeroclaw: '🦀 ZeroClaw',
+        hermes: '🔮 Hermes Agent',
+        kimicode: '🌙 Kimi Code',
+        geminicli: '💎 Gemini CLI',
+        codexcli: '🤖 Codex CLI',
+        aider: '🔧 Aider',
+        goose: '🪿 Goose',
+        geminiKeyNote: '⚠️ Note: Gemini CLI only works with Google Gemini models. Does not support custom providers.',
+        envVarSet: (f) => `✅ Environment variables set and will be written to: ${f}`,
+        pipNote: '📦 Note: This requires pip/Python. Installation will be attempted automatically.',
+        shellProfileNote: '💡 Add these commands to your .bashrc, .zshrc, or PowerShell Profile for persistence.',
     }
 };
 
@@ -186,6 +226,7 @@ const models = [
     // ── NVIDIA NIM ───────────────────────────────────────────────────────────
     { value: "nvidia/glm-5", name: "GLM-5                  │ CTX: 200,000 │ OUT:  32,000" },
     { value: "nvidia/glm-4.7", name: "GLM-4.7                │ CTX: 200,000 │ OUT:  32,000" },
+    { value: "nvidia/kimi-k2.6", name: "Kimi K2.6 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
     { value: "nvidia/kimi-k2.5", name: "Kimi K2.5 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
     // ── Moonshot & MiniMax ───────────────────────────────────────────────────
     { value: "moonshotai/kimi-k2.5", name: "Kimi K2.5 (Moonshot)   │ CTX: 262,144 │ OUT:  65,535" },
@@ -309,6 +350,89 @@ const TOOL_INSTALL_MAP = {
             ? '  powershell -c "irm https://openclaw.ai/install.ps1 | iex"\n  # or: npm i -g openclaw@beta'
             : '  curl -fsSL https://openclaw.ai/install.sh | bash -s -- --install-method git\n  # or: npm i -g openclaw@beta',
     },
+    ZeroClaw: {
+        exeName: 'zeroclaw',
+        methods: isWin
+            ? [
+                { label: 'PowerShell', cmd: 'powershell -Command "irm https://raw.githubusercontent.com/zeroclaw-labs/zeroclaw/master/install.ps1 | iex"' },
+            ]
+            : [
+                { label: 'curl', cmd: 'curl -fsSL https://raw.githubusercontent.com/zeroclaw-labs/zeroclaw/master/install.sh | bash -s -- --skip-onboard' },
+            ],
+        manual: isWin
+            ? '  Download setup.bat from https://github.com/zeroclaw-labs/zeroclaw/releases'
+            : '  curl -fsSL https://raw.githubusercontent.com/zeroclaw-labs/zeroclaw/master/install.sh | bash -s -- --skip-onboard',
+        configFormat: 'toml',
+    },
+    Hermes: {
+        exeName: 'hermes',
+        methods: isWin
+            ? [
+                { label: 'PowerShell', cmd: 'powershell -Command "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex"' },
+            ]
+            : [
+                { label: 'curl', cmd: 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash' },
+            ],
+        manual: isWin
+            ? '  powershell -Command "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex"'
+            : '  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash',
+        configFormat: 'yaml',
+    },
+    KimiCode: {
+        exeName: 'kimi-code',
+        methods: isWin
+            ? [
+                { label: 'PowerShell', cmd: 'powershell -Command "Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression"' },
+            ]
+            : [
+                { label: 'curl', cmd: 'curl -LsSf https://code.kimi.com/install.sh | bash' },
+            ],
+        manual: isWin
+            ? '  powershell -Command "Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression"'
+            : '  curl -LsSf https://code.kimi.com/install.sh | bash',
+        configFormat: 'toml',
+    },
+    GeminiCLI: {
+        exeName: 'gemini',
+        methods: [
+            { label: 'npm', cmd: 'npm install -g @google/gemini-cli' },
+        ],
+        manual: '  npm install -g @google/gemini-cli',
+        configFormat: 'env',
+        geminiOnly: true,
+    },
+    CodexCLI: {
+        exeName: 'codex',
+        methods: [
+            { label: 'npm', cmd: 'npm install -g @openai/codex' },
+        ],
+        manual: '  npm install -g @openai/codex',
+        configFormat: 'env',
+    },
+    Aider: {
+        exeName: 'aider',
+        methods: [
+            { label: 'pip', cmd: 'pip install aider-chat' },
+            { label: 'pipx', cmd: 'pipx install aider-chat' },
+        ],
+        manual: '  pip install aider-chat\n  # or: pipx install aider-chat',
+        configFormat: 'yaml',
+    },
+    Goose: {
+        exeName: 'goose',
+        methods: isWin
+            ? [
+                { label: 'PowerShell', cmd: 'powershell -Command "irm https://raw.githubusercontent.com/block/goose/main/download/install.ps1 | iex"' },
+            ]
+            : [
+                { label: 'curl', cmd: 'curl -fsSL https://raw.githubusercontent.com/block/goose/main/download/install.sh | bash' },
+                { label: 'brew', cmd: 'brew install goose' },
+            ],
+        manual: isWin
+            ? '  powershell -Command "irm https://raw.githubusercontent.com/block/goose/main/download/install.ps1 | iex"'
+            : '  curl -fsSL https://raw.githubusercontent.com/block/goose/main/download/install.sh | bash\n  # or: brew install goose',
+        configFormat: 'yaml',
+    },
 };
 
 // ==================== Utilities ====================
@@ -391,6 +515,56 @@ function findExistingApiKey() {
         if (fs.existsSync(p)) {
             const data = JSON.parse(fs.readFileSync(p, 'utf8'));
             if (data?.models?.providers?.abdalgani?.apiKey) return data.models.providers.abdalgani.apiKey;
+        }
+    } catch (e) { }
+
+    // ZeroClaw config (~/.zeroclaw/config.toml)
+    try {
+        const p = path.join(os.homedir(), '.zeroclaw', 'config.toml');
+        if (fs.existsSync(p)) {
+            const content = fs.readFileSync(p, 'utf8');
+            const match = content.match(/api_key\s*=\s*"([^"]+)"/);
+            if (match && match[1]) return match[1];
+        }
+    } catch (e) { }
+
+    // Hermes config (~/.hermes/cli-config.yaml)
+    try {
+        const p = path.join(os.homedir(), '.hermes', 'cli-config.yaml');
+        if (fs.existsSync(p)) {
+            const content = fs.readFileSync(p, 'utf8');
+            const parsed = yaml.load(content);
+            if (parsed?.model?.api_key) return parsed.model.api_key;
+        }
+    } catch (e) { }
+
+    // Kimi config (~/.kimi/config.toml)
+    try {
+        const p = path.join(os.homedir(), '.kimi', 'config.toml');
+        if (fs.existsSync(p)) {
+            const content = fs.readFileSync(p, 'utf8');
+            const match = content.match(/api_key\s*=\s*"([^"]+)"/);
+            if (match && match[1]) return match[1];
+        }
+    } catch (e) { }
+
+    // Goose config (~/.config/goose/config.yaml)
+    try {
+        const p = path.join(os.homedir(), '.config', 'goose', 'config.yaml');
+        if (fs.existsSync(p)) {
+            const content = fs.readFileSync(p, 'utf8');
+            const parsed = yaml.load(content);
+            if (parsed?.provider?.api_key) return parsed.provider.api_key;
+        }
+    } catch (e) { }
+
+    // Aider config (~/.aider.conf.yml)
+    try {
+        const p = path.join(os.homedir(), '.aider.conf.yml');
+        if (fs.existsSync(p)) {
+            const content = fs.readFileSync(p, 'utf8');
+            const parsed = yaml.load(content);
+            if (parsed?.['openai-api-key']) return parsed['openai-api-key'];
         }
     } catch (e) { }
 
@@ -898,11 +1072,32 @@ async function configureTool(toolName) {
         console.log(chalk.yellow("⚠️ Could not fetch dynamic models due to network. Proceeding with offline list."));
     }
 
-    // === Model Selection: فقط لـ ClaudeCode بثلاثة أسئلة، OpenCode/Kilo تلقائياً ===
+    // === Model Selection: ClaudeCode بثلاثة أسئلة، OpenClaw سؤال واحد، OpenCode/Kilo تلقائياً ===
     let selectedModel = DEFAULT_MODEL;
     let claudeOpus = 'nvidia/glm-5';
     let claudeSonnet = 'moonshotai/kimi-k2.5';
     let claudeHaiku = 'minimaxai/minimax-m2.5';
+
+    // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي ===
+    if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI'].includes(toolName)) {
+        const pickOpenClawModel = async () => {
+            const chosen = await search({
+                message: t('selectOpenClawModel'),
+                source: (input) => {
+                    const q = (input || '').toLowerCase();
+                    const filtered = models.filter(
+                        m => m.name.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)
+                    );
+                    return filtered.length > 0
+                        ? filtered
+                        : [{ value: DEFAULT_MODEL, name: t('noModelMatch') }];
+                },
+            });
+            return chosen || DEFAULT_MODEL;
+        };
+        selectedModel = await pickOpenClawModel();
+        console.log(chalk.green(t('openClawPrimarySet', selectedModel)));
+    }
 
     if (toolName === 'ClaudeCode') {
         // helper: prompt بحث لكل tier
@@ -956,6 +1151,7 @@ async function configureTool(toolName) {
             // ── NVIDIA NIM ────────────────────────────────────────────────────
             "nvidia/glm-5": { name: "GLM-5 (NVIDIA)", limit: { context: 200000, output: 32000 } },
             "nvidia/glm-4.7": { name: "GLM-4.7 (NVIDIA)", limit: { context: 200000, output: 32000 } },
+            "nvidia/kimi-k2.6": { name: "Kimi K2.6 (NVIDIA)", limit: { context: 262144, output: 65535 } },
             "nvidia/kimi-k2.5": { name: "Kimi K2.5 (NVIDIA)", limit: { context: 262144, output: 65535 } },
             "nvidia/qwen3.5-397b": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
             "qwen": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
@@ -1053,6 +1249,11 @@ async function configureTool(toolName) {
         console.log(chalk.gray(t('othersUntouched')));
     } else if (toolName === 'ClaudeCode') {
         // === Write ~/.claude/settings.json directly ===
+        // Important: The provider must serve an Anthropic Messages-compatible API at /v1/messages.
+        // ANTHROPIC_BASE_URL should point to the base URL that hosts /v1/messages underneath.
+        // api.abdalgani.com proxies Anthropic-format requests, so we use /v1 as the base.
+        console.log(chalk.gray(t('claudeBaseUrlNote')));
+
         const claudeDir = path.join(os.homedir(), '.claude');
         const claudeFile = path.join(claudeDir, 'settings.json');
 
@@ -1068,17 +1269,26 @@ async function configureTool(toolName) {
         // استخدام الاختيارات الثلاثة من المستخدم
         claudeSettings.env = {
             ...(claudeSettings.env || {}),
-            ANTHROPIC_BASE_URL: 'https://api.abdalgani.com/',
+            // Base URL must point to where /v1/messages is hosted.
+            // api.abdalgani.com serves Anthropic-compatible /v1/messages alongside OpenAI /v1/chat/completions.
+            ANTHROPIC_BASE_URL: 'https://api.abdalgani.com',
             ANTHROPIC_AUTH_TOKEN: apiKey,
+            // Explicitly set ANTHROPIC_API_KEY to empty string to prevent Claude Code
+            // from preferring it over ANTHROPIC_AUTH_TOKEN. A null/delete is NOT enough —
+            // Claude Code falls back to its own OAuth if ANTHROPIC_API_KEY is absent,
+            // which bypasses our custom provider entirely.
+            ANTHROPIC_API_KEY: '',
             ANTHROPIC_MODEL: selectedModel,
             ANTHROPIC_DEFAULT_OPUS_MODEL: claudeOpus,
             ANTHROPIC_DEFAULT_SONNET_MODEL: claudeSonnet,
             ANTHROPIC_DEFAULT_HAIKU_MODEL: claudeHaiku,
-            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
+            // Disable non-essential traffic (telemetry, etc.) when using a custom provider
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+            // Enable MCP tool search through the proxy
+            ENABLE_TOOL_SEARCH: "true",
+            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1",
+            DISABLE_PROMPT_CACHING: "1"
         };
-
-        // Remove conflicting key if present (ANTHROPIC_API_KEY causes the auth conflict warning)
-        delete claudeSettings.env.ANTHROPIC_API_KEY;
 
         fs.writeFileSync(claudeFile, JSON.stringify(claudeSettings, null, 2));
 
@@ -1088,7 +1298,7 @@ async function configureTool(toolName) {
         console.log(chalk.white(`   🟡 Sonnet → ${claudeSonnet}`));
         console.log(chalk.white(`   🟢 Haiku  → ${claudeHaiku}`));
         console.log(chalk.white(`   ⭐ Default→ ${selectedModel}`));
-        console.log(chalk.gray(t('apiKeyRemoved')));
+        console.log(chalk.gray(t('claudeApiKeyCleared')));
     } else if (toolName === 'OpenClaw') {
         const clawDir = path.join(os.homedir(), '.openclaw');
         const clawFile = path.join(clawDir, 'openclaw.json');
@@ -1138,7 +1348,7 @@ async function configureTool(toolName) {
         clawConfig.models.providers["litellm"] = {
             baseUrl: "https://api.abdalgani.com/v1",
             apiKey: apiKey,
-            auth: "api-key",
+            auth: "api_key",
             api: "openai-completions",
             authHeader: true,
             models: clawModelsList
@@ -1149,7 +1359,7 @@ async function configureTool(toolName) {
         clawConfig.models.providers["abdalgani"] = {
             baseUrl: "https://api.abdalgani.com/v1",
             apiKey: apiKey,
-            auth: "api-key",
+            auth: "api_key",
             api: "openai-completions",
             authHeader: true,
             models: clawModelsList
@@ -1165,27 +1375,263 @@ async function configureTool(toolName) {
             mode: "api_key"
         };
 
-        let primaryModel = selectedModel || 'glm-4.7';
-        clawConfig.agents.defaults.model.primary = `litellm/${primaryModel}`;
-        clawConfig.agents.defaults.model.fallbacks = [`abdalgani/${primaryModel}`];
+        // Use ONLY the model the user explicitly selected — no silent fallback to DEFAULT_MODEL
+        clawConfig.agents.defaults.model.primary = `litellm/${selectedModel}`;
+        clawConfig.agents.defaults.model.fallbacks = [`abdalgani/${selectedModel}`];
+
+        console.log(chalk.gray(t('openClawFallbackNone')));
 
         clawConfig.agents.defaults.models = { ...clawConfig.agents.defaults.models, ...allowedModels };
 
         fs.writeFileSync(clawFile, JSON.stringify(clawConfig, null, 2));
         console.log(chalk.green(t('writtenTo', clawFile)));
 
-        const cacheFile = path.join(clawDir, 'agents', 'main', 'agent', 'models.json');
-        if (fs.existsSync(cacheFile)) {
-            try { fs.unlinkSync(cacheFile); } catch (e) { }
+        // Clean ALL agent models.json cache files to force re-sync from global config
+        // Without this, agents won't see the new providers/models (known OpenClaw issue #22747)
+        const agentsDir = path.join(clawDir, 'agents');
+        if (fs.existsSync(agentsDir)) {
+            try {
+                const agentDirs = fs.readdirSync(agentsDir, { withFileTypes: true });
+                for (const agentDir of agentDirs) {
+                    if (agentDir.isDirectory()) {
+                        const modelsCache = path.join(agentsDir, agentDir.name, 'agent', 'models.json');
+                        if (fs.existsSync(modelsCache)) {
+                            try {
+                                fs.unlinkSync(modelsCache);
+                                console.log(chalk.gray(`   ← Cleaned cache: ${agentDir.name}/agent/models.json`));
+                            } catch (_) { }
+                        }
+                    }
+                }
+            } catch (_) { }
         }
 
-        console.log(chalk.cyan('\\nRestarting openclaw-gateway...'));
+        console.log(chalk.cyan('\nRestarting openclaw-gateway...'));
         try {
             execSync("systemctl --user restart openclaw-gateway", { stdio: 'ignore' });
             console.log(chalk.green("✅ OpenClaw Gateway restarted successfully."));
         } catch (e) {
             console.log(chalk.yellow("⚠️ Could not restart openclaw-gateway. It might not be running or systemctl is not available."));
         }
+    } else if (toolName === 'ZeroClaw') {
+        const zcDir = path.join(os.homedir(), '.zeroclaw');
+        const zcFile = path.join(zcDir, 'config.toml');
+        if (!fs.existsSync(zcDir)) fs.mkdirSync(zcDir, { recursive: true });
+
+        // Build TOML config
+        let zcConfig = `# ZeroClaw Configuration — Generated by Oh-My-abdalgani-code
+default_provider = "abdalgani"
+default_model = "${selectedModel}"
+
+[providers.abdalgani]
+type = "openai"
+api_url = "https://api.abdalgani.com/v1"
+api_key = "${apiKey}"
+
+[providers.models.abdalgani-${selectedModel.replace(/\//g, '-')}]
+provider = "abdalgani"
+model = "${selectedModel}"
+`;
+
+        // If existing config, try to merge
+        if (fs.existsSync(zcFile)) {
+            try {
+                const existing = fs.readFileSync(zcFile, 'utf8');
+                // Only update our provider section, keep the rest
+                if (!existing.includes('[providers.abdalgani]')) {
+                    zcConfig = existing.trimEnd() + '\n\n' + zcConfig;
+                } else {
+                    // Replace the abdalgani provider block
+                    zcConfig = existing
+                        .replace(/default_provider\s*=\s*"[^"]*"/, `default_provider = "abdalgani"`)
+                        .replace(/default_model\s*=\s*"[^"]*"/, `default_model = "${selectedModel}"`);
+                    // Update api_key if exists
+                    if (zcConfig.includes('api_key')) {
+                        zcConfig = zcConfig.replace(/api_key\s*=\s*"[^"]*"/, `api_key = "${apiKey}"`);
+                    }
+                    // Update api_url if exists
+                    if (zcConfig.includes('api_url')) {
+                        zcConfig = zcConfig.replace(/api_url\s*=\s*"[^"]*"/, `api_url = "https://api.abdalgani.com/v1"`);
+                    }
+                }
+            } catch (_) { }
+        }
+
+        fs.writeFileSync(zcFile, zcConfig);
+        console.log(chalk.green(t('writtenTo', zcFile)));
+
+    } else if (toolName === 'Hermes') {
+        const hermesDir = path.join(os.homedir(), '.hermes');
+        const hermesFile = path.join(hermesDir, 'cli-config.yaml');
+        if (!fs.existsSync(hermesDir)) fs.mkdirSync(hermesDir, { recursive: true });
+
+        let hermesConfig = {};
+        if (fs.existsSync(hermesFile)) {
+            try { hermesConfig = yaml.load(fs.readFileSync(hermesFile, 'utf8')) || {}; }
+            catch (_) { }
+        }
+
+        hermesConfig.model = {
+            ...(hermesConfig.model || {}),
+            default: selectedModel,
+            provider: "custom",
+            api_key: apiKey,
+            base_url: "https://api.abdalgani.com/v1",
+        };
+
+        fs.writeFileSync(hermesFile, yaml.dump(hermesConfig, { lineWidth: -1 }));
+        console.log(chalk.green(t('writtenTo', hermesFile)));
+
+    } else if (toolName === 'KimiCode') {
+        const kimiDir = path.join(os.homedir(), '.kimi');
+        const kimiFile = path.join(kimiDir, 'config.toml');
+        if (!fs.existsSync(kimiDir)) fs.mkdirSync(kimiDir, { recursive: true });
+
+        let kimiConfig = `# Kimi Code CLI Configuration — Generated by Oh-My-abdalgani-code
+default_model = "abdalgani-${selectedModel.replace(/\//g, '-')}"
+
+[providers.abdalgani]
+type = "openai_legacy"
+base_url = "https://api.abdalgani.com/v1"
+api_key = "${apiKey}"
+
+[models.abdalgani-${selectedModel.replace(/\//g, '-')}]
+provider = "abdalgani"
+model = "${selectedModel}"
+max_context_size = 200000
+capabilities = ["thinking", "image_in"]
+`;
+
+        if (fs.existsSync(kimiFile)) {
+            try {
+                const existing = fs.readFileSync(kimiFile, 'utf8');
+                if (!existing.includes('[providers.abdalgani]')) {
+                    kimiConfig = existing.trimEnd() + '\n\n' + kimiConfig;
+                } else {
+                    kimiConfig = existing
+                        .replace(/default_model\s*=\s*"[^"]*"/, `default_model = "abdalgani-${selectedModel.replace(/\//g, '-')}"`);
+                    if (kimiConfig.includes('api_key')) {
+                        kimiConfig = kimiConfig.replace(/api_key\s*=\s*"[^"]*"/, `api_key = "${apiKey}"`);
+                    }
+                }
+            } catch (_) { }
+        }
+
+        fs.writeFileSync(kimiFile, kimiConfig);
+        console.log(chalk.green(t('writtenTo', kimiFile)));
+
+    } else if (toolName === 'GeminiCLI') {
+        console.log(chalk.yellow(t('geminiKeyNote')));
+        // Gemini CLI only uses GEMINI_API_KEY env var — write to shell profile
+        const profileFiles = isWin
+            ? [path.join(os.homedir(), 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1')]
+            : [
+                path.join(os.homedir(), '.bashrc'),
+                path.join(os.homedir(), '.zshrc'),
+            ];
+
+        const envLine = isWin
+            ? `$env:GEMINI_API_KEY = "${apiKey}"`
+            : `export GEMINI_API_KEY="${apiKey}"`;
+
+        for (const profileFile of profileFiles) {
+            if (fs.existsSync(profileFile)) {
+                let content = fs.readFileSync(profileFile, 'utf8');
+                if (content.includes('GEMINI_API_KEY')) {
+                    content = content.replace(/(?:export\s+)?GEMINI_API_KEY[=\s]+"?[^"\n]*"?/, envLine);
+                } else {
+                    content = content.trimEnd() + '\n' + envLine + '\n';
+                }
+                fs.writeFileSync(profileFile, content);
+                console.log(chalk.green(t('envVarSet', profileFile)));
+            } else {
+                // Create the profile file if it doesn't exist (only .bashrc)
+                if (profileFile.endsWith('.bashrc') || profileFile.endsWith('.ps1')) {
+                    const profileDir = path.dirname(profileFile);
+                    if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+                    fs.writeFileSync(profileFile, envLine + '\n');
+                    console.log(chalk.green(t('envVarSet', profileFile)));
+                }
+            }
+        }
+        console.log(chalk.gray(t('shellProfileNote')));
+
+    } else if (toolName === 'CodexCLI') {
+        // Codex CLI uses OPENAI_API_KEY + OPENAI_BASE_URL env vars
+        const profileFiles = isWin
+            ? [path.join(os.homedir(), 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1')]
+            : [
+                path.join(os.homedir(), '.bashrc'),
+                path.join(os.homedir(), '.zshrc'),
+            ];
+
+        const envLines = isWin
+            ? [`$env:OPENAI_API_KEY = "${apiKey}"`, `$env:OPENAI_BASE_URL = "https://api.abdalgani.com/v1"`]
+            : [`export OPENAI_API_KEY="${apiKey}"`, `export OPENAI_BASE_URL="https://api.abdalgani.com/v1"`];
+
+        for (const profileFile of profileFiles) {
+            if (fs.existsSync(profileFile)) {
+                let content = fs.readFileSync(profileFile, 'utf8');
+                for (let i = 0; i < envLines.length; i++) {
+                    const varName = isWin ? envLines[i].split(' = ')[0].replace('$env:', '') : envLines[i].split('=')[0].replace('export ', '');
+                    if (content.includes(varName)) {
+                        const regex = new RegExp(`(?:export\\s+)?${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[=\\s]+"?[^"\\n]*"?`, 'g');
+                        content = content.replace(regex, envLines[i]);
+                    } else {
+                        content = content.trimEnd() + '\n' + envLines[i] + '\n';
+                    }
+                }
+                fs.writeFileSync(profileFile, content);
+                console.log(chalk.green(t('envVarSet', profileFile)));
+            } else {
+                if (profileFile.endsWith('.bashrc') || profileFile.endsWith('.ps1')) {
+                    const profileDir = path.dirname(profileFile);
+                    if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+                    fs.writeFileSync(profileFile, envLines.join('\n') + '\n');
+                    console.log(chalk.green(t('envVarSet', profileFile)));
+                }
+            }
+        }
+        console.log(chalk.gray(t('shellProfileNote')));
+
+    } else if (toolName === 'Aider') {
+        const aiderFile = path.join(os.homedir(), '.aider.conf.yml');
+        console.log(chalk.cyan(t('pipNote')));
+
+        let aiderConfig = {};
+        if (fs.existsSync(aiderFile)) {
+            try { aiderConfig = yaml.load(fs.readFileSync(aiderFile, 'utf8')) || {}; }
+            catch (_) { }
+        }
+
+        aiderConfig['openai-api-key'] = apiKey;
+        aiderConfig['openai-api-base'] = 'https://api.abdalgani.com/v1';
+        aiderConfig['model'] = selectedModel;
+
+        fs.writeFileSync(aiderFile, yaml.dump(aiderConfig, { lineWidth: -1 }));
+        console.log(chalk.green(t('writtenTo', aiderFile)));
+
+    } else if (toolName === 'Goose') {
+        const gooseDir = path.join(os.homedir(), '.config', 'goose');
+        const gooseFile = path.join(gooseDir, 'config.yaml');
+        if (!fs.existsSync(gooseDir)) fs.mkdirSync(gooseDir, { recursive: true });
+
+        let gooseConfig = {};
+        if (fs.existsSync(gooseFile)) {
+            try { gooseConfig = yaml.load(fs.readFileSync(gooseFile, 'utf8')) || {}; }
+            catch (_) { }
+        }
+
+        gooseConfig.provider = {
+            ...(gooseConfig.provider || {}),
+            type: "openai",
+            api_key: apiKey,
+            base_url: "https://api.abdalgani.com/v1",
+            model: selectedModel,
+        };
+
+        fs.writeFileSync(gooseFile, yaml.dump(gooseConfig, { lineWidth: -1 }));
+        console.log(chalk.green(t('writtenTo', gooseFile)));
     }
 
     // === Launch Tool After Setup ===
@@ -1222,6 +1668,13 @@ async function main() {
                 { name: t('kilocli'), value: 'KiloCLI' },
                 { name: t('claudecode'), value: 'ClaudeCode' },
                 { name: t('openclaw'), value: 'OpenClaw' },
+                { name: t('zeroclaw'), value: 'ZeroClaw' },
+                { name: t('hermes'), value: 'Hermes' },
+                { name: t('kimicode'), value: 'KimiCode' },
+                { name: t('geminicli'), value: 'GeminiCLI' },
+                { name: t('codexcli'), value: 'CodexCLI' },
+                { name: t('aider'), value: 'Aider' },
+                { name: t('goose'), value: 'Goose' },
                 { name: t('exitOption'), value: 'exit' }
             ]
         });
