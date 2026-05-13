@@ -1068,9 +1068,35 @@ async function installTool(toolName) {
 async function launchAfterSetup(toolName, exeName) {
     const map = TOOL_INSTALL_MAP[toolName];
 
-    // Skip launch for tools that don't work interactively on this platform
+    // On Windows: try WSL for tools that need Unix (termios etc.)
     if (isWin && map?.noLaunchOnWin) {
-        console.log(chalk.yellow(t('winNotSupported', toolName)));
+        const hasWsl = checkInstalled('wsl');
+        if (hasWsl) {
+            console.log('');
+            const launch = await select({
+                message: chalk.cyan(t('launchPrompt', toolName)),
+                choices: [
+                    { name: lang === 'ar' ? '✅ نعم (عبر WSL)' : '✅ Yes (via WSL)', value: true },
+                    { name: lang === 'ar' ? '❌ لا' : '❌ No', value: false }
+                ]
+            });
+            if (!launch) return;
+            console.log(chalk.green(t('launching', toolName)));
+            try {
+                const { spawnSync } = await import('child_process');
+                // Pass the Windows HOME so WSL can read the same config files
+                const winHome = os.homedir().replace(/\\/g, '/');
+                spawnSync('wsl', ['-e', exeName], {
+                    stdio: 'inherit',
+                    shell: true,
+                    env: { ...process.env, HOME: `/mnt/c${winHome.substring(2)}` },
+                });
+            } catch (e) {
+                console.error(chalk.red(t('launchFailed', toolName, e.message)));
+            }
+        } else {
+            console.log(chalk.yellow(t('winNotSupported', toolName)));
+        }
         return;
     }
 
