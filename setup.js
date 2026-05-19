@@ -250,6 +250,10 @@ const models = [
     { value: "nvidia/deepseek-r1", name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
     { value: "nvidia/deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nvidia/deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro (API)  │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flsh(API)  │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "cc/deepseek-v4-pro", name: "DeepSeek V4 Pro (CC)   │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "cc/deepseek-v4-flash", name: "DeepSeek V4 Flsh(CC)   │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nvidia/gpt-oss-120b", name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
     { value: "nvidia/step-3.5-flash", name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
 
@@ -294,6 +298,11 @@ const models = [
     { value: "glm-4.7", name: "GLM-4.7 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-4.5-air", name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
+    // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────────────
+    { value: "cc/glm-5.1", name: "GLM-5.1 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-5-turbo", name: "GLM-5-Turbo (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.7", name: "GLM-4.7 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.5-air", name: "GLM-4.5-Air (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
 ];
 
 // ==================== Tool Installation Map ====================
@@ -1189,9 +1198,9 @@ async function configureTool(toolName) {
 
     // === Model Selection: ClaudeCode بثلاثة أسئلة، OpenClaw سؤال واحد، OpenCode/Kilo تلقائياً ===
     let selectedModel = DEFAULT_MODEL;
-    let claudeOpus = 'nvidia/glm-5';
-    let claudeSonnet = 'moonshotai/kimi-k2.5';
-    let claudeHaiku = 'minimaxai/minimax-m2.5';
+    let claudeOpus = 'cc/glm-5.1';
+    let claudeSonnet = 'cc/glm-5-turbo';
+    let claudeHaiku = 'cc/glm-4.7';
 
     // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي ===
     if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode'].includes(toolName)) {
@@ -1279,6 +1288,12 @@ async function configureTool(toolName) {
             "nvidia/nemotron-super-49b": { name: "Nemotron Super 49B (NVIDIA)", limit: { context: 131072, output: 32768 } },
             "nvidia/nemotron-3-super-120b-a12b": { name: "Nemotron 3 Super 120B (NVIDIA)", limit: { context: 131072, output: 32768 } },
             "nvidia/deepseek-r1": { name: "DeepSeek R1 (NVIDIA)", limit: { context: 163840, output: 32768 } },
+            "nvidia/deepseek-v4-pro": { name: "DeepSeek V4 Pro (NVIDIA)", limit: { context: 1048576, output: 384000 } },
+            "nvidia/deepseek-v4-flash": { name: "DeepSeek V4 Flash (NVIDIA)", limit: { context: 1048576, output: 384000 } },
+            "deepseek/deepseek-v4-pro": { name: "DeepSeek V4 Pro (API)", limit: { context: 1048576, output: 384000 } },
+            "deepseek/deepseek-v4-flash": { name: "DeepSeek V4 Flash (API)", limit: { context: 1048576, output: 384000 } },
+            "cc/deepseek-v4-pro": { name: "DeepSeek V4 Pro (CC)", limit: { context: 1048576, output: 384000 } },
+            "cc/deepseek-v4-flash": { name: "DeepSeek V4 Flash (CC)", limit: { context: 1048576, output: 384000 } },
             "nvidia/gpt-oss-120b": { name: "GPT-OSS 120B (NVIDIA)", limit: { context: 128000, output: 16384 } },
             "nvidia/step-3.5-flash": { name: "Step 3.5 Flash (NVIDIA)", limit: { context: 128000, output: 32768 } },
 
@@ -1331,6 +1346,11 @@ async function configureTool(toolName) {
             "glm-4.7": { name: "GLM-4.7 (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
             "zai/glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
             "glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────
+            "cc/glm-5.1": { name: "GLM-5.1 (Claude Code)", limit: { context: 204800, output: 131072 } },
+            "cc/glm-5-turbo": { name: "GLM-5-Turbo (Claude Code)", limit: { context: 204800, output: 131072 } },
+            "cc/glm-4.7": { name: "GLM-4.7 (Claude Code)", limit: { context: 204800, output: 131072 } },
+            "cc/glm-4.5-air": { name: "GLM-4.5-Air (Claude Code)", limit: { context: 204800, output: 131072 } },
         };
 
         // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
@@ -1382,24 +1402,18 @@ async function configureTool(toolName) {
         }
 
         // استخدام الاختيارات الثلاثة من المستخدم
+        // Claude Code uses Anthropic Messages API (/v1/messages).
+        // LiteLLM receives this and routes to the configured backend.
         claudeSettings.env = {
             ...(claudeSettings.env || {}),
-            // Base URL must point to where /v1/messages is hosted.
-            // api.abdalgani.com serves Anthropic-compatible /v1/messages alongside OpenAI /v1/chat/completions.
             ANTHROPIC_BASE_URL: 'https://api.abdalgani.com',
             ANTHROPIC_AUTH_TOKEN: apiKey,
-            // Explicitly set ANTHROPIC_API_KEY to empty string to prevent Claude Code
-            // from preferring it over ANTHROPIC_AUTH_TOKEN. A null/delete is NOT enough —
-            // Claude Code falls back to its own OAuth if ANTHROPIC_API_KEY is absent,
-            // which bypasses our custom provider entirely.
             ANTHROPIC_API_KEY: '',
             ANTHROPIC_MODEL: selectedModel,
             ANTHROPIC_DEFAULT_OPUS_MODEL: claudeOpus,
             ANTHROPIC_DEFAULT_SONNET_MODEL: claudeSonnet,
             ANTHROPIC_DEFAULT_HAIKU_MODEL: claudeHaiku,
-            // Disable non-essential traffic (telemetry, etc.) when using a custom provider
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-            // Enable MCP tool search through the proxy
             ENABLE_TOOL_SEARCH: "true",
             CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1",
             DISABLE_PROMPT_CACHING: "1"
