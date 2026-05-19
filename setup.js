@@ -260,6 +260,7 @@ const models = [
     // ── Gemini (via LiteLLM) ─────────────────────────────────────────────────
     { value: "gemini-3.1-pro", name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
     { value: "gemini-3.1-flash", name: "Gemini 3.1 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
+    { value: "gemini-3.5-flash", name: "Gemini 3.5 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
     // ── Google AI Studio (Direct API) ────────────────────────────────────────
     { value: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
     { value: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
@@ -1300,6 +1301,7 @@ async function configureTool(toolName) {
             // ── Gemini ───────────────────────────────────────────────────────────
             "gemini-3.1-pro": { name: "Gemini 3.1 Pro", limit: { context: 1048576, output: 65536 } },
             "gemini-3.1-flash": { name: "Gemini 3.1 Flash", limit: { context: 1048576, output: 65536 } },
+            "gemini-3.5-flash": { name: "Gemini 3.5 Flash", limit: { context: 1048576, output: 65536 } },
             // ── Google AI Studio (Direct API) ────────────────────────────────────
             "gemini-3-flash-preview": { name: "Gemini 3 Flash Preview", limit: { context: 1048576, output: 65536 } },
             "gemini-3.1-pro-preview": { name: "Gemini 3.1 Pro Preview", limit: { context: 1048576, output: 65536 } },
