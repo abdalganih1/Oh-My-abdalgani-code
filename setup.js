@@ -313,14 +313,14 @@ const models = [
     { value: "xiaomi/deepseek-reasoner", name: "Xiaomi DeepSeek Reasoner│ CTX:  64,000 │ OUT:   8,192" },
     { value: "cc/xiaomi-sonnet", name: "Xiaomi Sonnet (Claude)  │ CTX: 200,000 │ OUT:   8,192" },
     // ── XiaomiMimo Native Models ──
-    { value: "mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro    │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "mimo-v2.5", name: "Xiaomi Mimo v2.5        │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "mimo-v2-pro", name: "Xiaomi Mimo v2 Pro      │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "mimo-v2-omni", name: "Xiaomi Mimo v2 Omni     │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "cc/mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro(CC)│ CTX: 200,000 │ OUT:   8,192" },
-    { value: "cc/mimo-v2.5", name: "Xiaomi Mimo v2.5 (CC)   │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "cc/mimo-v2-pro", name: "Xiaomi Mimo v2 Pro (CC) │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "cc/mimo-v2-omni", name: "Xiaomi Mimo v2 Omni (CC)│ CTX: 200,000 │ OUT:   8,192" },
+    { value: "mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro    │ CTX: 1,048,576 │ OUT: 131,072" },
+    { value: "mimo-v2.5", name: "Xiaomi Mimo v2.5        │ CTX: 1,048,576 │ OUT:  32,768" },
+    { value: "mimo-v2-pro", name: "Xiaomi Mimo v2 Pro      │ CTX: 1,048,576 │ OUT: 131,072" },
+    { value: "mimo-v2-omni", name: "Xiaomi Mimo v2 Omni     │ CTX: 1,048,576 │ OUT:  32,768" },
+    { value: "cc/mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro(CC)│ CTX: 1,048,576 │ OUT: 131,072" },
+    { value: "cc/mimo-v2.5", name: "Xiaomi Mimo v2.5 (CC)   │ CTX: 1,048,576 │ OUT:  32,768" },
+    { value: "cc/mimo-v2-pro", name: "Xiaomi Mimo v2 Pro (CC) │ CTX: 1,048,576 │ OUT: 131,072" },
+    { value: "cc/mimo-v2-omni", name: "Xiaomi Mimo v2 Omni (CC)│ CTX: 1,048,576 │ OUT:  32,768" },
 ];
 
 // ==================== Tool Installation Map ====================
@@ -1379,14 +1379,14 @@ async function configureTool(toolName) {
             "xiaomi/deepseek-reasoner": { name: "Xiaomi DeepSeek Reasoner", limit: { context: 64000, output: 8192 } },
             "cc/xiaomi-sonnet": { name: "Xiaomi Sonnet (Claude Code)", limit: { context: 200000, output: 8192 } },
             // ── XiaomiMimo Native Models ──
-            "mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro", limit: { context: 200000, output: 8192 } },
-            "mimo-v2.5": { name: "Xiaomi Mimo v2.5", limit: { context: 200000, output: 8192 } },
-            "mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro", limit: { context: 200000, output: 8192 } },
-            "mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni", limit: { context: 200000, output: 8192 } },
-            "cc/mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro (Claude Code)", limit: { context: 200000, output: 8192 } },
-            "cc/mimo-v2.5": { name: "Xiaomi Mimo v2.5 (Claude Code)", limit: { context: 200000, output: 8192 } },
-            "cc/mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro (Claude Code)", limit: { context: 200000, output: 8192 } },
-            "cc/mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni (Claude Code)", limit: { context: 200000, output: 8192 } },
+            "mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro", limit: { context: 1048576, output: 131072 } },
+            "mimo-v2.5": { name: "Xiaomi Mimo v2.5", limit: { context: 1048576, output: 32768 } },
+            "mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro", limit: { context: 1048576, output: 131072 } },
+            "mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni", limit: { context: 1048576, output: 32768 } },
+            "cc/mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro (Claude Code)", limit: { context: 1048576, output: 131072 } },
+            "cc/mimo-v2.5": { name: "Xiaomi Mimo v2.5 (Claude Code)", limit: { context: 1048576, output: 32768 } },
+            "cc/mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro (Claude Code)", limit: { context: 1048576, output: 131072 } },
+            "cc/mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni (Claude Code)", limit: { context: 1048576, output: 32768 } },
         };
 
         // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
