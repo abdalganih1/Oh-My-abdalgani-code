@@ -321,6 +321,15 @@ const models = [
     { value: "cc/mimo-v2.5", name: "Xiaomi Mimo v2.5 (CC)   │ CTX: 1,048,576 │ OUT:  32,768" },
     { value: "cc/mimo-v2-pro", name: "Xiaomi Mimo v2 Pro (CC) │ CTX: 1,048,576 │ OUT: 131,072" },
     { value: "cc/mimo-v2-omni", name: "Xiaomi Mimo v2 Omni (CC)│ CTX: 1,048,576 │ OUT:  32,768" },
+    // ── NanoGPT (nano-gpt.com - اشتراك Pro) ──
+    { value: "nanogpt/minimax-m3", name: "MiniMax M3 (NanoGPT)    │ CTX: 512,000  │ OUT:  65,536" },
+    { value: "nanogpt/deepseek-v4-pro", name: "DeepSeek V4 Pro (Nano)  │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "nanogpt/deepseek-v4-flash", name: "DeepSeek V4 Flash(Nano) │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "nanogpt/glm-5.1", name: "GLM-5.1 (NanoGPT)       │ CTX: 200,000  │ OUT: 131,072" },
+    { value: "nanogpt/mimo-v2.5-pro", name: "MiMo V2.5 Pro (NanoGPT) │ CTX: 1,048,576 │ OUT: 131,072" },
+    { value: "nanogpt/kimi-k2.6", name: "Kimi K2.6 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
+    { value: "nanogpt/kimi-k2.5", name: "Kimi K2.5 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
+    { value: "nanogpt/minimax-m2.7", name: "MiniMax M2.7 (NanoGPT)  │ CTX: 204,800  │ OUT: 196,608" },
 ];
 
 // ==================== Tool Installation Map ====================
@@ -1387,6 +1396,15 @@ async function configureTool(toolName) {
             "cc/mimo-v2.5": { name: "Xiaomi Mimo v2.5 (Claude Code)", limit: { context: 1048576, output: 32768 } },
             "cc/mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro (Claude Code)", limit: { context: 1048576, output: 131072 } },
             "cc/mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni (Claude Code)", limit: { context: 1048576, output: 32768 } },
+            // ── NanoGPT (nano-gpt.com - اشتراك Pro) ──
+            "nanogpt/minimax-m3": { name: "MiniMax M3 (NanoGPT)", limit: { context: 512000, output: 65536 } },
+            "nanogpt/deepseek-v4-pro": { name: "DeepSeek V4 Pro (NanoGPT)", limit: { context: 1048576, output: 384000 } },
+            "nanogpt/deepseek-v4-flash": { name: "DeepSeek V4 Flash (NanoGPT)", limit: { context: 1048576, output: 384000 } },
+            "nanogpt/glm-5.1": { name: "GLM-5.1 (NanoGPT)", limit: { context: 200000, output: 131072 } },
+            "nanogpt/mimo-v2.5-pro": { name: "MiMo V2.5 Pro (NanoGPT)", limit: { context: 1048576, output: 131072 } },
+            "nanogpt/kimi-k2.6": { name: "Kimi K2.6 (NanoGPT)", limit: { context: 256000, output: 65535 } },
+            "nanogpt/kimi-k2.5": { name: "Kimi K2.5 (NanoGPT)", limit: { context: 256000, output: 65535 } },
+            "nanogpt/minimax-m2.7": { name: "MiniMax M2.7 (NanoGPT)", limit: { context: 204800, output: 196608 } },
         };
 
         // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
