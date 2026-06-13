@@ -284,6 +284,8 @@ const models = [
     { value: "qwen3.5", name: "Qwen 3.5 (Ollama)       │ CTX: 131,072 │ OUT:  32,768" },
     { value: "minimax-m2.7:cloud", name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
     { value: "kimi-k2.6:cloud", name: "Kimi K2.6 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
+    { value: "kimi-k2.7-code:cloud", name: "Kimi K2.7 Code (Ollama) │ CTX: 262,144 │ OUT:  65,535" },
+    { value: "minimax-m3:cloud", name: "MiniMax M3 (Ollama)     │ CTX: 1,048,576 │ OUT: 196,608" },
     { value: "kimi-k2.5:cloud", name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
     { value: "glm-4.7:cloud", name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
     { value: "deepseek-v3.2:cloud", name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
@@ -1302,6 +1304,8 @@ async function configureTool(toolName) {
             // ── NVIDIA NIM ────────────────────────────────────────────────────
             "nvidia/glm-5": { name: "GLM-5 (NVIDIA)", limit: { context: 200000, output: 32000 } },
             "nvidia/glm-4.7": { name: "GLM-4.7 (NVIDIA)", limit: { context: 200000, output: 32000 } },
+            "kimi-k2.7-code:cloud": { name: "Kimi K2.7 Code (Ollama)", limit: { context: 262144, output: 65535 } },
+            "minimax-m3:cloud": { name: "MiniMax M3 (Ollama)", limit: { context: 1048576, output: 196608 } },
             "nvidia/kimi-k2.6": { name: "Kimi K2.6 (NVIDIA)", limit: { context: 262144, output: 65535 } },
             "nvidia/kimi-k2.5": { name: "Kimi K2.5 (NVIDIA)", limit: { context: 262144, output: 65535 } },
             "nvidia/qwen3.5-397b": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
