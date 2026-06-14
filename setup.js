@@ -230,7 +230,7 @@ const DEFAULT_MODEL = 'nvidia/glm-4.7';
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
 const models = [
     // ── NVIDIA NIM ───────────────────────────────────────────────────────────
-    { value: "nvidia/glm-5.2", name: "GLM-5.2                │ CTX: 200,000 │ OUT:  32,000" },
+    { value: "nvidia/glm-5.2", name: "GLM-5.2                │ CTX: 1,000,000 │ OUT:  32,000" },
     { value: "nvidia/glm-5", name: "GLM-5                  │ CTX: 200,000 │ OUT:  32,000" },
     { value: "nvidia/glm-4.7", name: "GLM-4.7                │ CTX: 200,000 │ OUT:  32,000" },
     { value: "nvidia/kimi-k2.6", name: "Kimi K2.6 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
@@ -279,7 +279,7 @@ const models = [
     { value: "lyria-3-pro-preview", name: "Lyria 3 Pro Audio       │ CTX:     8,192 │ OUT:  4,096" },
     { value: "gemma-4-31b-it", name: "Gemma 4 31B IT          │ CTX:   131,072 │ OUT: 32,768" },
     // ── abdalgani (ollama) - ابحث بكلمة ollama ──────────────────────────────
-    { value: "glm-5.2:cloud", name: "GLM-5.2 (Ollama Cloud)  │ CTX: 200,000 │ OUT: 131,072" },
+    { value: "glm-5.2:cloud", name: "GLM-5.2 (Ollama Cloud)  │ CTX: 1,000,000 │ OUT: 131,072" },
     { value: "glm-5.1:cloud", name: "GLM-5.1 (Ollama Cloud)  │ CTX: 200,000 │ OUT: 131,072" },
     { value: "glm-5:cloud", name: "GLM-5 (Ollama Cloud)    │ CTX: 202,752 │ OUT: 131,072" },
     { value: "gemma4", name: "Gemma 4 (Ollama)        │ CTX: 128,000 │ OUT:  32,768" },
@@ -295,8 +295,8 @@ const models = [
     { value: "deepseek-v4-flash:cloud", name: "DeepSeek V4 Flsh(DS API)│ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nemotron-3-super:cloud", name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
     // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
-    { value: "zai/glm-5.2", name: "GLM-5.2 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-5.2", name: "GLM-5.2 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-5.2", name: "GLM-5.2 (Z.AI Coding)   │ CTX: 1,000,000 │ OUT: 131,072" },
+    { value: "glm-5.2", name: "GLM-5.2 (Z.AI Direct)   │ CTX: 1,000,000 │ OUT: 131,072" },
     { value: "zai/glm-5.1", name: "GLM-5.1 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-5.1", name: "GLM-5.1 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-5-turbo", name: "GLM-5-Turbo (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
@@ -306,7 +306,7 @@ const models = [
     { value: "zai/glm-4.5-air", name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
     // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────────────
-    { value: "cc/glm-5.2", name: "GLM-5.2 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-5.2", name: "GLM-5.2 (Claude Code)   │ CTX: 1,000,000 │ OUT: 131,072" },
     { value: "cc/glm-5.1", name: "GLM-5.1 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-5-turbo", name: "GLM-5-Turbo (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-4.7", name: "GLM-4.7 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
@@ -332,7 +332,7 @@ const models = [
     { value: "nanogpt/minimax-m3", name: "MiniMax M3 (NanoGPT)    │ CTX: 512,000  │ OUT:  65,536" },
     { value: "nanogpt/deepseek-v4-pro", name: "DeepSeek V4 Pro (Nano)  │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nanogpt/deepseek-v4-flash", name: "DeepSeek V4 Flash(Nano) │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "nanogpt/glm-5.2", name: "GLM-5.2 (NanoGPT)       │ CTX: 200,000  │ OUT: 131,072" },
+    { value: "nanogpt/glm-5.2", name: "GLM-5.2 (NanoGPT)       │ CTX: 1,000,000 │ OUT: 131,072" },
     { value: "nanogpt/glm-5.1", name: "GLM-5.1 (NanoGPT)       │ CTX: 200,000  │ OUT: 131,072" },
     { value: "nanogpt/mimo-v2.5-pro", name: "MiMo V2.5 Pro (NanoGPT) │ CTX: 1,048,576 │ OUT: 131,072" },
     { value: "nanogpt/kimi-k2.6", name: "Kimi K2.6 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
