@@ -303,6 +303,10 @@ const models = [
     { value: "glm-5-turbo", name: "GLM-5-Turbo (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-4.7", name: "GLM-4.7 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-4.7", name: "GLM-4.7 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI Dir) │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI Dir) │ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-4.5-air", name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
     // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────────────
@@ -310,6 +314,8 @@ const models = [
     { value: "cc/glm-5.1", name: "GLM-5.1 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-5-turbo", name: "GLM-5-Turbo (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-4.7", name: "GLM-4.7 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.7-flash", name: "GLM-4.7-Flash (Claude) │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.5-flash", name: "GLM-4.5-Flash (Claude) │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-4.5-air", name: "GLM-4.5-Air (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
     // ── XiaomiMimo Custom API ────────────────────────────────────────────────
     { value: "xiaomi/claude-3-5-sonnet", name: "Xiaomi Claude 3.5 Sonnet│ CTX: 200,000 │ OUT:   8,192" },
