@@ -114,6 +114,7 @@ const i18n = {
         deepseektui: '🔮 DeepSeek TUI',
         qwencode: '🌐 Qwen Code',
         picode: '🥧 Pi Code',
+        ehcode: '🧩 EH Code (نواة OpenCode محلية)',
         effortPrompt: '🧠 مستوى التفكير — z.ai GLM فيه 3 حالات فعلية فقط: None / High / Max:',
         effortDefault: '⚪ افتراضي (بدون تحديد — GLM-5.2 افتراضه أصلاً Max)',
         effortSet: (e) => `✅ مستوى التفكير: ${e}`,
@@ -218,6 +219,7 @@ const i18n = {
         deepseektui: '🔮 DeepSeek TUI',
         qwencode: '🌐 Qwen Code',
         picode: '🥧 Pi Code',
+        ehcode: '🧩 EH Code (local OpenCode core)',
         effortPrompt: '🧠 Reasoning effort — z.ai GLM has only 3 real states: None / High / Max:',
         effortDefault: '⚪ Default (leave unset — GLM-5.2 already defaults to Max)',
         effortSet: (e) => `✅ Reasoning effort: ${e}`,
@@ -381,6 +383,19 @@ const models = [
 
 // ==================== Tool Installation Map ====================
 const isWin = os.platform() === 'win32';
+
+// ── EH Code (Elissar Hiba Code) — نواة OpenCode محلية مبنية كـ exe مستقل ──
+// التنصيب يجرّب بالترتيب: (1) نسخة محلية → (2) رابط مباشر → (3) GitHub Release.
+// 1) نسخة محلية (الطريق السريع لصاحب البناء) — عدّل المسار إذا نقلت مجلد dist-ehcode:
+const EHCODE_DIST_DIR = 'C:/Users/Abdalgani/Desktop/alissar/ehcode/dist-ehcode';
+// 2) لمن يشغّل setup من GitHub بدون النسخة المحلية: رابط مباشر لتحميل ehcode.exe.
+//    مستضاف على Cloudflare R2 (bucket عام). التحديثات تُرفع لنفس المفتاح ehcode/ehcode.exe
+//    فيبقى هذا الرابط ثابتاً (انظر AGENTS.md). اتركه فارغاً '' لتعطيل التحميل بالرابط.
+const EHCODE_DOWNLOAD_URL = 'https://pub-f2c0b43b09ea4983a05bdb7998fafdf3.r2.dev/ehcode/ehcode.exe';
+// 3) بديل عن الرابط: مستودع GitHub فيه أحدث Release باسم asset = ehcode.exe.
+//    اتركه فارغاً '' لتعطيله. مثال: 'Abdalgani/ehcode'
+const EHCODE_RELEASE_REPO = '';
+
 const TOOL_INSTALL_MAP = {
     OpenCode: {
         exeName: 'opencode',
@@ -556,6 +571,17 @@ const TOOL_INSTALL_MAP = {
         manual: '  npm install -g @mariozechner/pi-coding-agent',
         configFormat: 'json',
     },
+    EHCode: {
+        // نواة OpenCode محلية كـ exe مستقل — يتولّى التنصيب installEHCode():
+        // نسخة محلية من EHCODE_DIST_DIR، وإلا تحميل من EHCODE_DOWNLOAD_URL / EHCODE_RELEASE_REPO.
+        exeName: 'ehcode',
+        localExe: true,
+        methods: [{ label: 'local/download', cmd: '' }],
+        manual: isWin
+            ? `  ضع ehcode.exe في ${EHCODE_DIST_DIR}\n  # أو عيّن EHCODE_DOWNLOAD_URL أو EHCODE_RELEASE_REPO في setup.js`
+            : '  EH Code is a Windows-only build.',
+        configFormat: 'json',
+    },
 };
 async function runCommand(command) {
     try {
@@ -591,6 +617,7 @@ function checkInstalled(command) {
                 path.join(os.homedir(), '.local', 'bin', command),
                 path.join(os.homedir(), '.cargo', 'bin', `${command}.exe`),
                 path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', '**', 'Scripts', `${command}.exe`),
+                path.join(process.env.LOCALAPPDATA || '', 'EHCode', `${command}.exe`),
             ]
             : [
                 path.join(os.homedir(), '.local', 'bin', command),
@@ -1097,11 +1124,65 @@ function ensureNodeNpm() {
 }
 
 // ==================== Smart Tool Installer ====================
+// EH Code installer: نسخة محلية (سريع) → تحميل من رابط/Release (لمستخدمي GitHub) → رسالة واضحة.
+async function installEHCode() {
+    if (!isWin) {
+        console.log(chalk.red('❌ EH Code is a Windows-only standalone build.'));
+        return false;
+    }
+    const targetDir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'EHCode');
+    const targetExe = path.join(targetDir, 'ehcode.exe');
+    if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
+
+    // (1) نسخة محلية — الطريق السريع لصاحب البناء
+    const localExe = path.join(EHCODE_DIST_DIR, 'ehcode.exe');
+    if (existsSync(localExe)) {
+        console.log(chalk.cyan('📦 Copying EH Code from local build...'));
+        fs.copyFileSync(localExe, targetExe);
+        console.log(chalk.green(`✅ EH Code → ${targetExe}`));
+    } else {
+        // (2) رابط مباشر → (3) أحدث GitHub Release asset = ehcode.exe
+        let url = EHCODE_DOWNLOAD_URL;
+        if (!url && EHCODE_RELEASE_REPO) {
+            const info = await getLatestReleaseAsset(EHCODE_RELEASE_REPO, 'ehcode.exe');
+            if (info) url = info.browserDownloadUrl;
+        }
+        if (!url) {
+            console.log(chalk.red('❌ EH Code: لا توجد نسخة محلية ولا رابط تحميل.'));
+            console.log(chalk.cyan(`   • ضع ehcode.exe في: ${EHCODE_DIST_DIR}`));
+            console.log(chalk.cyan('   • أو عيّن EHCODE_DOWNLOAD_URL (رابط مباشر) أو EHCODE_RELEASE_REPO (GitHub Release) في setup.js'));
+            return false;
+        }
+        console.log(chalk.cyan(`⬇️ Downloading EH Code (~156MB) from:\n   ${url}`));
+        try {
+            await downloadFile(url, targetExe);
+            console.log(chalk.green(`✅ EH Code downloaded → ${targetExe}`));
+        } catch (e) {
+            console.log(chalk.red(`❌ EH Code download failed: ${e.message}`));
+            try { rmSync(targetExe, { force: true }); } catch (_) { }
+            return false;
+        }
+    }
+
+    // إضافة %LOCALAPPDATA%\EHCode للـ PATH (المسار يُحسب داخل PowerShell لتفادي مشاكل الـ escaping)
+    try {
+        execSync(`powershell -NoProfile -Command "$t=Join-Path $env:LOCALAPPDATA 'EHCode'; $p=[Environment]::GetEnvironmentVariable('Path','User'); $kept=(($p -split ';') | Where-Object { $_ -and ($_ -ne $t) }); [Environment]::SetEnvironmentVariable('Path', (($kept -join ';')+';'+$t),'User')"`, { stdio: 'ignore' });
+        console.log(chalk.green('✅ Added to PATH (open a NEW terminal to use `ehcode`).'));
+    } catch (_) {
+        console.log(chalk.yellow('⚠️ Could not update PATH automatically. Add %LOCALAPPDATA%\\EHCode manually.'));
+    }
+    return true;
+}
+
 async function installTool(toolName) {
     const map = TOOL_INSTALL_MAP[toolName];
     if (!map) {
         console.log(chalk.red(`Unknown tool: ${toolName}`));
         return false;
+    }
+
+    if (toolName === 'EHCode') {
+        return await installEHCode();
     }
 
     for (let i = 0; i < map.methods.length; i++) {
@@ -1208,7 +1289,14 @@ async function launchAfterSetup(toolName, exeName) {
     try {
         // spawn in foreground so the user gets the full interactive session
         const { spawnSync } = await import('child_process');
-        spawnSync(exeName, [], { stdio: 'inherit', shell: true });
+        // EH Code يُنصَّب في %LOCALAPPDATA%\EHCode ويُحدّث الـ PATH، لكن PATH الجديد لا يكون
+        // نشطاً في هذه الجلسة بعد — فنشغّله بالمسار الكامل لضمان عمله فوراً.
+        let launchCmd = exeName;
+        if (toolName === 'EHCode') {
+            const ehExe = path.join(process.env.LOCALAPPDATA || '', 'EHCode', 'ehcode.exe');
+            if (fs.existsSync(ehExe)) launchCmd = `"${ehExe}"`;
+        }
+        spawnSync(launchCmd, [], { stdio: 'inherit', shell: true });
     } catch (e) {
         console.error(chalk.red(t('launchFailed', toolName, e.message)));
     }
@@ -1356,17 +1444,20 @@ async function configureTool(toolName) {
     }
 
     // === Reasoning Effort Selection (OpenCode / KiloCLI / Hermes) ===
-    if (['OpenCode', 'KiloCLI', 'Hermes'].includes(toolName)) {
+    if (['OpenCode', 'KiloCLI', 'Hermes', 'EHCode'].includes(toolName)) {
         selectedEffort = await pickReasoningEffort();
         if (selectedEffort) console.log(chalk.green(t('effortSet', selectedEffort)));
     }
 
     console.log(chalk.yellow(t('applying')));
 
-    if (toolName === 'OpenCode' || toolName === 'KiloCLI') {
-        const folderName = exeName === 'kilo' ? 'kilo' : 'opencode';
+    if (toolName === 'OpenCode' || toolName === 'KiloCLI' || toolName === 'EHCode') {
+        // EH Code = نواة OpenCode: نفس صيغة opencode.json بالضبط، بس بمجلد ehcode/
+        // (وبترجع ehcode تلقائياً لـ ~/.config/opencode لو مجلدها مش موجود).
+        const folderName = toolName === 'KiloCLI' ? 'kilo' : (toolName === 'EHCode' ? 'ehcode' : 'opencode');
+        const configFileName = toolName === 'KiloCLI' ? 'kilo.json' : 'opencode.json';
         const configDir = path.join(os.homedir(), '.config', folderName);
-        const configFile = path.join(configDir, `${folderName}.json`);
+        const configFile = path.join(configDir, configFileName);
 
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
 
@@ -2163,6 +2254,7 @@ async function main() {
                 { name: t('deepseektui'), value: 'DeepSeekTUI' },
                 { name: t('qwencode'), value: 'QwenCode' },
                 { name: t('picode'), value: 'PiCode' },
+                { name: t('ehcode'), value: 'EHCode' },
                 { name: t('exitOption'), value: 'exit' }
             ]
         });
