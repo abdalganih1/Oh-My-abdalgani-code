@@ -38,6 +38,20 @@ Oh-My-abdalgani-code/
 ## 🔗 ملاحظات البيئة
 - الأداة مصممة للعمل على أنظمة متعددة مع تركيز خاص على بيئة Windows التي تدعم Node.js.
 
+## 🤖 الوضع غير التفاعلي (للوكلاء — بدون أسئلة)
+
+`setup.js` يدعم تشغيلاً headless. لا يطرح أي سؤال ولا يشغّل TUI:
+
+```bash
+node setup.js --list-tools          # أسماء الأدوات المدعومة
+node setup.js --list-models         # كل المعرّفات (+ نماذج البوابة الحيّة)
+node setup.js --tool <Name> --model <id> --effort <none|high|xhigh> --api-key <key>
+```
+
+- يُفعّل تلقائياً عند تمرير `--tool`. المفتاح من `--api-key` أو `ABDALGANI_API_KEY` أو مفتاح محفوظ.
+- منطق الكود: `configureTool(toolName, { nonInteractive, model, effort, apiKey })` — الأسئلة محروسة بـ `!nonInteractive`، و`launchAfterSetup` يتخطّى التشغيل في هذا الوضع.
+- **للوكيل:** لا تخمّن معرّفات النماذج — استخرجها من `--list-models`. ولا تخترع أحجام سياق (راجع بروتوكول `projects/LiteLLMGateway/Agent.md`).
+
 ## 🧩 توزيع EH Code (ehcode) عبر Cloudflare R2
 
 - EH Code = نواة OpenCode مبنية كـ `ehcode.exe` مستقل (~150MB) — **لا يُرفع داخل الريبو** (كبير جداً).

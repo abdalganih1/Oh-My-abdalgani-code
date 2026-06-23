@@ -1240,7 +1240,8 @@ async function installTool(toolName) {
 }
 
 // ==================== Launch After Setup ====================
-async function launchAfterSetup(toolName, exeName) {
+async function launchAfterSetup(toolName, exeName, opts = {}) {
+    if (opts.nonInteractive) return; // headless setup never launches an interactive session
     const map = TOOL_INSTALL_MAP[toolName];
 
     // On Windows: try WSL for tools that need Unix (termios etc.)
@@ -1324,7 +1325,8 @@ async function pickReasoningEffort() {
     });
 }
 
-async function configureTool(toolName) {
+async function configureTool(toolName, opts = {}) {
+    const nonInteractive = opts.nonInteractive === true;
     console.log(chalk.cyan(t('configuringTool', toolName)));
 
     const map = TOOL_INSTALL_MAP[toolName];
@@ -1342,23 +1344,33 @@ async function configureTool(toolName) {
     }
 
     let apiKey = null;
-    const existingKey = findExistingApiKey();
-    if (existingKey) {
-        const useExisting = await select({
-            message: t('foundExistingKey'),
-            choices: [
-                { name: t('useExistingKeyYes'), value: true },
-                { name: t('useExistingKeyNo'), value: false }
-            ]
-        });
-        if (useExisting) {
-            apiKey = existingKey;
+    if (nonInteractive) {
+        // Headless: key from --api-key / ABDALGANI_API_KEY / saved config — no prompt.
+        apiKey = opts.apiKey || process.env.ABDALGANI_API_KEY || findExistingApiKey();
+        if (!apiKey) {
+            console.log(chalk.red('❌ Non-interactive: no API key. Pass --api-key=<key> or set ABDALGANI_API_KEY env.'));
+            return;
         }
-    }
+        if (opts.apiKey) saveGlobalApiKey(opts.apiKey);
+    } else {
+        const existingKey = findExistingApiKey();
+        if (existingKey) {
+            const useExisting = await select({
+                message: t('foundExistingKey'),
+                choices: [
+                    { name: t('useExistingKeyYes'), value: true },
+                    { name: t('useExistingKeyNo'), value: false }
+                ]
+            });
+            if (useExisting) {
+                apiKey = existingKey;
+            }
+        }
 
-    if (!apiKey) {
-        apiKey = await input({ message: t('enterApiKey') });
-        saveGlobalApiKey(apiKey);
+        if (!apiKey) {
+            apiKey = await input({ message: t('enterApiKey') });
+            saveGlobalApiKey(apiKey);
+        }
     }
 
     // === الدقة والتحديث التلقائي للنماذج من الـ API (Dynamic Model Fetching) ===
@@ -1388,14 +1400,15 @@ async function configureTool(toolName) {
     }
 
     // === Model Selection: ClaudeCode بثلاثة أسئلة، OpenClaw سؤال واحد، OpenCode/Kilo تلقائياً ===
-    let selectedModel = DEFAULT_MODEL;
-    let selectedEffort = ''; // Reasoning effort (OpenCode/KiloCLI/Hermes); '' = leave provider default
-    let claudeOpus = 'cc/glm-5.1';
+    let selectedModel = (nonInteractive && opts.model) ? opts.model : DEFAULT_MODEL;
+    let selectedEffort = nonInteractive ? (opts.effort || '') : ''; // Reasoning effort; '' = provider default
+    let claudeOpus = (nonInteractive && opts.model) ? opts.model : 'cc/glm-5.1';
     let claudeSonnet = 'cc/glm-5-turbo';
     let claudeHaiku = 'cc/glm-4.7';
+    if (nonInteractive) console.log(chalk.green(`▶ Headless: model=${selectedModel}${selectedEffort ? ', effort=' + selectedEffort : ''}`));
 
-    // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي ===
-    if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode', 'PiCode'].includes(toolName)) {
+    // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي (تفاعلي فقط) ===
+    if (!nonInteractive && ['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode', 'PiCode'].includes(toolName)) {
         const pickOpenClawModel = async () => {
             const chosen = await search({
                 message: t('selectToolModel', toolName),
@@ -1415,7 +1428,7 @@ async function configureTool(toolName) {
         console.log(chalk.green(t('openClawPrimarySet', selectedModel)));
     }
 
-    if (toolName === 'ClaudeCode') {
+    if (!nonInteractive && toolName === 'ClaudeCode') {
         // helper: prompt بحث لكل tier
         const pickModel = async (tierLabel, defaultVal) => {
             const chosen = await search({
@@ -1443,8 +1456,8 @@ async function configureTool(toolName) {
         selectedModel = claudeOpus; // الافتراضي = Opus
     }
 
-    // === Reasoning Effort Selection (OpenCode / KiloCLI / Hermes) ===
-    if (['OpenCode', 'KiloCLI', 'Hermes', 'EHCode'].includes(toolName)) {
+    // === Reasoning Effort Selection (OpenCode / KiloCLI / Hermes / EHCode) — تفاعلي فقط ===
+    if (!nonInteractive && ['OpenCode', 'KiloCLI', 'Hermes', 'EHCode'].includes(toolName)) {
         selectedEffort = await pickReasoningEffort();
         if (selectedEffort) console.log(chalk.green(t('effortSet', selectedEffort)));
     }
@@ -2211,11 +2224,100 @@ model = "${selectedModel}"
     }
 
     // === Launch Tool After Setup ===
-    await launchAfterSetup(toolName, exeName);
+    await launchAfterSetup(toolName, exeName, opts);
+}
+
+// ==================== CLI (non-interactive / agent mode) ====================
+// Minimal flag parser: --flag, --flag=value, --flag value, -y.
+function parseCli() {
+    const argv = process.argv.slice(2);
+    const o = { _: [] };
+    for (let i = 0; i < argv.length; i++) {
+        let a = argv[i];
+        if (a.startsWith('--')) {
+            a = a.slice(2);
+            let val = true;
+            const eq = a.indexOf('=');
+            if (eq >= 0) { val = a.slice(eq + 1); a = a.slice(0, eq); }
+            else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) { val = argv[++i]; }
+            o[a] = val;
+        } else if (a === '-y') { o['yes'] = true; }
+        else { o._.push(a); }
+    }
+    return o;
+}
+
+function printHelp() {
+    console.log(`Oh-My-abdalgani-code — AI coding-tool setup (provider: api.abdalgani.com)
+
+Interactive (humans):
+  node setup.js
+
+Non-interactive (automation / AI agents) — never launches a TUI:
+  node setup.js --tool <Tool> [--model <id>] [--effort <none|high|xhigh>] [--api-key <key>] [--lang en|ar]
+
+Flags:
+  --tool <Name>      Tool to configure (see --list-tools). Implies --non-interactive.
+  --model <id>       Primary model id (default: ${DEFAULT_MODEL}). See --list-models.
+  --effort <level>   Reasoning effort: none | high | xhigh (z.ai/OpenCode/Hermes/EHCode).
+  --api-key <key>    api.abdalgani.com key. Falls back to ABDALGANI_API_KEY env, then saved config.
+  --lang <en|ar>     UI language (default: en).
+  --non-interactive  Headless mode (also implied by --tool).
+  --list-tools       Print supported tool names, then exit.
+  --list-models      Print known + live gateway model ids, then exit.
+  --help             Show this help.
+
+Examples:
+  node setup.js --tool Hermes  --model nvidia/glm-4.7 --effort xhigh --api-key sk-xxx
+  node setup.js --tool EHCode  --model zai/glm-5.2    --effort xhigh
+  node setup.js --tool OpenCode --effort high
+  node setup.js --list-models`);
 }
 
 // ==================== Main ====================
 async function main() {
+    const cli = parseCli();
+
+    if (cli.help || cli.h) { printHelp(); return; }
+    if (cli['list-tools']) { console.log(Object.keys(TOOL_INSTALL_MAP).join('\n')); return; }
+
+    const headless = !!cli.tool || cli['non-interactive'] === true || cli.yes === true;
+
+    if (headless || cli['list-models']) {
+        lang = cli.lang === 'ar' ? 'ar' : 'en';
+        const apiKey = (typeof cli['api-key'] === 'string' ? cli['api-key'] : null) || process.env.ABDALGANI_API_KEY || findExistingApiKey();
+
+        if (cli['list-models']) {
+            if (apiKey) {
+                try {
+                    const res = await fetch('https://api.abdalgani.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } });
+                    if (res.ok) { const d = await res.json(); (d.data || []).forEach(m => { if (!models.find(x => x.value === m.id)) models.push({ value: m.id, name: m.id }); }); }
+                } catch (_) { /* offline: print the static list */ }
+            }
+            console.log(models.map(m => m.value).join('\n'));
+            return;
+        }
+
+        ensureNodeNpm();
+        if (!cli.tool || cli.tool === true) {
+            console.error('Non-interactive mode requires --tool <Name>. See --list-tools or --help.');
+            process.exit(1);
+        }
+        if (!TOOL_INSTALL_MAP[cli.tool]) {
+            console.error(`Unknown tool: "${cli.tool}". See --list-tools.`);
+            process.exit(1);
+        }
+        await configureTool(cli.tool, {
+            nonInteractive: true,
+            model: typeof cli.model === 'string' ? cli.model : undefined,
+            effort: typeof cli.effort === 'string' ? cli.effort : undefined,
+            apiKey: typeof cli['api-key'] === 'string' ? cli['api-key'] : undefined,
+        });
+        console.log(chalk.green('✅ Done (non-interactive).'));
+        return;
+    }
+
+    // ===== Interactive =====
     console.clear();
     console.log(chalk.cyan.bold('===================================================='));
     console.log(chalk.cyan.bold('      🚀 Oh-My-abdalgani-code Setup Tool 🚀'));

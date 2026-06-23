@@ -44,12 +44,54 @@ if ! command -v git &> /dev/null; then echo "جاري تثبيت Git..."; (comma
 
 ## 🤖 قسم وكلاء الذكاء الاصطناعي (AI Agents)
 
-لتنصيب الأداة برمجياً بشكل صامت للوكلاء بالاعتماد على مزود التوافق `@ai-sdk/openai-compatible`:
+أداة الإعداد تدعم **وضعاً غير تفاعلي (headless)** مصمّماً ليشغّله وكيل ذكي بدون أي تدخل بشري — لا أسئلة، ولا تشغيل واجهة TUI.
 
-**1. التنصيب التلقائي عبر One-Liner (OpenCode كمثال):**
-يقوم هذا الأمر بتثبيت المحرك وتوليد المكونات المتوافقة للحفاظ على المزودات الأخرى نشطة:
+### ⚙️ الاستخدام غير التفاعلي
+
 ```bash
-npm install -g opencode && mkdir -p ~/.opencode && echo '{"custom_providers":[{"name":"abdalgani","url":"https://api.abdalgani.com/v1","apiKey":"YOUR_KEY_HERE","type":"@ai-sdk/openai-compatible","models":["glm-5","glm-5:thinking","kimi-k2.5","nvidia/nemotron-ultra-253b","glm-5:cloud"]}],"default_model":"glm-5"}' > ~/.opencode/config.json
+# اكتشاف (للوكيل: لا تخمّن المعرّفات — اقرأها حيّة)
+node setup.js --help
+node setup.js --list-tools
+node setup.js --list-models
+
+# إعداد أداة بأمر واحد
+node setup.js --tool Hermes   --model nvidia/glm-4.7 --effort xhigh --api-key sk-xxx
+node setup.js --tool EHCode   --model zai/glm-5.2    --effort xhigh
+node setup.js --tool OpenCode --effort high
+```
+
+- **المفتاح:** `--api-key`، أو متغيّر البيئة `ABDALGANI_API_KEY`، أو مفتاح محفوظ سابقاً.
+- **`--effort`:** `none | high | xhigh` (xhigh = أقصى تفكير، موصى للبرمجة على z.ai).
+- **`--tool`** يفعّل الوضع غير التفاعلي تلقائياً. EH Code يُنزَّل تلقائياً من Cloudflare R2 (رابط ثابت).
+
+### 📩 رسالة جاهزة أرسلها لوكيلك الذكي
+
+انسخ الرسالة التالية وأعطها لأي وكيل (Claude Code / OpenCode / Hermes...) ليتولّى كل شيء بنفسه — عدّل السطر الأخير فقط:
+
+```text
+You are operating the "Oh-My-abdalgani-code" repo: a setup tool that wires AI coding CLIs
+(OpenCode, Hermes, EH Code, Pi Code, KiloCLI, Aider, Goose, Qwen Code, Codex, ...) to the
+OpenAI-compatible gateway https://api.abdalgani.com/v1 . Configure things FULLY non-interactively.
+
+Steps:
+1. cd into the repo. Run `node setup.js --list-tools` and `node setup.js --list-models`
+   to discover the exact tool names and model ids. Do NOT guess ids — read them live.
+2. Configure with (this never launches a TUI):
+     node setup.js --tool <ToolName> --model <modelId> --effort <none|high|xhigh> --api-key <KEY>
+   Use the API key I give you, or the ABDALGANI_API_KEY env var.
+3. Confirm success from stdout. If the tool isn't installed the script installs it
+   automatically (EH Code auto-downloads from Cloudflare R2).
+
+Rules (read these BEFORE editing any models or the gateway config):
+- Repo agent guide:        ./Agent.md
+- Gateway model protocol:  ../projects/LiteLLMGateway/Agent.md   (only if present locally)
+- NEVER invent a model's context-window / output size — verify from the provider's /models
+  endpoint or official docs first.
+- When adding models: sweep the provider's FULL /models list, add all relevant ones, and keep
+  setup.js `models[]` in sync. Respect reasoning-effort per provider (z.ai = none/high/max).
+- Z.ai: use the coding-plan endpoint only; never leave a dead endpoint as a fallback target.
+
+My request: <write here: tool + model + effort, e.g. "set up Hermes with nvidia/glm-4.7 at xhigh effort">
 ```
 
 نرجو لكم أفضل تجربة برمجية وأداء سلس لعمليات التكويد الشاملة! 🚀
