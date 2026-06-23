@@ -1850,11 +1850,17 @@ model = "${selectedModel}"
 
     } else if (toolName === 'Hermes') {
         // Hermes uses HERMES_HOME (set during install) — default: %LOCALAPPDATA%\hermes on Windows, ~/.hermes on Linux/Mac.
-        // CORRECT schema (per NousResearch/hermes-agent cli-config.yaml.example): an OpenAI-compatible
-        // custom endpoint is declared entirely under the top-level `model:` block with
-        // provider: "custom" + base_url + api_key. There is NO top-level `custom_providers:` key —
-        // Hermes ignores it, which is exactly why the model list never showed up before.
-        // The model picker auto-discovers the catalog from <base_url>/models (api.abdalgani.com serves /v1/models).
+        // CORRECT schema (verified against the installed hermes_cli/providers.py::resolve_custom_provider,
+        // the working on-disk config.yaml, and the official docs/configuring-models):
+        // a NAMED OpenAI-compatible endpoint is declared as an entry in the top-level `custom_providers:`
+        // LIST, and the active `model:` block points at it via provider: "custom:<name-slug>".
+        //   • The `/model` picker lists provider rows from `custom_providers[].name`, so the named
+        //     "abdalgani" provider only appears when this list entry exists.
+        //   • A bare `model.provider: "custom"` (no name) produces only an unnamed "Custom endpoint"
+        //     row — which is EXACTLY why "abdalgani" never showed up in the picker before. (The old
+        //     code here even did `delete hermesConfig.custom_providers`, removing the named entry.)
+        //   • api_key is referenced via env (${ABDALGANI_API_KEY}); the list entry's key_env points
+        //     Hermes at the same variable. Both are written to HERMES_HOME/.env below.
         const hermesHome = process.env.HERMES_HOME
             || (isWin ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'hermes') : path.join(os.homedir(), '.hermes'));
         const hermesConfigFile = path.join(hermesHome, 'config.yaml');
@@ -1868,16 +1874,39 @@ model = "${selectedModel}"
             catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
         }
 
-        // Remove the old (ignored) custom_providers block written by previous versions
-        delete hermesConfig.custom_providers;
+        // Build the named custom-provider entry "abdalgani" with the full model catalog.
+        const HERMES_PROVIDER_NAME = 'abdalgani';
+        // custom_provider_slug(): "custom:" + name.lower().replace(" ", "-")
+        const HERMES_PROVIDER_SLUG = `custom:${HERMES_PROVIDER_NAME.toLowerCase().replace(/\s+/g, '-')}`;
+        const HERMES_BASE_URL = 'https://api.abdalgani.com/v1';
 
-        // Declare the OpenAI-compatible custom endpoint under `model:`
+        const hermesModelsMap = {};
+        for (const m of models) hermesModelsMap[m.value] = {};
+
+        const abdalganiEntry = {
+            name: HERMES_PROVIDER_NAME,
+            base_url: HERMES_BASE_URL,
+            api_mode: 'chat_completions',
+            key_env: 'ABDALGANI_API_KEY',
+            discover_models: false,
+            models: hermesModelsMap,
+        };
+
+        // Preserve any other custom providers the user has; replace/insert ours by name.
+        const existingCustom = Array.isArray(hermesConfig.custom_providers) ? hermesConfig.custom_providers : [];
+        const otherCustom = existingCustom.filter(
+            (e) => e && typeof e === 'object' && (e.name || '').trim().toLowerCase() !== HERMES_PROVIDER_NAME
+        );
+        hermesConfig.custom_providers = [...otherCustom, abdalganiEntry];
+
+        // Point the active model at the named provider via "custom:<slug>".
         hermesConfig.model = {
             ...(hermesConfig.model || {}),
             default: selectedModel,
-            provider: "custom",
-            base_url: "https://api.abdalgani.com/v1",
-            api_key: apiKey,
+            provider: HERMES_PROVIDER_SLUG,
+            base_url: HERMES_BASE_URL,
+            api_mode: 'chat_completions',
+            api_key: '${ABDALGANI_API_KEY}',
         };
 
         // Reasoning effort is a global agent setting in Hermes (xhigh/high/medium/low/minimal/none)
@@ -1891,22 +1920,23 @@ model = "${selectedModel}"
         fs.writeFileSync(hermesConfigFile, yaml.dump(hermesConfig, { lineWidth: -1 }));
         console.log(chalk.green(t('writtenTo', hermesConfigFile)));
 
-        // --- Write .env: provider "custom" falls back to OPENAI_API_KEY when api_key isn't inline ---
+        // --- Write .env: key_env (ABDALGANI_API_KEY) is the variable the provider entry references ---
         let envContent = '';
         if (fs.existsSync(hermesEnvFile)) {
             envContent = fs.readFileSync(hermesEnvFile, 'utf8');
-        }
-
-        if (envContent.includes('OPENAI_API_KEY=')) {
-            envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${apiKey}`);
-        } else {
-            envContent = envContent.trimEnd() + `\nOPENAI_API_KEY=${apiKey}\n`;
         }
 
         if (envContent.includes('ABDALGANI_API_KEY=')) {
             envContent = envContent.replace(/ABDALGANI_API_KEY=.*/, `ABDALGANI_API_KEY=${apiKey}`);
         } else {
             envContent = envContent.trimEnd() + `\nABDALGANI_API_KEY=${apiKey}\n`;
+        }
+
+        // Also set OPENAI_API_KEY for backward-compat with any bare provider:"custom" fallback.
+        if (envContent.includes('OPENAI_API_KEY=')) {
+            envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${apiKey}`);
+        } else {
+            envContent = envContent.trimEnd() + `\nOPENAI_API_KEY=${apiKey}\n`;
         }
 
         fs.writeFileSync(hermesEnvFile, envContent);
