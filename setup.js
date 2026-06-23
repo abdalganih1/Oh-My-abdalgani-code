@@ -113,6 +113,10 @@ const i18n = {
         shellProfileNote: '💡 أضف هذه الأوامر إلى ملف .bashrc أو .zshrc أو PowerShell Profile لجعلها دائمة.',
         deepseektui: '🔮 DeepSeek TUI',
         qwencode: '🌐 Qwen Code',
+        picode: '🥧 Pi Code',
+        effortPrompt: '🧠 مستوى التفكير — z.ai GLM فيه 3 حالات فعلية فقط: None / High / Max:',
+        effortDefault: '⚪ افتراضي (بدون تحديد — GLM-5.2 افتراضه أصلاً Max)',
+        effortSet: (e) => `✅ مستوى التفكير: ${e}`,
         winNotSupported: (t) => `⚠️ ${t} لا يدعم التشغيل التفاعلي على Windows حالياً. الإعداد تم بنجاح — شغّله من WSL أو Linux.`,
     },
     en: {
@@ -213,6 +217,10 @@ const i18n = {
         shellProfileNote: '💡 Add these commands to your .bashrc, .zshrc, or PowerShell Profile for persistence.',
         deepseektui: '🔮 DeepSeek TUI',
         qwencode: '🌐 Qwen Code',
+        picode: '🥧 Pi Code',
+        effortPrompt: '🧠 Reasoning effort — z.ai GLM has only 3 real states: None / High / Max:',
+        effortDefault: '⚪ Default (leave unset — GLM-5.2 already defaults to Max)',
+        effortSet: (e) => `✅ Reasoning effort: ${e}`,
         winNotSupported: (t) => `⚠️ ${t} does not support interactive launch on Windows yet. Config was saved successfully — run it from WSL or Linux.`,
     }
 };
@@ -251,12 +259,19 @@ const models = [
     { value: "nvidia/deepseek-r1", name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
     { value: "nvidia/deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nvidia/deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "ds/v4-pro", name: "DeepSeek V4 Pro (API)  │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "ds/v4-flash", name: "DeepSeek V4 Flash(API) │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
+    { value: "deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "cc/deepseek-v4-pro", name: "DeepSeek V4 Pro (CC)   │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "cc/deepseek-v4-flash", name: "DeepSeek V4 Flash(CC)  │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nvidia/gpt-oss-120b", name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
+    { value: "nvidia/gpt-oss-20b", name: "GPT-OSS 20B            │ CTX: 128,000 │ OUT:  16,384" },
     { value: "nvidia/step-3.5-flash", name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
+    { value: "nvidia/step-3.7-flash", name: "Step 3.7 Flash         │ CTX: 128,000 │ OUT:  32,768" },
+    { value: "nvidia/minimax-m3", name: "MiniMax M3 (NVIDIA)     │ CTX: 1,048,576 │ OUT: 196,608" },
+    { value: "nvidia/nemotron-3-ultra-550b", name: "Nemotron 3 Ultra 550B  │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nvidia/nemotron-nano-3-30b", name: "Nemotron Nano 3 30B    │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nvidia/mistral-large-3", name: "Mistral Large 3 675B   │ CTX: 131,072 │ OUT:  32,768" },
+    { value: "nvidia/qwen3-next-80b", name: "Qwen3 Next 80B (NVIDIA) │ CTX: 262,144 │ OUT:  81,920" },
 
     // ── Gemini (via LiteLLM) ─────────────────────────────────────────────────
     { value: "gemini-3.1-pro", name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
@@ -295,28 +310,36 @@ const models = [
     { value: "deepseek-v4-flash:cloud", name: "DeepSeek V4 Flsh(DS API)│ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nemotron-3-super:cloud", name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
     // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
+    { value: "zai/glm-5", name: "GLM-5 (Z.AI Coding)     │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5", name: "GLM-5 (Z.AI codeplan)     │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.6", name: "GLM-4.6 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.6", name: "GLM-4.6 (Z.AI codeplan)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.5", name: "GLM-4.5 (Z.AI Coding)   │ CTX: 131,072 │ OUT: 131,072" },
+    { value: "glm-4.5", name: "GLM-4.5 (Z.AI codeplan)   │ CTX: 131,072 │ OUT: 131,072" },
     { value: "zai/glm-5.2", name: "GLM-5.2 (Z.AI Coding)   │ CTX: 1,000,000 │ OUT: 131,072" },
-    { value: "glm-5.2", name: "GLM-5.2 (Z.AI Direct)   │ CTX: 1,000,000 │ OUT: 131,072" },
+    { value: "glm-5.2", name: "GLM-5.2 (Z.AI codeplan)   │ CTX: 1,000,000 │ OUT: 131,072" },
     { value: "zai/glm-5.1", name: "GLM-5.1 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-5.1", name: "GLM-5.1 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5.1", name: "GLM-5.1 (Z.AI codeplan)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-5-turbo", name: "GLM-5-Turbo (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-5-turbo", name: "GLM-5-Turbo (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-5-turbo", name: "GLM-5-Turbo (Z.AI codeplan)  │ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-4.7", name: "GLM-4.7 (Z.AI Coding)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.7", name: "GLM-4.7 (Z.AI Direct)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "zai/glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI Dir) │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "zai/glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI Dir) │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.7", name: "GLM-4.7 (Z.AI codeplan)   │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI Coding)│ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI codeplan)│ CTX: 204,800 │ OUT: 131,072" },
     { value: "zai/glm-4.5-air", name: "GLM-4.5-Air (Z.AI)      │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI Dir)  │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI codeplan)  │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "zai/glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI Coding)│ CTX: 204,800 │ OUT: 131,072" },
+    { value: "glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI codeplan)│ CTX: 204,800 │ OUT: 131,072" },
     // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────────────
+    { value: "cc/glm-5", name: "GLM-5 (Claude Code)     │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.6", name: "GLM-4.6 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-5.2", name: "GLM-5.2 (Claude Code)   │ CTX: 1,000,000 │ OUT: 131,072" },
     { value: "cc/glm-5.1", name: "GLM-5.1 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-5-turbo", name: "GLM-5-Turbo (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-4.7", name: "GLM-4.7 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.7-flash", name: "GLM-4.7-Flash (Claude) │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.5-flash", name: "GLM-4.5-Flash (Claude) │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.7-flash", name: "GLM-4.7-Flash (Claude Code)│ CTX: 204,800 │ OUT: 131,072" },
     { value: "cc/glm-4.5-air", name: "GLM-4.5-Air (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
+    { value: "cc/glm-4.5-flash", name: "GLM-4.5-Flash (Claude Code)│ CTX: 204,800 │ OUT: 131,072" },
     // ── XiaomiMimo Custom API ────────────────────────────────────────────────
     { value: "xiaomi/claude-3-5-sonnet", name: "Xiaomi Claude 3.5 Sonnet│ CTX: 200,000 │ OUT:   8,192" },
     { value: "xiaomi/claude-3-5-haiku", name: "Xiaomi Claude 3.5 Haiku │ CTX: 200,000 │ OUT:   8,192" },
@@ -344,6 +367,16 @@ const models = [
     { value: "nanogpt/kimi-k2.6", name: "Kimi K2.6 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
     { value: "nanogpt/kimi-k2.5", name: "Kimi K2.5 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
     { value: "nanogpt/minimax-m2.7", name: "MiniMax M2.7 (NanoGPT)  │ CTX: 204,800  │ OUT: 196,608" },
+    { value: "nanogpt/kimi-k2.7-code", name: "Kimi K2.7 Code (NanoGPT)│ CTX: 256,000  │ OUT:  65,535" },
+    { value: "nanogpt/minimax-m2.7-turbo", name: "MiniMax M2.7 Turbo(Nano)│ CTX: 204,800  │ OUT: 196,608" },
+    { value: "nanogpt/deepseek-v3.2", name: "DeepSeek V3.2 (NanoGPT) │ CTX: 131,072  │ OUT:  32,768" },
+    { value: "nanogpt/qwen3.5-397b", name: "Qwen 3.5 397B (NanoGPT) │ CTX: 262,144  │ OUT:  81,920" },
+    { value: "nanogpt/qwen3-coder-next", name: "Qwen3 Coder Next (Nano) │ CTX: 262,144  │ OUT:  81,920" },
+    { value: "nanogpt/glm-5", name: "GLM-5 (NanoGPT)         │ CTX: 200,000  │ OUT: 131,072" },
+    { value: "nanogpt/glm-4.7", name: "GLM-4.7 (NanoGPT)       │ CTX: 200,000  │ OUT: 131,072" },
+    { value: "nanogpt/gpt-5.2-codex", name: "GPT-5.2 Codex (NanoGPT) │ CTX: 400,000  │ OUT: 128,000" },
+    { value: "nanogpt/claude-opus-4.8", name: "Claude Opus 4.8 (Nano)  │ CTX: 200,000  │ OUT:  64,000" },
+    { value: "nanogpt/grok-4.3", name: "Grok 4.3 (NanoGPT)      │ CTX: 256,000  │ OUT:  64,000" },
 ];
 
 // ==================== Tool Installation Map ====================
@@ -513,6 +546,14 @@ const TOOL_INSTALL_MAP = {
         manual: isWin
             ? '  npm install -g @qwen-code/qwen-code@latest'
             : '  bash -c "$(curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh)"\n  # or: npm i -g @qwen-code/qwen-code@latest',
+        configFormat: 'json',
+    },
+    PiCode: {
+        exeName: 'pi',
+        methods: [
+            { label: 'npm', cmd: 'npm install -g @mariozechner/pi-coding-agent' },
+        ],
+        manual: '  npm install -g @mariozechner/pi-coding-agent',
         configFormat: 'json',
     },
 };
@@ -1174,6 +1215,27 @@ async function launchAfterSetup(toolName, exeName) {
 }
 
 // ==================== Core Logic ====================
+// Reasoning effort picker — values understood by both OpenCode (options.reasoningEffort)
+// and Hermes (agent.reasoning_effort). The gateway drops the param where a model
+// doesn't support it (drop_unsupported_params: true), so it's always safe to send.
+//
+// Per z.ai docs, GLM-5.2 accepts 7 values but collapses to only 3 FUNCTIONAL states:
+//   none/minimal ⇒ None (skip thinking) · low/medium/high ⇒ High · xhigh ⇒ Max.
+//   (max is GLM-5.2's native default = deep reasoning.)
+// So we only expose the 3 real tiers, using portable values: "xhigh" is the top tier
+// accepted by both OpenCode and Hermes, and z.ai maps it to its native Max.
+async function pickReasoningEffort() {
+    return await select({
+        message: t('effortPrompt'),
+        choices: [
+            { name: t('effortDefault'), value: '' },
+            { name: 'None — بدون تفكير / skip thinking', value: 'none' },
+            { name: 'High — تفكير معزّز / enhanced reasoning', value: 'high' },
+            { name: 'Max  — تفكير عميق / deep (z.ai الافتراضي · موصى به للبرمجة)', value: 'xhigh' },
+        ],
+    });
+}
+
 async function configureTool(toolName) {
     console.log(chalk.cyan(t('configuringTool', toolName)));
 
@@ -1239,12 +1301,13 @@ async function configureTool(toolName) {
 
     // === Model Selection: ClaudeCode بثلاثة أسئلة، OpenClaw سؤال واحد، OpenCode/Kilo تلقائياً ===
     let selectedModel = DEFAULT_MODEL;
+    let selectedEffort = ''; // Reasoning effort (OpenCode/KiloCLI/Hermes); '' = leave provider default
     let claudeOpus = 'cc/glm-5.1';
     let claudeSonnet = 'cc/glm-5-turbo';
     let claudeHaiku = 'cc/glm-4.7';
 
     // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي ===
-    if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode'].includes(toolName)) {
+    if (['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode', 'PiCode'].includes(toolName)) {
         const pickOpenClawModel = async () => {
             const chosen = await search({
                 message: t('selectToolModel', toolName),
@@ -1292,6 +1355,12 @@ async function configureTool(toolName) {
         selectedModel = claudeOpus; // الافتراضي = Opus
     }
 
+    // === Reasoning Effort Selection (OpenCode / KiloCLI / Hermes) ===
+    if (['OpenCode', 'KiloCLI', 'Hermes'].includes(toolName)) {
+        selectedEffort = await pickReasoningEffort();
+        if (selectedEffort) console.log(chalk.green(t('effortSet', selectedEffort)));
+    }
+
     console.log(chalk.yellow(t('applying')));
 
     if (toolName === 'OpenCode' || toolName === 'KiloCLI') {
@@ -1333,8 +1402,8 @@ async function configureTool(toolName) {
             "nvidia/deepseek-r1": { name: "DeepSeek R1 (NVIDIA)", limit: { context: 163840, output: 32768 } },
             "nvidia/deepseek-v4-pro": { name: "DeepSeek V4 Pro (NVIDIA)", limit: { context: 1048576, output: 384000 } },
             "nvidia/deepseek-v4-flash": { name: "DeepSeek V4 Flash (NVIDIA)", limit: { context: 1048576, output: 384000 } },
-            "ds/v4-pro": { name: "DeepSeek V4 Pro (API)", limit: { context: 1048576, output: 384000 } },
-            "ds/v4-flash": { name: "DeepSeek V4 Flash (API)", limit: { context: 1048576, output: 384000 } },
+            "deepseek-v4-pro": { name: "DeepSeek V4 Pro", limit: { context: 1048576, output: 384000 } },
+            "deepseek-v4-flash": { name: "DeepSeek V4 Flash", limit: { context: 1048576, output: 384000 } },
             "cc/deepseek-v4-pro": { name: "DeepSeek V4 Pro (CC)", limit: { context: 1048576, output: 384000 } },
             "cc/deepseek-v4-flash": { name: "DeepSeek V4 Flash (CC)", limit: { context: 1048576, output: 384000 } },
             "nvidia/gpt-oss-120b": { name: "GPT-OSS 120B (NVIDIA)", limit: { context: 128000, output: 16384 } },
@@ -1383,18 +1452,24 @@ async function configureTool(toolName) {
             "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
             // ── Z.AI Coding Plan ─────────────────────────────────────────────
             "zai/glm-5.1": { name: "GLM-5.1 (Z.AI Coding Plan)", limit: { context: 204800, output: 131072 } },
-            "glm-5.1": { name: "GLM-5.1 (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "glm-5.1": { name: "GLM-5.1 (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
             "zai/glm-5-turbo": { name: "GLM-5-Turbo (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
-            "glm-5-turbo": { name: "GLM-5-Turbo (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "glm-5-turbo": { name: "GLM-5-Turbo (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
             "zai/glm-4.7": { name: "GLM-4.7 (Z.AI Coding Plan)", limit: { context: 204800, output: 131072 } },
-            "glm-4.7": { name: "GLM-4.7 (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "glm-4.7": { name: "GLM-4.7 (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
+            "zai/glm-4.7-flash": { name: "GLM-4.7-Flash (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
+            "glm-4.7-flash": { name: "GLM-4.7-Flash (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
             "zai/glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
-            "glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Direct)", limit: { context: 204800, output: 131072 } },
+            "glm-4.5-air": { name: "GLM-4.5-Air (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
+            "zai/glm-4.5-flash": { name: "GLM-4.5-Flash (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
+            "glm-4.5-flash": { name: "GLM-4.5-Flash (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
             // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────
             "cc/glm-5.1": { name: "GLM-5.1 (Claude Code)", limit: { context: 204800, output: 131072 } },
             "cc/glm-5-turbo": { name: "GLM-5-Turbo (Claude Code)", limit: { context: 204800, output: 131072 } },
             "cc/glm-4.7": { name: "GLM-4.7 (Claude Code)", limit: { context: 204800, output: 131072 } },
+            "cc/glm-4.7-flash": { name: "GLM-4.7-Flash (Claude Code)", limit: { context: 204800, output: 131072 } },
             "cc/glm-4.5-air": { name: "GLM-4.5-Air (Claude Code)", limit: { context: 204800, output: 131072 } },
+            "cc/glm-4.5-flash": { name: "GLM-4.5-Flash (Claude Code)", limit: { context: 204800, output: 131072 } },
             // ── XiaomiMimo Custom API ────────────────────────────────────────
             "xiaomi/claude-3-5-sonnet": { name: "Xiaomi Claude 3.5 Sonnet", limit: { context: 200000, output: 8192 } },
             "xiaomi/claude-3-5-haiku": { name: "Xiaomi Claude 3.5 Haiku", limit: { context: 200000, output: 8192 } },
@@ -1436,6 +1511,16 @@ async function configureTool(toolName) {
                 };
             }
         });
+
+        // طبّق مستوى التفكير المختار على كل النماذج (الـ gateway يُسقطه عن اللي لا يدعمه)
+        if (selectedEffort) {
+            for (const k of Object.keys(providerModels)) {
+                providerModels[k].options = {
+                    ...(providerModels[k].options || {}),
+                    reasoningEffort: selectedEffort,
+                };
+            }
+        }
 
         // أضف/حدّث مزود abdalgani بدون المساس بالمزودين الآخرين (litellm, google, ollama...)
         config.provider['abdalgani'] = {
@@ -1660,8 +1745,12 @@ model = "${selectedModel}"
         console.log(chalk.green(t('writtenTo', zcFile)));
 
     } else if (toolName === 'Hermes') {
-        // Hermes uses HERMES_HOME (set during install) — default: %LOCALAPPDATA%\hermes on Windows, ~/.hermes on Linux/Mac
-        // Recommended config: named custom_providers (see https://hermes-agent.nousresearch.com/docs/integrations/providers)
+        // Hermes uses HERMES_HOME (set during install) — default: %LOCALAPPDATA%\hermes on Windows, ~/.hermes on Linux/Mac.
+        // CORRECT schema (per NousResearch/hermes-agent cli-config.yaml.example): an OpenAI-compatible
+        // custom endpoint is declared entirely under the top-level `model:` block with
+        // provider: "custom" + base_url + api_key. There is NO top-level `custom_providers:` key —
+        // Hermes ignores it, which is exactly why the model list never showed up before.
+        // The model picker auto-discovers the catalog from <base_url>/models (api.abdalgani.com serves /v1/models).
         const hermesHome = process.env.HERMES_HOME
             || (isWin ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'hermes') : path.join(os.homedir(), '.hermes'));
         const hermesConfigFile = path.join(hermesHome, 'config.yaml');
@@ -1669,69 +1758,51 @@ model = "${selectedModel}"
 
         if (!fs.existsSync(hermesHome)) fs.mkdirSync(hermesHome, { recursive: true });
 
-        // --- Write config.yaml: use named custom_providers + custom:abdalgani provider ---
         let hermesConfig = {};
         if (fs.existsSync(hermesConfigFile)) {
             try { hermesConfig = yaml.load(fs.readFileSync(hermesConfigFile, 'utf8')) || {}; }
             catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
         }
 
-        // Add or update the abdalgani named custom provider
-        // models dictionary: lists available models so they appear in Hermes /mod picker
-        // Keys must match the model IDs accepted by api.abdalgani.com/v1
-        const abdalganiModels = {};
-        models.forEach(m => { abdalganiModels[m.value] = {}; });
+        // Remove the old (ignored) custom_providers block written by previous versions
+        delete hermesConfig.custom_providers;
 
-        const abdalganiProvider = {
-            name: "abdalgani",
-            base_url: "https://api.abdalgani.com/v1",
-            key_env: "ABDALGANI_API_KEY",
-            api_mode: "chat_completions",
-            models: abdalganiModels,
-        };
-
-        if (!hermesConfig.custom_providers || !Array.isArray(hermesConfig.custom_providers)) {
-            hermesConfig.custom_providers = [abdalganiProvider];
-        } else {
-            // Replace existing abdalgani provider or add new one
-            const idx = hermesConfig.custom_providers.findIndex(p => p.name === 'abdalgani');
-            if (idx >= 0) {
-                hermesConfig.custom_providers[idx] = abdalganiProvider;
-            } else {
-                hermesConfig.custom_providers.push(abdalganiProvider);
-            }
-        }
-
-        // Set model to use the named custom provider
+        // Declare the OpenAI-compatible custom endpoint under `model:`
         hermesConfig.model = {
             ...(hermesConfig.model || {}),
             default: selectedModel,
-            provider: "custom:abdalgani",
+            provider: "custom",
+            base_url: "https://api.abdalgani.com/v1",
+            api_key: apiKey,
         };
-        // Remove old base_url from model section (now in custom_providers)
-        delete hermesConfig.model.base_url;
+
+        // Reasoning effort is a global agent setting in Hermes (xhigh/high/medium/low/minimal/none)
+        if (selectedEffort) {
+            hermesConfig.agent = {
+                ...(hermesConfig.agent || {}),
+                reasoning_effort: selectedEffort,
+            };
+        }
 
         fs.writeFileSync(hermesConfigFile, yaml.dump(hermesConfig, { lineWidth: -1 }));
         console.log(chalk.green(t('writtenTo', hermesConfigFile)));
 
-        // --- Write .env: set ABDALGANI_API_KEY for the named custom provider ---
+        // --- Write .env: provider "custom" falls back to OPENAI_API_KEY when api_key isn't inline ---
         let envContent = '';
         if (fs.existsSync(hermesEnvFile)) {
             envContent = fs.readFileSync(hermesEnvFile, 'utf8');
         }
 
-        // Update or add ABDALGANI_API_KEY (matches key_env in custom_providers)
-        if (envContent.includes('ABDALGANI_API_KEY=')) {
-            envContent = envContent.replace(/ABDALGANI_API_KEY=.*/, `ABDALGANI_API_KEY=${apiKey}`);
-        } else {
-            envContent = envContent.trimEnd() + `\nABDALGANI_API_KEY=${apiKey}\n`;
-        }
-
-        // Also update OPENAI_API_KEY for backward compatibility (Hermes may read this for some provider modes)
         if (envContent.includes('OPENAI_API_KEY=')) {
             envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${apiKey}`);
         } else {
             envContent = envContent.trimEnd() + `\nOPENAI_API_KEY=${apiKey}\n`;
+        }
+
+        if (envContent.includes('ABDALGANI_API_KEY=')) {
+            envContent = envContent.replace(/ABDALGANI_API_KEY=.*/, `ABDALGANI_API_KEY=${apiKey}`);
+        } else {
+            envContent = envContent.trimEnd() + `\nABDALGANI_API_KEY=${apiKey}\n`;
         }
 
         fs.writeFileSync(hermesEnvFile, envContent);
@@ -2008,6 +2079,44 @@ model = "${selectedModel}"
 
         fs.writeFileSync(qwenFile, JSON.stringify(qwenConfig, null, 2));
         console.log(chalk.green(t('writtenTo', qwenFile)));
+
+    } else if (toolName === 'PiCode') {
+        // Pi coding agent reads ~/.pi/agent/models.json (override dir via PI_CODING_AGENT_DIR).
+        // Custom OpenAI-compatible provider = a keyed object: { name, baseUrl, apiKey, api, models[] }.
+        // Listing models here is what makes them appear in `pi --list-models` / the /model picker.
+        const piDir = process.env.PI_CODING_AGENT_DIR
+            || path.join(os.homedir(), '.pi', 'agent');
+        const piFile = path.join(piDir, 'models.json');
+        if (!fs.existsSync(piDir)) fs.mkdirSync(piDir, { recursive: true });
+
+        let piConfig = {};
+        if (fs.existsSync(piFile)) {
+            try { piConfig = JSON.parse(fs.readFileSync(piFile, 'utf8')); }
+            catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
+        }
+
+        // Build the full catalog so every model shows up in the picker
+        const piModels = models.map(m => ({
+            id: m.value,
+            name: (m.name.split('│')[0] || m.value).trim(),
+            reasoning: true,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200000,
+            maxTokens: 32000,
+        }));
+
+        piConfig['abdalgani'] = {
+            name: "Abdalgani Gateway",
+            baseUrl: "https://api.abdalgani.com/v1",
+            apiKey: apiKey,
+            api: "openai-completions",
+            models: piModels,
+        };
+
+        fs.writeFileSync(piFile, JSON.stringify(piConfig, null, 2));
+        console.log(chalk.green(t('writtenTo', piFile)));
+        console.log(chalk.gray(`💡 pi --model abdalgani/${selectedModel}`));
     }
 
     // === Launch Tool After Setup ===
@@ -2053,6 +2162,7 @@ async function main() {
                 { name: t('goose'), value: 'Goose' },
                 { name: t('deepseektui'), value: 'DeepSeekTUI' },
                 { name: t('qwencode'), value: 'QwenCode' },
+                { name: t('picode'), value: 'PiCode' },
                 { name: t('exitOption'), value: 'exit' }
             ]
         });
