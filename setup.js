@@ -234,8 +234,35 @@ function t(key, ...args) {
 }
 
 // ==================== Models ====================
-// النموذج الافتراضي الصامت - يُستخدم لـ OpenCode/KiloCLI تلقائياً
-const DEFAULT_MODEL = 'nvidia/glm-4.7';
+// النموذج الافتراضي الصامت - يُستخدم لـ OpenCode/KiloCLI تلقائياً.
+// glm-5.2 (مجرّد) = z.ai coding plan الحيّ. (سابقاً nvidia/glm-4.7 — غير معرّف في
+// البوّابة و NVIDIA غير منزّل، فكان يفشل.)
+const DEFAULT_MODEL = 'glm-5.2';
+
+// ── علامة المزوّد للـ picker ──
+// كل اسم نموذج في البوّابة بحمل المزوّد عبر بادئته (nvidia/ · zai/ · nanogpt/ · cc/ ·
+// لاحقة :cloud · والمجرّد glm-* = z.ai). نشتقّ منها وسماً واضحاً [Provider] نعرضه
+// أمام الاسم وقت البحث حتى ما تختلط النسخ المكرّرة (glm-5.2 على zai مقابل nanogpt...).
+function providerOf(value) {
+    const prefixes = {
+        'nvidia/': 'NVIDIA', 'nanogpt/': 'NanoGPT', 'zai/': 'Z.AI',
+        'cc/': 'Claude Code', 'xiaomi/': 'Xiaomi', 'moonshotai/': 'Moonshot',
+        'minimaxai/': 'MiniMax', 'qwen/': 'NVIDIA',
+    };
+    for (const p in prefixes) if (value.startsWith(p)) return prefixes[p];
+    if (value.endsWith(':cloud')) return value.startsWith('deepseek-v4') ? 'DeepSeek' : 'Ollama(dead)';
+    if (/^(gemini|veo|lyria|gemma)/.test(value)) return 'Google';
+    if (/^mimo-/.test(value)) return 'Xiaomi';
+    if (/^glm-/.test(value)) return 'Z.AI';
+    if (/^deepseek-v4/.test(value)) return 'NVIDIA';
+    if (value === 'qwen' || /^qwen3/.test(value)) return 'NVIDIA';
+    return 'abdalgani';
+}
+function tagModels(list) {
+    return list.map(m => (m && m.value && m.name)
+        ? { value: m.value, name: `[${providerOf(m.value)}] ${m.name}` }
+        : m);
+}
 
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
 const models = [
@@ -296,21 +323,10 @@ const models = [
     { value: "lyria-3-pro-preview", name: "Lyria 3 Pro Audio       │ CTX:     8,192 │ OUT:  4,096" },
     { value: "gemma-4-31b-it", name: "Gemma 4 31B IT          │ CTX:   131,072 │ OUT: 32,768" },
     // ── abdalgani (ollama) - ابحث بكلمة ollama ──────────────────────────────
-    { value: "glm-5.2:cloud", name: "GLM-5.2 (Ollama Cloud)  │ CTX: 1,000,000 │ OUT: 131,072" },
-    { value: "glm-5.1:cloud", name: "GLM-5.1 (Ollama Cloud)  │ CTX: 200,000 │ OUT: 131,072" },
-    { value: "glm-5:cloud", name: "GLM-5 (Ollama Cloud)    │ CTX: 202,752 │ OUT: 131,072" },
     { value: "gemma4", name: "Gemma 4 (Ollama)        │ CTX: 128,000 │ OUT:  32,768" },
     { value: "qwen3.5", name: "Qwen 3.5 (Ollama)       │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "minimax-m2.7:cloud", name: "MiniMax M2.7 (Ollama)   │ CTX: 196,608 │ OUT: 196,608" },
-    { value: "kimi-k2.6:cloud", name: "Kimi K2.6 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "kimi-k2.7-code:cloud", name: "Kimi K2.7 Code (Ollama) │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "minimax-m3:cloud", name: "MiniMax M3 (Ollama)     │ CTX: 1,048,576 │ OUT: 196,608" },
-    { value: "kimi-k2.5:cloud", name: "Kimi K2.5 (Ollama)      │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "glm-4.7:cloud", name: "GLM-4.7 (Ollama)        │ CTX: 200,000 │ OUT: 128,000" },
-    { value: "deepseek-v3.2:cloud", name: "DeepSeek V3.2 (Ollama)  │ CTX: 131,072 │ OUT:  32,768" },
     { value: "deepseek-v4-pro:cloud", name: "DeepSeek V4 Pro (DS API)│ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "deepseek-v4-flash:cloud", name: "DeepSeek V4 Flsh(DS API)│ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "nemotron-3-super:cloud", name: "Nemotron 3 Super(Ollama)│ CTX: 131,072 │ OUT:  32,768" },
     // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
     { value: "zai/glm-5", name: "GLM-5 (Z.AI Coding)     │ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-5", name: "GLM-5 (Z.AI codeplan)     │ CTX: 204,800 │ OUT: 131,072" },
@@ -1418,7 +1434,7 @@ async function configureTool(toolName, opts = {}) {
                         m => m.name.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)
                     );
                     return filtered.length > 0
-                        ? filtered
+                        ? tagModels(filtered)
                         : [{ value: DEFAULT_MODEL, name: t('noModelMatch') }];
                 },
             });
@@ -1442,8 +1458,8 @@ async function configureTool(toolName, opts = {}) {
                     const hasDefault = filtered.some(m => m.value === defaultVal);
                     const defaultEntry = models.find(m => m.value === defaultVal);
                     return filtered.length > 0
-                        ? (hasDefault ? filtered : [defaultEntry, ...filtered])
-                        : (defaultEntry ? [defaultEntry] : [{ value: '__none__', name: t('noModelMatch') }]);
+                        ? tagModels(hasDefault ? filtered : [defaultEntry, ...filtered])
+                        : (defaultEntry ? tagModels([defaultEntry]) : [{ value: '__none__', name: t('noModelMatch') }]);
                 },
             });
             return chosen === '__none__' ? defaultVal : chosen;
