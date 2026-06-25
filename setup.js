@@ -1696,7 +1696,14 @@ model = "${selectedModel}"
         const hermesModelList = (selectedHermesModels && selectedHermesModels.length)
             ? selectedHermesModels
             : [selectedModel];
-        for (const v of hermesModelList) hermesModelsMap[v] = {};
+        for (const v of hermesModelList) {
+            // Write the real context_length so Hermes shows the correct window
+            // (without it Hermes falls back to a generic ~256K default).
+            const meta = AGENT_MODELS.find(m => m.value === v);
+            hermesModelsMap[v] = (meta && meta.limit && meta.limit.context)
+                ? { context_length: meta.limit.context }
+                : {};
+        }
 
         const abdalganiEntry = {
             name: HERMES_PROVIDER_NAME,
