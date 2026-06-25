@@ -1399,8 +1399,25 @@ async function configureTool(toolName, opts = {}) {
 
         let config = { "$schema": "https://opencode.ai/config.json", "provider": {} };
         if (fs.existsSync(configFile)) {
-            try { config = JSON.parse(fs.readFileSync(configFile, 'utf8')); }
+            try { config = JSON.parse(fs.readFileSync(configFile, 'utf8').replace(/^﻿/, '')); }
             catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
+        } else if (toolName === 'EHCode') {
+            // EH Code shares OpenCode's schema. On the FIRST setup, carry over the
+            // user's agents/plugins/mcp from ~/.config/opencode — otherwise creating a
+            // bare ehcode config makes EH Code stop falling back to ~/.config/opencode
+            // and the agents "disappear". We copy ONLY non-provider keys, so the model
+            // list stays the curated abdalgani provider added below (no old providers).
+            const ocFile = path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+            if (fs.existsSync(ocFile)) {
+                try {
+                    const oc = JSON.parse(fs.readFileSync(ocFile, 'utf8').replace(/^﻿/, ''));
+                    for (const k of ['agent', 'default_agent', 'plugin', 'mcp']) {
+                        if (oc[k] !== undefined) config[k] = oc[k];
+                    }
+                    const agentCount = oc.agent ? Object.keys(oc.agent).length : 0;
+                    if (agentCount) console.log(chalk.gray(`   ← seeded ${agentCount} agents + plugins/mcp from ~/.config/opencode`));
+                } catch (_) { }
+            }
         }
         if (!config.provider) config.provider = {};
 
