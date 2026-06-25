@@ -1,4 +1,4 @@
-import { select, input, search } from '@inquirer/prompts';
+import { select, input, search, checkbox } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { execSync, spawnSync } from 'child_process';
 import fs from 'fs';
@@ -264,6 +264,24 @@ function tagModels(list) {
         : m);
 }
 
+// ── النماذج الوكيلية المختارة (الشغّالة فقط — مُختبَرة عبر api.abdalgani.com 2026-06-25) ──
+// هاي القائمة الوحيدة اللي بتظهر بمنتقي النماذج للأدوات الوكيلية (Hermes / OpenClaw...).
+// كل اسم مكتوب فيه مزوّده. nanoGPT محصور بـ mimo + kimi-k2.7-code (يظهروا باسم nanoGPT
+// مش mimo حتى ما يختلطوا بالمزوّد الرسمي). Gemini محصور بـ gemini-3.5-flash.
+const AGENT_MODELS = [
+    { value: "glm-5.2", name: "[Z.AI] GLM-5.2              │ خطة الكود — الأساسي" },
+    { value: "glm-5.1", name: "[Z.AI] GLM-5.1              │ خطة الكود — fallback → NVIDIA" },
+    { value: "glm-4.7", name: "[Z.AI] GLM-4.7              │ خطة الكود" },
+    { value: "qwen", name: "[NVIDIA] Qwen 3.5 397B" },
+    { value: "nvidia/minimax-m3", name: "[NVIDIA] MiniMax M3" },
+    { value: "nvidia/deepseek-v4-pro", name: "[NVIDIA] DeepSeek V4 Pro    │ وقت القطعة" },
+    { value: "nvidia/deepseek-v4-flash", name: "[NVIDIA] DeepSeek V4 Flash  │ وقت القطعة" },
+    { value: "nvidia/nemotron-3-ultra-550b", name: "[NVIDIA] Nemotron 3 Ultra 550B │ قوي بس بطيء" },
+    { value: "nanogpt/mimo-v2.5-pro", name: "[nanoGPT] mimo-v2.5-pro" },
+    { value: "nanogpt/kimi-k2.7-code", name: "[nanoGPT] kimi-k2.7-code" },
+    { value: "gemini-3.5-flash", name: "[Google] Gemini 3.5 Flash" },
+];
+
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
 const models = [
     // ── NVIDIA NIM ───────────────────────────────────────────────────────────
@@ -290,8 +308,6 @@ const models = [
     { value: "nvidia/deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "cc/deepseek-v4-pro", name: "DeepSeek V4 Pro (CC)   │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "cc/deepseek-v4-flash", name: "DeepSeek V4 Flash(CC)  │ CTX: 1,048,576 │ OUT: 384,000" },
     { value: "nvidia/gpt-oss-120b", name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
     { value: "nvidia/gpt-oss-20b", name: "GPT-OSS 20B            │ CTX: 128,000 │ OUT:  16,384" },
     { value: "nvidia/step-3.5-flash", name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
@@ -349,15 +365,6 @@ const models = [
     { value: "zai/glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI Coding)│ CTX: 204,800 │ OUT: 131,072" },
     { value: "glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI codeplan)│ CTX: 204,800 │ OUT: 131,072" },
     // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────────────
-    { value: "cc/glm-5", name: "GLM-5 (Claude Code)     │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.6", name: "GLM-4.6 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-5.2", name: "GLM-5.2 (Claude Code)   │ CTX: 1,000,000 │ OUT: 131,072" },
-    { value: "cc/glm-5.1", name: "GLM-5.1 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-5-turbo", name: "GLM-5-Turbo (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.7", name: "GLM-4.7 (Claude Code)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.7-flash", name: "GLM-4.7-Flash (Claude Code)│ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.5-air", name: "GLM-4.5-Air (Claude)    │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "cc/glm-4.5-flash", name: "GLM-4.5-Flash (Claude Code)│ CTX: 204,800 │ OUT: 131,072" },
     // ── XiaomiMimo Custom API ────────────────────────────────────────────────
     { value: "xiaomi/claude-3-5-sonnet", name: "Xiaomi Claude 3.5 Sonnet│ CTX: 200,000 │ OUT:   8,192" },
     { value: "xiaomi/claude-3-5-haiku", name: "Xiaomi Claude 3.5 Haiku │ CTX: 200,000 │ OUT:   8,192" },
@@ -365,16 +372,11 @@ const models = [
     { value: "xiaomi/gpt-4o-mini", name: "Xiaomi GPT-4o Mini      │ CTX: 128,000 │ OUT:   4,096" },
     { value: "xiaomi/deepseek-chat", name: "Xiaomi DeepSeek Chat    │ CTX:  64,000 │ OUT:   8,192" },
     { value: "xiaomi/deepseek-reasoner", name: "Xiaomi DeepSeek Reasoner│ CTX:  64,000 │ OUT:   8,192" },
-    { value: "cc/xiaomi-sonnet", name: "Xiaomi Sonnet (Claude)  │ CTX: 200,000 │ OUT:   8,192" },
     // ── XiaomiMimo Native Models ──
     { value: "mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro    │ CTX: 1,048,576 │ OUT: 131,072" },
     { value: "mimo-v2.5", name: "Xiaomi Mimo v2.5        │ CTX: 1,048,576 │ OUT:  32,768" },
     { value: "mimo-v2-pro", name: "Xiaomi Mimo v2 Pro      │ CTX: 1,048,576 │ OUT: 131,072" },
     { value: "mimo-v2-omni", name: "Xiaomi Mimo v2 Omni     │ CTX: 1,048,576 │ OUT:  32,768" },
-    { value: "cc/mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro(CC)│ CTX: 1,048,576 │ OUT: 131,072" },
-    { value: "cc/mimo-v2.5", name: "Xiaomi Mimo v2.5 (CC)   │ CTX: 1,048,576 │ OUT:  32,768" },
-    { value: "cc/mimo-v2-pro", name: "Xiaomi Mimo v2 Pro (CC) │ CTX: 1,048,576 │ OUT: 131,072" },
-    { value: "cc/mimo-v2-omni", name: "Xiaomi Mimo v2 Omni (CC)│ CTX: 1,048,576 │ OUT:  32,768" },
     // ── NanoGPT (nano-gpt.com - اشتراك Pro) ──
     { value: "nanogpt/minimax-m3", name: "MiniMax M3 (NanoGPT)    │ CTX: 512,000  │ OUT:  65,536" },
     { value: "nanogpt/deepseek-v4-pro", name: "DeepSeek V4 Pro (Nano)  │ CTX: 1,048,576 │ OUT: 384,000" },
@@ -1418,27 +1420,49 @@ async function configureTool(toolName, opts = {}) {
     // === Model Selection: ClaudeCode بثلاثة أسئلة، OpenClaw سؤال واحد، OpenCode/Kilo تلقائياً ===
     let selectedModel = (nonInteractive && opts.model) ? opts.model : DEFAULT_MODEL;
     let selectedEffort = nonInteractive ? (opts.effort || '') : ''; // Reasoning effort; '' = provider default
-    let claudeOpus = (nonInteractive && opts.model) ? opts.model : 'cc/glm-5.1';
-    let claudeSonnet = 'cc/glm-5-turbo';
-    let claudeHaiku = 'cc/glm-4.7';
+    let claudeOpus = (nonInteractive && opts.model) ? opts.model : 'glm-5.2';
+    let claudeSonnet = 'glm-4.7';
+    let claudeHaiku = 'glm-4.7';
+    let selectedHermesModels = null; // Hermes checkbox multiselect → كتالوج custom_providers
     if (nonInteractive) console.log(chalk.green(`▶ Headless: model=${selectedModel}${selectedEffort ? ', effort=' + selectedEffort : ''}`));
 
-    // === OpenClaw Model Selection: سؤال واضح للمستخدم عن النموذج الأساسي (تفاعلي فقط) ===
-    if (!nonInteractive && ['OpenClaw', 'ZeroClaw', 'Hermes', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode', 'PiCode'].includes(toolName)) {
+    // === Hermes: اختيار متعدّد (checkbox) من النماذج الوكيلية المختارة فقط ===
+    if (!nonInteractive && toolName === 'Hermes') {
+        selectedHermesModels = await checkbox({
+            message: '🔮 اختر نماذج Hermes (مسافة للتحديد، Enter للتأكيد):',
+            choices: AGENT_MODELS.map(m => ({ value: m.value, name: m.name })),
+            required: true,
+            pageSize: 15,
+            loop: false,
+        });
+        selectedModel = selectedHermesModels.length === 1
+            ? selectedHermesModels[0]
+            : await select({
+                message: '⭐ النموذج الافتراضي (default):',
+                choices: selectedHermesModels.map(v => {
+                    const m = AGENT_MODELS.find(x => x.value === v);
+                    return { value: v, name: m ? m.name : v };
+                }),
+            });
+        console.log(chalk.green(t('openClawPrimarySet', selectedModel)));
+        console.log(chalk.gray(`   ← كتالوج Hermes: ${selectedHermesModels.join(', ')}`));
+    }
+    // === OpenClaw وغيره من الأدوات الوكيلية: نموذج واحد من القائمة المختارة فقط ===
+    else if (!nonInteractive && ['OpenClaw', 'ZeroClaw', 'KimiCode', 'Aider', 'Goose', 'GeminiCLI', 'CodexCLI', 'DeepSeekTUI', 'QwenCode', 'PiCode'].includes(toolName)) {
         const pickOpenClawModel = async () => {
             const chosen = await search({
                 message: t('selectToolModel', toolName),
                 source: (input) => {
                     const q = (input || '').toLowerCase();
-                    const filtered = models.filter(
+                    const filtered = AGENT_MODELS.filter(
                         m => m.name.toLowerCase().includes(q) || m.value.toLowerCase().includes(q)
                     );
                     return filtered.length > 0
-                        ? tagModels(filtered)
-                        : [{ value: DEFAULT_MODEL, name: t('noModelMatch') }];
+                        ? filtered
+                        : [{ value: AGENT_MODELS[0].value, name: t('noModelMatch') }];
                 },
             });
-            return chosen || DEFAULT_MODEL;
+            return chosen || AGENT_MODELS[0].value;
         };
         selectedModel = await pickOpenClawModel();
         console.log(chalk.green(t('openClawPrimarySet', selectedModel)));
@@ -1524,8 +1548,6 @@ async function configureTool(toolName, opts = {}) {
             "nvidia/deepseek-v4-flash": { name: "DeepSeek V4 Flash (NVIDIA)", limit: { context: 1048576, output: 384000 } },
             "deepseek-v4-pro": { name: "DeepSeek V4 Pro", limit: { context: 1048576, output: 384000 } },
             "deepseek-v4-flash": { name: "DeepSeek V4 Flash", limit: { context: 1048576, output: 384000 } },
-            "cc/deepseek-v4-pro": { name: "DeepSeek V4 Pro (CC)", limit: { context: 1048576, output: 384000 } },
-            "cc/deepseek-v4-flash": { name: "DeepSeek V4 Flash (CC)", limit: { context: 1048576, output: 384000 } },
             "nvidia/gpt-oss-120b": { name: "GPT-OSS 120B (NVIDIA)", limit: { context: 128000, output: 16384 } },
             "nvidia/step-3.5-flash": { name: "Step 3.5 Flash (NVIDIA)", limit: { context: 128000, output: 32768 } },
 
@@ -1584,12 +1606,6 @@ async function configureTool(toolName, opts = {}) {
             "zai/glm-4.5-flash": { name: "GLM-4.5-Flash (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
             "glm-4.5-flash": { name: "GLM-4.5-Flash (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
             // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────
-            "cc/glm-5.1": { name: "GLM-5.1 (Claude Code)", limit: { context: 204800, output: 131072 } },
-            "cc/glm-5-turbo": { name: "GLM-5-Turbo (Claude Code)", limit: { context: 204800, output: 131072 } },
-            "cc/glm-4.7": { name: "GLM-4.7 (Claude Code)", limit: { context: 204800, output: 131072 } },
-            "cc/glm-4.7-flash": { name: "GLM-4.7-Flash (Claude Code)", limit: { context: 204800, output: 131072 } },
-            "cc/glm-4.5-air": { name: "GLM-4.5-Air (Claude Code)", limit: { context: 204800, output: 131072 } },
-            "cc/glm-4.5-flash": { name: "GLM-4.5-Flash (Claude Code)", limit: { context: 204800, output: 131072 } },
             // ── XiaomiMimo Custom API ────────────────────────────────────────
             "xiaomi/claude-3-5-sonnet": { name: "Xiaomi Claude 3.5 Sonnet", limit: { context: 200000, output: 8192 } },
             "xiaomi/claude-3-5-haiku": { name: "Xiaomi Claude 3.5 Haiku", limit: { context: 200000, output: 8192 } },
@@ -1597,16 +1613,11 @@ async function configureTool(toolName, opts = {}) {
             "xiaomi/gpt-4o-mini": { name: "Xiaomi GPT-4o Mini", limit: { context: 128000, output: 4096 } },
             "xiaomi/deepseek-chat": { name: "Xiaomi DeepSeek Chat", limit: { context: 64000, output: 8192 } },
             "xiaomi/deepseek-reasoner": { name: "Xiaomi DeepSeek Reasoner", limit: { context: 64000, output: 8192 } },
-            "cc/xiaomi-sonnet": { name: "Xiaomi Sonnet (Claude Code)", limit: { context: 200000, output: 8192 } },
             // ── XiaomiMimo Native Models ──
             "mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro", limit: { context: 1048576, output: 131072 } },
             "mimo-v2.5": { name: "Xiaomi Mimo v2.5", limit: { context: 1048576, output: 32768 } },
             "mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro", limit: { context: 1048576, output: 131072 } },
             "mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni", limit: { context: 1048576, output: 32768 } },
-            "cc/mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro (Claude Code)", limit: { context: 1048576, output: 131072 } },
-            "cc/mimo-v2.5": { name: "Xiaomi Mimo v2.5 (Claude Code)", limit: { context: 1048576, output: 32768 } },
-            "cc/mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro (Claude Code)", limit: { context: 1048576, output: 131072 } },
-            "cc/mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni (Claude Code)", limit: { context: 1048576, output: 32768 } },
             // ── NanoGPT (nano-gpt.com - اشتراك Pro) ──
             "nanogpt/minimax-m3": { name: "MiniMax M3 (NanoGPT)", limit: { context: 512000, output: 65536 } },
             "nanogpt/deepseek-v4-pro": { name: "DeepSeek V4 Pro (NanoGPT)", limit: { context: 1048576, output: 384000 } },
@@ -1896,8 +1907,13 @@ model = "${selectedModel}"
         const HERMES_PROVIDER_SLUG = `custom:${HERMES_PROVIDER_NAME.toLowerCase().replace(/\s+/g, '-')}`;
         const HERMES_BASE_URL = 'https://api.abdalgani.com/v1';
 
+        // Catalog = only the models the user checked (Hermes checkbox). Headless or
+        // single-pick falls back to just the active model. No more dumping all models.
         const hermesModelsMap = {};
-        for (const m of models) hermesModelsMap[m.value] = {};
+        const hermesModelList = (selectedHermesModels && selectedHermesModels.length)
+            ? selectedHermesModels
+            : [selectedModel];
+        for (const v of hermesModelList) hermesModelsMap[v] = {};
 
         const abdalganiEntry = {
             name: HERMES_PROVIDER_NAME,
