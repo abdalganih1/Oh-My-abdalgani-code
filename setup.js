@@ -269,125 +269,20 @@ function tagModels(list) {
 // كل اسم مكتوب فيه مزوّده. nanoGPT محصور بـ mimo + kimi-k2.7-code (يظهروا باسم nanoGPT
 // مش mimo حتى ما يختلطوا بالمزوّد الرسمي). Gemini محصور بـ gemini-3.5-flash.
 const AGENT_MODELS = [
-    { value: "glm-5.2", name: "[Z.AI] GLM-5.2              │ خطة الكود — الأساسي" },
-    { value: "glm-5.1", name: "[Z.AI] GLM-5.1              │ خطة الكود — fallback → NVIDIA" },
-    { value: "glm-4.7", name: "[Z.AI] GLM-4.7              │ خطة الكود" },
-    { value: "qwen", name: "[NVIDIA] Qwen 3.5 397B" },
-    { value: "nvidia/minimax-m3", name: "[NVIDIA] MiniMax M3" },
-    { value: "nvidia/deepseek-v4-pro", name: "[NVIDIA] DeepSeek V4 Pro    │ وقت القطعة" },
-    { value: "nvidia/deepseek-v4-flash", name: "[NVIDIA] DeepSeek V4 Flash  │ وقت القطعة" },
-    { value: "nvidia/nemotron-3-ultra-550b", name: "[NVIDIA] Nemotron 3 Ultra 550B │ قوي بس بطيء" },
-    { value: "nanogpt/mimo-v2.5-pro", name: "[nanoGPT] mimo-v2.5-pro" },
-    { value: "nanogpt/kimi-k2.7-code", name: "[nanoGPT] kimi-k2.7-code" },
-    { value: "gemini-3.5-flash", name: "[Google] Gemini 3.5 Flash" },
+    { value: "glm-5.2", name: "[Z.AI] GLM-5.2  - codeplan (default)", limit: { context: 1000000, output: 131072 } },
+    { value: "glm-5.1", name: "[Z.AI] GLM-5.1  - codeplan (fallback->NVIDIA)", limit: { context: 204800, output: 131072 } },
+    { value: "glm-4.7", name: "[Z.AI] GLM-4.7  - codeplan", limit: { context: 204800, output: 131072 } },
+    { value: "gemini-3.5-flash", name: "[Google] Gemini 3.5 Flash", limit: { context: 1048576, output: 65536 } },
+    { value: "mimo-v2.5-pro", name: "[Xiaomi] MiMo v2.5 Pro", limit: { context: 1048576, output: 131072 } },
+    { value: "nanogpt/mimo-v2.5-pro", name: "[nanoGPT] MiMo v2.5 Pro", limit: { context: 1048576, output: 131072 } },
+    { value: "nanogpt/kimi-k2.7-code", name: "[nanoGPT] Kimi K2.7 Code", limit: { context: 256000, output: 65535 } },
+    { value: "nvidia/nemotron-3-ultra-550b", name: "[NVIDIA] Nemotron 3 Ultra 550B (strong)", limit: { context: 131072, output: 32768 } },
+    { value: "nvidia/minimax-m3", name: "[NVIDIA] MiniMax M3", limit: { context: 1048576, output: 196608 } },
+    { value: "nvidia/deepseek-v4-pro", name: "[NVIDIA] DeepSeek V4 Pro", limit: { context: 1048576, output: 384000 } },
 ];
 
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
-const models = [
-    // ── NVIDIA NIM ───────────────────────────────────────────────────────────
-    { value: "nvidia/glm-5.2", name: "GLM-5.2                │ CTX: 1,000,000 │ OUT:  32,000" },
-    { value: "nvidia/glm-5", name: "GLM-5                  │ CTX: 200,000 │ OUT:  32,000" },
-    { value: "nvidia/glm-4.7", name: "GLM-4.7                │ CTX: 200,000 │ OUT:  32,000" },
-    { value: "nvidia/kimi-k2.6", name: "Kimi K2.6 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "nvidia/kimi-k2.5", name: "Kimi K2.5 (NVIDIA)     │ CTX: 262,144 │ OUT:  65,535" },
-    // ── Moonshot & MiniMax ───────────────────────────────────────────────────
-    { value: "moonshotai/kimi-k2.5", name: "Kimi K2.5 (Moonshot)   │ CTX: 262,144 │ OUT:  65,535" },
-    { value: "minimaxai/minimax-m2.5", name: "MiniMax M2.5           │ CTX: 196,608 │ OUT: 196,608" },
-    { value: "nvidia/qwen3.5-397b", name: "Qwen 3.5 397B          │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "qwen", name: "Qwen 3.5 397B (Alias)  │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "qwen/qwen3.5-397b-a17b", name: "Qwen 3.5 397B a17b     │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/qwen3-coder-480b", name: "Qwen3 Coder 480B       │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/qwen3.5-122b", name: "Qwen 3.5 122B          │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/qwq-32b", name: "QwQ 32B                │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/qwen3-next-thinking", name: "Qwen3 Next Thinking     │ CTX: 262,144 │ OUT:  81,920" },
-    { value: "nvidia/nemotron-ultra-253b", name: "Nemotron Ultra 253B    │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/nemotron-super-49b", name: "Nemotron Super 49B     │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super 120B  │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/deepseek-r1", name: "DeepSeek R1            │ CTX: 163,840 │ OUT:  32,768" },
-    { value: "nvidia/deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "nvidia/deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "deepseek-v4-pro", name: "DeepSeek V4 Pro        │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "deepseek-v4-flash", name: "DeepSeek V4 Flash      │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "nvidia/gpt-oss-120b", name: "GPT-OSS 120B           │ CTX: 128,000 │ OUT:  16,384" },
-    { value: "nvidia/gpt-oss-20b", name: "GPT-OSS 20B            │ CTX: 128,000 │ OUT:  16,384" },
-    { value: "nvidia/step-3.5-flash", name: "Step 3.5 Flash         │ CTX: 128,000 │ OUT:  32,768" },
-    { value: "nvidia/step-3.7-flash", name: "Step 3.7 Flash         │ CTX: 128,000 │ OUT:  32,768" },
-    { value: "nvidia/minimax-m3", name: "MiniMax M3 (NVIDIA)     │ CTX: 1,048,576 │ OUT: 196,608" },
-    { value: "nvidia/nemotron-3-ultra-550b", name: "Nemotron 3 Ultra 550B  │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/nemotron-nano-3-30b", name: "Nemotron Nano 3 30B    │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/mistral-large-3", name: "Mistral Large 3 675B   │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "nvidia/qwen3-next-80b", name: "Qwen3 Next 80B (NVIDIA) │ CTX: 262,144 │ OUT:  81,920" },
-
-    // ── Gemini (via LiteLLM) ─────────────────────────────────────────────────
-    { value: "gemini-3.1-pro", name: "Gemini 3.1 Pro         │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash", name: "Gemini 3.1 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.5-flash", name: "Gemini 3.5 Flash       │ CTX: 1,048,576 │ OUT: 65,536" },
-    // ── Google AI Studio (Direct API) ────────────────────────────────────────
-    { value: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite   │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash-image-preview", name: "Gemini 3.1 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3-pro-image-preview", name: "Gemini 3 Pro Image      │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-2.5-flash-image", name: "Gemini 2.5 Flash Image  │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-2.5-pro", name: "Gemini 2.5 Pro          │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-pro-latest", name: "Gemini Pro Latest       │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-flash-latest", name: "Gemini Flash Latest     │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-flash-lite-latest", name: "Gemini Flash Lite Latest│ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-2.5-flash", name: "Gemini 2.5 Flash        │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "gemini-3.1-flash-live-preview", name: "Gemini 3.1 Flash Live   │ CTX: 1,048,576 │ OUT: 65,536" },
-    { value: "veo-3.1-generate-preview", name: "Veo 3.1 Video Gen       │ CTX:     8,192 │ OUT:  4,096" },
-    { value: "lyria-3-pro-preview", name: "Lyria 3 Pro Audio       │ CTX:     8,192 │ OUT:  4,096" },
-    { value: "gemma-4-31b-it", name: "Gemma 4 31B IT          │ CTX:   131,072 │ OUT: 32,768" },
-    // ── abdalgani (ollama) - ابحث بكلمة ollama ──────────────────────────────
-    { value: "gemma4", name: "Gemma 4 (Ollama)        │ CTX: 128,000 │ OUT:  32,768" },
-    { value: "qwen3.5", name: "Qwen 3.5 (Ollama)       │ CTX: 131,072 │ OUT:  32,768" },
-    { value: "deepseek-v4-pro:cloud", name: "DeepSeek V4 Pro (DS API)│ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "deepseek-v4-flash:cloud", name: "DeepSeek V4 Flsh(DS API)│ CTX: 1,048,576 │ OUT: 384,000" },
-    // ── Z.AI Coding Plan (مباشر عبر LiteLLM) ───────────────────────────────
-    { value: "glm-5", name: "GLM-5 (Z.AI codeplan)     │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.6", name: "GLM-4.6 (Z.AI codeplan)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.5", name: "GLM-4.5 (Z.AI codeplan)   │ CTX: 131,072 │ OUT: 131,072" },
-    { value: "glm-5.2", name: "GLM-5.2 (Z.AI codeplan)   │ CTX: 1,000,000 │ OUT: 131,072" },
-    { value: "glm-5.1", name: "GLM-5.1 (Z.AI codeplan)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-5-turbo", name: "GLM-5-Turbo (Z.AI codeplan)  │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.7", name: "GLM-4.7 (Z.AI codeplan)   │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.7-flash", name: "GLM-4.7-Flash (Z.AI codeplan)│ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.5-air", name: "GLM-4.5-Air (Z.AI codeplan)  │ CTX: 204,800 │ OUT: 131,072" },
-    { value: "glm-4.5-flash", name: "GLM-4.5-Flash (Z.AI codeplan)│ CTX: 204,800 │ OUT: 131,072" },
-    // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────────────
-    // ── XiaomiMimo Custom API ────────────────────────────────────────────────
-    { value: "xiaomi/claude-3-5-sonnet", name: "Xiaomi Claude 3.5 Sonnet│ CTX: 200,000 │ OUT:   8,192" },
-    { value: "xiaomi/claude-3-5-haiku", name: "Xiaomi Claude 3.5 Haiku │ CTX: 200,000 │ OUT:   8,192" },
-    { value: "xiaomi/gpt-4o", name: "Xiaomi GPT-4o           │ CTX: 128,000 │ OUT:   4,096" },
-    { value: "xiaomi/gpt-4o-mini", name: "Xiaomi GPT-4o Mini      │ CTX: 128,000 │ OUT:   4,096" },
-    { value: "xiaomi/deepseek-chat", name: "Xiaomi DeepSeek Chat    │ CTX:  64,000 │ OUT:   8,192" },
-    { value: "xiaomi/deepseek-reasoner", name: "Xiaomi DeepSeek Reasoner│ CTX:  64,000 │ OUT:   8,192" },
-    // ── XiaomiMimo Native Models ──
-    { value: "mimo-v2.5-pro", name: "Xiaomi Mimo v2.5 Pro    │ CTX: 1,048,576 │ OUT: 131,072" },
-    { value: "mimo-v2.5", name: "Xiaomi Mimo v2.5        │ CTX: 1,048,576 │ OUT:  32,768" },
-    { value: "mimo-v2-pro", name: "Xiaomi Mimo v2 Pro      │ CTX: 1,048,576 │ OUT: 131,072" },
-    { value: "mimo-v2-omni", name: "Xiaomi Mimo v2 Omni     │ CTX: 1,048,576 │ OUT:  32,768" },
-    // ── NanoGPT (nano-gpt.com - اشتراك Pro) ──
-    { value: "nanogpt/minimax-m3", name: "MiniMax M3 (NanoGPT)    │ CTX: 512,000  │ OUT:  65,536" },
-    { value: "nanogpt/deepseek-v4-pro", name: "DeepSeek V4 Pro (Nano)  │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "nanogpt/deepseek-v4-flash", name: "DeepSeek V4 Flash(Nano) │ CTX: 1,048,576 │ OUT: 384,000" },
-    { value: "nanogpt/glm-5.2", name: "GLM-5.2 (NanoGPT)       │ CTX: 1,000,000 │ OUT: 131,072" },
-    { value: "nanogpt/glm-5.1", name: "GLM-5.1 (NanoGPT)       │ CTX: 200,000  │ OUT: 131,072" },
-    { value: "nanogpt/mimo-v2.5-pro", name: "MiMo V2.5 Pro (NanoGPT) │ CTX: 1,048,576 │ OUT: 131,072" },
-    { value: "nanogpt/kimi-k2.6", name: "Kimi K2.6 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
-    { value: "nanogpt/kimi-k2.5", name: "Kimi K2.5 (NanoGPT)     │ CTX: 256,000  │ OUT:  65,535" },
-    { value: "nanogpt/minimax-m2.7", name: "MiniMax M2.7 (NanoGPT)  │ CTX: 204,800  │ OUT: 196,608" },
-    { value: "nanogpt/kimi-k2.7-code", name: "Kimi K2.7 Code (NanoGPT)│ CTX: 256,000  │ OUT:  65,535" },
-    { value: "nanogpt/minimax-m2.7-turbo", name: "MiniMax M2.7 Turbo(Nano)│ CTX: 204,800  │ OUT: 196,608" },
-    { value: "nanogpt/deepseek-v3.2", name: "DeepSeek V3.2 (NanoGPT) │ CTX: 131,072  │ OUT:  32,768" },
-    { value: "nanogpt/qwen3.5-397b", name: "Qwen 3.5 397B (NanoGPT) │ CTX: 262,144  │ OUT:  81,920" },
-    { value: "nanogpt/qwen3-coder-next", name: "Qwen3 Coder Next (Nano) │ CTX: 262,144  │ OUT:  81,920" },
-    { value: "nanogpt/glm-5", name: "GLM-5 (NanoGPT)         │ CTX: 200,000  │ OUT: 131,072" },
-    { value: "nanogpt/glm-4.7", name: "GLM-4.7 (NanoGPT)       │ CTX: 200,000  │ OUT: 131,072" },
-    { value: "nanogpt/gpt-5.2-codex", name: "GPT-5.2 Codex (NanoGPT) │ CTX: 400,000  │ OUT: 128,000" },
-    { value: "nanogpt/claude-opus-4.8", name: "Claude Opus 4.8 (Nano)  │ CTX: 200,000  │ OUT:  64,000" },
-    { value: "nanogpt/grok-4.3", name: "Grok 4.3 (NanoGPT)      │ CTX: 256,000  │ OUT:  64,000" },
-];
+const models = AGENT_MODELS; // single curated source — see AGENT_MODELS above
 
 // ==================== Tool Installation Map ====================
 const isWin = os.platform() === 'win32';
@@ -1394,10 +1289,8 @@ async function configureTool(toolName, opts = {}) {
             let addedCount = 0;
             customModels.forEach(m => {
                 const modelId = m.id;
-                if (!models.find(mod => mod.value === modelId)) {
-                    models.push({ value: modelId, name: `${modelId} (Dynamic) │ CTX: 128,000 │ OUT: 8,192` });
-                    addedCount++;
-                }
+                // Curated mode: do NOT auto-add gateway models — keep AGENT_MODELS only.
+                void modelId;
             });
             if (addedCount > 0) {
                 console.log(chalk.green(`✅ Dynamically added ${addedCount} new models from API.`));
@@ -1472,17 +1365,17 @@ async function configureTool(toolName, opts = {}) {
                     const hasDefault = filtered.some(m => m.value === defaultVal);
                     const defaultEntry = models.find(m => m.value === defaultVal);
                     return filtered.length > 0
-                        ? tagModels(hasDefault ? filtered : [defaultEntry, ...filtered])
-                        : (defaultEntry ? tagModels([defaultEntry]) : [{ value: '__none__', name: t('noModelMatch') }]);
+                        ? (hasDefault ? filtered : [defaultEntry, ...filtered])
+                        : (defaultEntry ? [defaultEntry] : [{ value: '__none__', name: t('noModelMatch') }]);
                 },
             });
             return chosen === '__none__' ? defaultVal : chosen;
         };
 
         console.log(chalk.cyan(t('chooseModelTier')));
-        claudeOpus = await pickModel(t('tierOpus'), 'nvidia/glm-5');
-        claudeSonnet = await pickModel(t('tierSonnet'), 'moonshotai/kimi-k2.5');
-        claudeHaiku = await pickModel(t('tierHaiku'), 'minimaxai/minimax-m2.5');
+        claudeOpus = await pickModel(t('tierOpus'), 'glm-5.2');
+        claudeSonnet = await pickModel(t('tierSonnet'), 'glm-4.7');
+        claudeHaiku = await pickModel(t('tierHaiku'), 'gemini-3.5-flash');
         selectedModel = claudeOpus; // الافتراضي = Opus
     }
 
@@ -1512,125 +1405,11 @@ async function configureTool(toolName, opts = {}) {
         if (!config.provider) config.provider = {};
 
         // بناء نماذج المزود مع limit الصحيح لكل نموذج
-        const providerModels = {
-            // ── Providers ──────────────────────────────────────────────────────
-            "moonshotai/kimi-k2.5": { name: "Kimi K2.5 (Moonshot)", limit: { context: 262144, output: 65535 } },
-            "minimaxai/minimax-m2.5": { name: "MiniMax M2.5 (MiniMax)", limit: { context: 196608, output: 196608 } },
-            // ── NVIDIA NIM ────────────────────────────────────────────────────
-            "nvidia/glm-5": { name: "GLM-5 (NVIDIA)", limit: { context: 200000, output: 32000 } },
-            "nvidia/glm-4.7": { name: "GLM-4.7 (NVIDIA)", limit: { context: 200000, output: 32000 } },
-            "kimi-k2.7-code:cloud": { name: "Kimi K2.7 Code (Ollama)", limit: { context: 262144, output: 65535 } },
-            "minimax-m3:cloud": { name: "MiniMax M3 (Ollama)", limit: { context: 1048576, output: 196608 } },
-            "nvidia/kimi-k2.6": { name: "Kimi K2.6 (NVIDIA)", limit: { context: 262144, output: 65535 } },
-            "nvidia/kimi-k2.5": { name: "Kimi K2.5 (NVIDIA)", limit: { context: 262144, output: 65535 } },
-            "nvidia/qwen3.5-397b": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
-            "qwen": { name: "Qwen 3.5 397B (NVIDIA)", limit: { context: 262144, output: 81920 } },
-            "qwen/qwen3.5-397b-a17b": { name: "Qwen 3.5 397B a17b (NVIDIA)", limit: { context: 262144, output: 81920 } },
-            "nvidia/qwen3.5-122b": { name: "Qwen 3.5 122B (NVIDIA)", limit: { context: 262144, output: 81920 } },
-            "nvidia/qwen3-coder-480b": { name: "Qwen3 Coder 480B (NVIDIA)", limit: { context: 262144, output: 81920 } },
-            "nvidia/qwq-32b": { name: "QwQ 32B (NVIDIA)", limit: { context: 131072, output: 32768 } },
-            "nvidia/qwen3-next-thinking": { name: "Qwen3 Next Thinking (NVIDIA)", limit: { context: 262144, output: 81920 } },
-            "nvidia/nemotron-ultra-253b": { name: "Nemotron Ultra 253B (NVIDIA)", limit: { context: 131072, output: 32768 } },
-            "nvidia/nemotron-super-49b": { name: "Nemotron Super 49B (NVIDIA)", limit: { context: 131072, output: 32768 } },
-            "nvidia/nemotron-3-super-120b-a12b": { name: "Nemotron 3 Super 120B (NVIDIA)", limit: { context: 131072, output: 32768 } },
-            "nvidia/deepseek-r1": { name: "DeepSeek R1 (NVIDIA)", limit: { context: 163840, output: 32768 } },
-            "nvidia/deepseek-v4-pro": { name: "DeepSeek V4 Pro (NVIDIA)", limit: { context: 1048576, output: 384000 } },
-            "nvidia/deepseek-v4-flash": { name: "DeepSeek V4 Flash (NVIDIA)", limit: { context: 1048576, output: 384000 } },
-            "deepseek-v4-pro": { name: "DeepSeek V4 Pro", limit: { context: 1048576, output: 384000 } },
-            "deepseek-v4-flash": { name: "DeepSeek V4 Flash", limit: { context: 1048576, output: 384000 } },
-            "nvidia/gpt-oss-120b": { name: "GPT-OSS 120B (NVIDIA)", limit: { context: 128000, output: 16384 } },
-            "nvidia/step-3.5-flash": { name: "Step 3.5 Flash (NVIDIA)", limit: { context: 128000, output: 32768 } },
+        const providerModels = {};
 
-            // ── Gemini ───────────────────────────────────────────────────────────
-            "gemini-3.1-pro": { name: "Gemini 3.1 Pro", limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash": { name: "Gemini 3.1 Flash", limit: { context: 1048576, output: 65536 } },
-            "gemini-3.5-flash": { name: "Gemini 3.5 Flash", limit: { context: 1048576, output: 65536 } },
-            // ── Google AI Studio (Direct API) ────────────────────────────────────
-            "gemini-3-flash-preview": { name: "Gemini 3 Flash Preview", limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-pro-preview": { name: "Gemini 3.1 Pro Preview", limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash-lite-preview": { name: "Gemini 3.1 Flash Lite", limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash-image-preview": { name: "Gemini 3.1 Flash Image", limit: { context: 1048576, output: 65536 } },
-            "gemini-3-pro-image-preview": { name: "Gemini 3 Pro Image", limit: { context: 1048576, output: 65536 } },
-            "gemini-2.5-flash-image": { name: "Gemini 2.5 Flash Image", limit: { context: 1048576, output: 65536 } },
-            "gemini-2.5-pro": { name: "Gemini 2.5 Pro", limit: { context: 1048576, output: 65536 } },
-            "gemini-pro-latest": { name: "Gemini Pro Latest", limit: { context: 1048576, output: 65536 } },
-            "gemini-flash-latest": { name: "Gemini Flash Latest", limit: { context: 1048576, output: 65536 } },
-            "gemini-flash-lite-latest": { name: "Gemini Flash Lite Latest", limit: { context: 1048576, output: 65536 } },
-            "gemini-2.5-flash": { name: "Gemini 2.5 Flash", limit: { context: 1048576, output: 65536 } },
-            "gemini-3.1-flash-live-preview": { name: "Gemini 3.1 Flash Live", limit: { context: 1048576, output: 65536 } },
-            "veo-3.1-generate-preview": { name: "Veo 3.1 Video Gen", limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["video"] } },
-            "lyria-3-pro-preview": { name: "Lyria 3 Pro Audio", limit: { context: 8192, output: 4096 }, modalities: { input: ["text"], output: ["audio"] } },
-            "gemma-4-31b-it": { name: "Gemma 4 31B IT", limit: { context: 131072, output: 32768 } },
-            // ── نماذج الصور ────────────────────────────────────────────────────
-            "nvidia/stable-diffusion-3": {
-                name: "Stable Diffusion 3 (NVIDIA)", attachment: false,
-                limit: { context: 8192, output: 4096 },
-                modalities: { input: ["text"], output: ["image"] }
-            },
-            "flux.2-klein-4b": {
-                name: "Flux 2 Klein 4B", attachment: false,
-                limit: { context: 8192, output: 4096 },
-                modalities: { input: ["text"], output: ["image"] }
-            },
-            // ── Ollama ─────────────────────────────────────────────────────────
-            "glm-5.1:cloud": { name: "GLM-5.1 Cloud (Ollama)", limit: { context: 200000, output: 131072 } },
-            "glm-5:cloud": { name: "GLM-5 Cloud (Ollama)", limit: { context: 202752, output: 131072 } },
-            "gemma4": { name: "Gemma 4 (Ollama)", limit: { context: 128000, output: 32768 } },
-            "qwen3.5": { name: "Qwen 3.5 (Ollama)", limit: { context: 131072, output: 32768 } },
-            "minimax-m2.7:cloud": { name: "MiniMax M2.7 (Ollama)", limit: { context: 196608, output: 196608 } },
-            "kimi-k2.5:cloud": { name: "Kimi K2.5 (Ollama)", limit: { context: 262144, output: 65535 } },
-            "glm-4.7:cloud": { name: "GLM-4.7 (Ollama)", limit: { context: 200000, output: 128000 } },
-            "deepseek-v3.2:cloud": { name: "DeepSeek V3.2 (Ollama)", limit: { context: 131072, output: 32768 } },
-            "nemotron-3-super:cloud": { name: "Nemotron 3 Super (Ollama)", limit: { context: 131072, output: 32768 } },
-            // ── Z.AI Coding Plan ─────────────────────────────────────────────
-            "zai/glm-5.1": { name: "GLM-5.1 (Z.AI Coding Plan)", limit: { context: 204800, output: 131072 } },
-            "glm-5.1": { name: "GLM-5.1 (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
-            "zai/glm-5-turbo": { name: "GLM-5-Turbo (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
-            "glm-5-turbo": { name: "GLM-5-Turbo (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
-            "zai/glm-4.7": { name: "GLM-4.7 (Z.AI Coding Plan)", limit: { context: 204800, output: 131072 } },
-            "glm-4.7": { name: "GLM-4.7 (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
-            "zai/glm-4.7-flash": { name: "GLM-4.7-Flash (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
-            "glm-4.7-flash": { name: "GLM-4.7-Flash (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
-            "zai/glm-4.5-air": { name: "GLM-4.5-Air (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
-            "glm-4.5-air": { name: "GLM-4.5-Air (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
-            "zai/glm-4.5-flash": { name: "GLM-4.5-Flash (Z.AI Coding)", limit: { context: 204800, output: 131072 } },
-            "glm-4.5-flash": { name: "GLM-4.5-Flash (Z.AI codeplan)", limit: { context: 204800, output: 131072 } },
-            // ── Z.AI for Claude Code (Anthropic pass-through safe) ────────────
-            // ── XiaomiMimo Custom API ────────────────────────────────────────
-            "xiaomi/claude-3-5-sonnet": { name: "Xiaomi Claude 3.5 Sonnet", limit: { context: 200000, output: 8192 } },
-            "xiaomi/claude-3-5-haiku": { name: "Xiaomi Claude 3.5 Haiku", limit: { context: 200000, output: 8192 } },
-            "xiaomi/gpt-4o": { name: "Xiaomi GPT-4o", limit: { context: 128000, output: 4096 } },
-            "xiaomi/gpt-4o-mini": { name: "Xiaomi GPT-4o Mini", limit: { context: 128000, output: 4096 } },
-            "xiaomi/deepseek-chat": { name: "Xiaomi DeepSeek Chat", limit: { context: 64000, output: 8192 } },
-            "xiaomi/deepseek-reasoner": { name: "Xiaomi DeepSeek Reasoner", limit: { context: 64000, output: 8192 } },
-            // ── XiaomiMimo Native Models ──
-            "mimo-v2.5-pro": { name: "Xiaomi Mimo v2.5 Pro", limit: { context: 1048576, output: 131072 } },
-            "mimo-v2.5": { name: "Xiaomi Mimo v2.5", limit: { context: 1048576, output: 32768 } },
-            "mimo-v2-pro": { name: "Xiaomi Mimo v2 Pro", limit: { context: 1048576, output: 131072 } },
-            "mimo-v2-omni": { name: "Xiaomi Mimo v2 Omni", limit: { context: 1048576, output: 32768 } },
-            // ── NanoGPT (nano-gpt.com - اشتراك Pro) ──
-            "nanogpt/minimax-m3": { name: "MiniMax M3 (NanoGPT)", limit: { context: 512000, output: 65536 } },
-            "nanogpt/deepseek-v4-pro": { name: "DeepSeek V4 Pro (NanoGPT)", limit: { context: 1048576, output: 384000 } },
-            "nanogpt/deepseek-v4-flash": { name: "DeepSeek V4 Flash (NanoGPT)", limit: { context: 1048576, output: 384000 } },
-            "nanogpt/glm-5.1": { name: "GLM-5.1 (NanoGPT)", limit: { context: 200000, output: 131072 } },
-            "nanogpt/mimo-v2.5-pro": { name: "MiMo V2.5 Pro (NanoGPT)", limit: { context: 1048576, output: 131072 } },
-            "nanogpt/kimi-k2.6": { name: "Kimi K2.6 (NanoGPT)", limit: { context: 256000, output: 65535 } },
-            "nanogpt/kimi-k2.5": { name: "Kimi K2.5 (NanoGPT)", limit: { context: 256000, output: 65535 } },
-            "nanogpt/minimax-m2.7": { name: "MiniMax M2.7 (NanoGPT)", limit: { context: 204800, output: 196608 } },
-        };
-
-        // Sync dynamically fetched models — parse CTX/OUT from name instead of hardcoded defaults
+        // Build the provider model map straight from the curated AGENT_MODELS (real limits).
         models.forEach(m => {
-            if (!providerModels[m.value]) {
-                const parts = m.name.split('│');
-                const cleanName = parts[0].trim();
-                const ctxStr = parts[1] ? parts[1].replace(/[^0-9]/g, '') : '128000';
-                const outStr = parts[2] ? parts[2].replace(/[^0-9]/g, '') : '8192';
-                providerModels[m.value] = {
-                    name: cleanName,
-                    limit: { context: parseInt(ctxStr, 10), output: parseInt(outStr, 10) }
-                };
-            }
+            providerModels[m.value] = { name: m.name, limit: { ...(m.limit || { context: 128000, output: 8192 }) } };
         });
 
         // طبّق مستوى التفكير المختار على كل النماذج (الـ gateway يُسقطه عن اللي لا يدعمه)
@@ -1730,12 +1509,9 @@ async function configureTool(toolName, opts = {}) {
         const allowedModels = {};
 
         models.forEach(m => {
-            const parts = m.name.split('│');
-            const cleanName = parts[0].trim();
-            const ctxStr = parts[1] ? parts[1].replace(/[^0-9]/g, '') : '128000';
-            const outStr = parts[2] ? parts[2].replace(/[^0-9]/g, '') : '32768';
-            let contextWindow = parseInt(ctxStr, 10);
-            let maxTokens = parseInt(outStr, 10);
+            const cleanName = m.name;
+            let contextWindow = (m.limit && m.limit.context) || 128000;
+            let maxTokens = (m.limit && m.limit.output) || 32768;
 
             clawModelsList.push({
                 id: m.value,
