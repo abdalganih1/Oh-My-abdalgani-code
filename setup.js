@@ -282,6 +282,61 @@ const AGENT_MODELS = [
 ];
 
 // القائمة الكاملة مُحدَّثة من API الفعلي (api.abdalgani.com/v1/models)
+// ── EH Code bundled agents (shipped with the installer for ALL users) ──
+// These are the curated agents; they're written into the EH Code config on setup.
+// (Models resolve via the gateway's hidden aliases.)
+const EH_AGENTS = {
+    "agent": {
+        "plan": {
+            "prompt": "You are the Plan agent. You ONLY analyze and plan â€” never modify files. Explore the codebase, then produce a clear step-by-step implementation plan with file paths, risks, and alternatives. Do not write or edit any files.",
+            "description": "Analyzes and plans only â€” never edits files",
+            "mode": "primary",
+            "options": {},
+            "color": "#0ea5e9",
+            "permission": {
+                "edit": "deny"
+            },
+            "model": "abdalgani/zai/glm-5-turbo"
+        },
+        "code": {
+            "prompt": "You are the Code agent. Implement features and fix code directly. Write clean, idiomatic code that matches the existing style of the project. Prefer minimal, focused changes and verify your work when possible.",
+            "description": "Implements features and fixes code",
+            "mode": "primary",
+            "options": {},
+            "color": "#7c3aed",
+            "permission": {},
+            "model": "abdalgani/mimo-v2.5-pro"
+        },
+        "debug": {
+            "prompt": "You are the Debug agent. Diagnose bugs systematically: reproduce the issue, read the relevant code, form hypotheses, add targeted logging or tests when needed, and propose the minimal fix. Always explain the root cause clearly before fixing.",
+            "description": "Diagnoses bugs and applies minimal fixes",
+            "mode": "primary",
+            "options": {},
+            "color": "#f59e0b",
+            "permission": {},
+            "model": "abdalgani/mimo-v2.5-pro"
+        },
+        "ask": {
+            "prompt": "You are the Ask agent. Answer questions about the codebase and general programming concisely and accurately. You do not modify files; you explain, summarize, and point to the relevant code locations.",
+            "description": "Answers questions â€” read-only",
+            "mode": "primary",
+            "options": {},
+            "color": "#10b981",
+            "permission": {
+                "edit": "deny",
+                "bash": "ask"
+            },
+            "model": "abdalgani/kimi-k2.6:cloud"
+        },
+        "build": {
+            "disable": true,
+            "options": {},
+            "permission": {}
+        }
+    },
+    "default_agent": "code"
+};
+
 const models = AGENT_MODELS; // single curated source — see AGENT_MODELS above
 
 // ==================== Tool Installation Map ====================
@@ -1401,23 +1456,6 @@ async function configureTool(toolName, opts = {}) {
         if (fs.existsSync(configFile)) {
             try { config = JSON.parse(fs.readFileSync(configFile, 'utf8').replace(/^﻿/, '')); }
             catch (_) { console.log(chalk.yellow(t('corruptConfig'))); }
-        } else if (toolName === 'EHCode') {
-            // EH Code shares OpenCode's schema. On the FIRST setup, carry over the
-            // user's agents/plugins/mcp from ~/.config/opencode — otherwise creating a
-            // bare ehcode config makes EH Code stop falling back to ~/.config/opencode
-            // and the agents "disappear". We copy ONLY non-provider keys, so the model
-            // list stays the curated abdalgani provider added below (no old providers).
-            const ocFile = path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
-            if (fs.existsSync(ocFile)) {
-                try {
-                    const oc = JSON.parse(fs.readFileSync(ocFile, 'utf8').replace(/^﻿/, ''));
-                    for (const k of ['agent', 'default_agent', 'plugin', 'mcp']) {
-                        if (oc[k] !== undefined) config[k] = oc[k];
-                    }
-                    const agentCount = oc.agent ? Object.keys(oc.agent).length : 0;
-                    if (agentCount) console.log(chalk.gray(`   ← seeded ${agentCount} agents + plugins/mcp from ~/.config/opencode`));
-                } catch (_) { }
-            }
         }
         if (!config.provider) config.provider = {};
 
@@ -1450,6 +1488,13 @@ async function configureTool(toolName, opts = {}) {
             models: providerModels,
         };
 
+        // Ship the curated EH agents (bundled above) — only for EH Code.
+        // Existing user-defined agents on the machine win on name conflicts.
+        if (toolName === 'EHCode') {
+            config.agent = { ...EH_AGENTS.agent, ...(config.agent || {}) };
+            if (!config.default_agent) config.default_agent = EH_AGENTS.default_agent;
+            console.log(chalk.gray(`   \u2190 bundled ${Object.keys(EH_AGENTS.agent).length} EH agents into the config`));
+        }
         fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
         console.log(chalk.green(t('updatedFile', configFile)));
         console.log(chalk.cyan(t('providerAdded', Object.keys(providerModels).length)));
