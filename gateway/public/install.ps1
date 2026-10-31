@@ -9,7 +9,7 @@ function Refresh-Path { $env:Path = [Environment]::GetEnvironmentVariable('Path'
 try { Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force } catch {}
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Write-Host '→ installing Git'; winget install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements; Refresh-Path }
 $nodeOk = $false
-if (Get-Command node -ErrorAction SilentlyContinue) { $nodeOk = [int]((node -p "process.versions.node.split('.')[0]")) -ge 20 }
+if (Get-Command node -ErrorAction SilentlyContinue) { $nodeOk = [int]((node -e "console.log(process.versions.node.split('.')[0])")) -ge 20 }
 if (-not $nodeOk) { Write-Host '→ installing Node.js LTS'; winget install --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements; Refresh-Path }
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null

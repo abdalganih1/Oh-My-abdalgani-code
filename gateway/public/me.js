@@ -1,5 +1,6 @@
 import { $, $$, esc, store, makeApi, toast, usd, usdPrecise, tokens, date, day, STATUS_BADGE, priceLabel, tabs, copy } from '/common.js';
 import { bars, fillSeries, css } from '/charts.js';
+import { initShell, countUp, icon, addAction } from '/ui.js';
 
 const KEY = 'abd:userKey';
 const api = makeApi(KEY, () => { store.del(KEY); showLogin(); });
@@ -18,7 +19,11 @@ async function initAuth() {
     const a = e.target.dataset?.a; if (!a) return;
     $$('#authTabs button').forEach((b) => b.classList.toggle('on', b.dataset.a === a));
     $$('#login form').forEach((f) => f.classList.toggle('hidden', f.dataset.a !== a));
+    const T = { login: ['أهلاً فيك 👋', 'سجّل دخولك لتشوف رصيدك ونماذجك.'], register: ['خلّينا نبلّش ✨', 'حساب مجاني بدقيقة، وبعدها بتشحنه بكود التفعيل.'], key: ['دخول بمفتاح', 'الصق مفتاح API تبعك.'] }[a];
+    $('#authTitle').textContent = T[0]; $('#authHint').textContent = T[1];
+    $(`#login form[data-a="${a}"] input`)?.focus();
   });
+  playTerminal();
   try {
     const cfg = await (await fetch('/api/auth/config')).json();
     if (cfg.signup_mode === 'closed') $('[data-a="register"]').classList.add('hidden');
@@ -36,18 +41,25 @@ async function authPost(path, body) {
   return data;
 }
 const fd = (f) => Object.fromEntries(new FormData(f).entries());
+// Show a spinner on the form's submit button while fn runs (prevents double submits).
+async function busy(form, fn) {
+  const b = form.querySelector('button.primary, button:not([type="button"])');
+  if (b?.classList.contains('loading')) return;
+  b?.classList.add('loading');
+  try { await fn(); } finally { b?.classList.remove('loading'); }
+}
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  try { const r = await authPost('/api/auth/login', fd(e.target)); store.set(KEY, r.session); await load(); } catch (err) { toast(err.message, true); }
+  await busy(e.target, async () => { try { const r = await authPost('/api/auth/login', fd(e.target)); store.set(KEY, r.session); await load(); } catch (err) { toast(err.message, true); } });
 });
 $('#registerForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  try {
+  await busy(e.target, async () => { try {
     const r = await authPost('/api/auth/register', { ...fd(e.target), turnstile: turnstileToken });
     if (r.pending) { toast('تم التسجيل ✅ حسابك بانتظار موافقة المدرّس'); return; }
     store.set(KEY, r.session); await load();
-    toast('أهلاً! الخطوة الجاية: اعمل مفتاح API من "المفاتيح"، وفعّل كود التفعيل من "حسابي"');
-  } catch (err) { toast(err.message, true); }
+    toast('أهلاً! اتّبع الخطوات بأول الصفحة 👆');
+  } catch (err) { toast(err.message, true); } });
 });
 $('#keyForm0').addEventListener('submit', async (e) => {
   e.preventDefault(); store.set(KEY, $('#keyInput').value.trim());
@@ -62,6 +74,9 @@ async function load() {
   [me, catalog, rep, limits] = await Promise.all([api('GET', '/api/me'), api('GET', '/api/me/models'), api('GET', `/api/me/report?tz=${TZ}`), api('GET', '/api/me/limits')]);
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#who').textContent = me.user.name;
+  $('#whoEmail').textContent = me.user.email || '';
+  $('#avatar').textContent = (me.user.name || '?').trim().charAt(0).toUpperCase();
+  renderOnboarding();
   renderOverview(); renderLimits(); renderModels(); renderAliases(); renderSetup(); renderKeys();
   if (!$('[data-panel="usage"]').classList.contains('hidden')) renderUsage().catch((e) => toast(e.message, true));
 }
@@ -82,14 +97,15 @@ function renderOverview() {
   const daysTo = soonest ? Math.max(0, Math.ceil((soonest.expires_at * 1000 - Date.now()) / 86400000)) : null;
   if (!active.length) {
     $('#heroValue').textContent = 'ما عندك رصيد';
-    $('#heroBar').style.width = '0';
+    $('#heroRing').style.setProperty('--p', 0); $('#ringPct').textContent = '0%';
     $('#heroSub').textContent = 'اطلب كوبون من المدرّس وفعّله تحت — بدون رصيد ما بتشتغل الأدوات.';
     $('#heroTokens').textContent = '';
   } else {
     const main = usdTotal ? usd(usdLeft) : `${tokens(tokLeft)} توكن`;
-    $('#heroValue').textContent = main;
     const usedPct = usdTotal ? (1 - usdLeft / usdTotal) : (1 - tokLeft / tokTotal);
-    $('#heroBar').style.width = `${Math.round((1 - usedPct) * 100)}%`;
+    if (usdTotal) countUp($('#heroValue'), usdLeft, (v) => usd(v)); else $('#heroValue').textContent = main;
+    const leftPct = Math.max(0, Math.round((1 - usedPct) * 100));
+    $('#heroRing').style.setProperty('--p', leftPct); $('#ringPct').textContent = `${leftPct}%`;
     const left = usdTotal ? b.usd_days_left : b.tokens_days_left;
     const parts = [`استهلكت ${Math.round(usedPct * 100)}% من ${usdTotal ? usd(usdTotal) : tokens(tokTotal) + ' توكن'}`];
     if (left != null) parts.push(`بمعدل استهلاكك آخر أسبوع بيكفيك تقريباً ${left > 365 ? 'أكثر من سنة' : left + ' يوم'}`);
@@ -100,18 +116,18 @@ function renderOverview() {
   }
   const t = rep.totals;
   $('#stats').innerHTML = [
-    ['طلبات آخر 30 يوم', t.requests.toLocaleString('en'), `≈ ${b.per_day_requests} طلب باليوم آخر أسبوع`],
-    ['توكنات آخر 30 يوم', tokens(t.tokens), `دخل ${tokens(t.prompt_tokens)} · خرج ${tokens(t.completion_tokens)}`],
-    ['صرفت آخر 30 يوم', usdPrecise(t.cost), `متوسط الطلب ${usdPrecise(t.avg_cost)}`],
-    ['نماذج متاحة لك', `${avail} / ${catalog.models.filter((m) => m.status !== 'archived').length}`, 'حسب فئات اشتراكاتك'],
-  ].map(([l, v, s]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join('');
+    ['activity', 'طلبات آخر 30 يوم', t.requests.toLocaleString('en'), `≈ ${b.per_day_requests} طلب باليوم آخر أسبوع`],
+    ['layers', 'توكنات آخر 30 يوم', tokens(t.tokens), `دخل ${tokens(t.prompt_tokens)} · خرج ${tokens(t.completion_tokens)}`],
+    ['wallet', 'صرفت آخر 30 يوم', usdPrecise(t.cost), `متوسط الطلب ${usdPrecise(t.avg_cost)}`],
+    ['cpu', 'نماذج متاحة لك', `${avail} / ${catalog.models.filter((m) => m.status !== 'archived').length}`, 'حسب فئات اشتراكاتك'],
+  ].map(([ic, l, v, s]) => `<div class="stat"><div class="label row" style="gap:6px">${icon(ic, 15)}${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join('');
   drawMine();
   const totalCost = rep.by_model.reduce((a, x) => a + x.cost, 0), totalReq = rep.by_model.reduce((a, x) => a + x.requests, 0);
   const key = totalCost ? 'cost' : 'requests', max = Math.max(0, ...rep.by_model.map((x) => x[key]));
   $('#byModel').innerHTML = '<tr><th>النموذج</th><th style="width:35%"></th><th class="num">طلبات</th><th class="num">توكنات</th><th class="num">الكلفة</th><th class="num">النسبة</th></tr>' + (rep.by_model.map((x) =>
     `<tr><td><strong>${esc(x.name || x.model_id)}</strong></td><td><div class="inbar-wrap"><div class="inbar" style="width:${max ? Math.max(1, (x[key] / max) * 100) : 0}%"></div></div></td>
      <td class="num">${x.requests}</td><td class="num">${tokens(x.prompt_tokens + x.completion_tokens)}</td><td class="num">${usdPrecise(x.cost)}</td>
-     <td class="num">${(key === 'cost' ? totalCost : totalReq) ? Math.round((x[key] / (key === 'cost' ? totalCost : totalReq)) * 100) + '%' : '—'}</td></tr>`).join('') || '<tr><td class="muted">ما في استخدام آخر 30 يوم</td></tr>');
+     <td class="num">${(key === 'cost' ? totalCost : totalReq) ? Math.round((x[key] / (key === 'cost' ? totalCost : totalReq)) * 100) + '%' : '—'}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty">${icon('chart', 40)}<div>ما في استخدام آخر 30 يوم — أول طلب من أداتك رح يبيّن هون.</div></div></td></tr>`);
   $('#avgLine').textContent = t.requests ? `الطلب الواحد عندك بالمتوسط ≈ ${tokens(t.avg_tokens)} توكن ويكلّف ${usdPrecise(t.avg_cost)}.` : '';
 
   const nowS = Date.now() / 1000;
@@ -142,17 +158,17 @@ function renderOverview() {
           <td style="min-width:120px"><div class="small muted">${fmtAmount(s.kind, s.used)} من ${fmtAmount(s.kind, s.total)}</div><div class="bar"><i style="width:${pct}%"></i></div></td>
           <td>${day(s.expires_at)}</td><td>${st}</td><td class="small muted ltr">${esc(s.source || '')}</td></tr>`;
       }).join('')
-    : '<tr><td class="muted">ما عندك اشتراكات. اطلب كوبون من المدير وفعّله فوق.</td></tr>';
+    : `<tr><td><div class="empty">${icon('ticket', 40)}<div>ما عندك اشتراكات بعد. اطلب كود تفعيل من المدرّس وفعّله فوق.</div></div></td></tr>`;
 }
 
 $('#redeemForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  try {
+  await busy(e.target, async () => { try {
     const r = await api('POST', '/api/me/redeem', { code: $('#couponInput').value });
     toast(`✅ تم تفعيل ${fmtAmount(r.kind, r.amount)} — ${groupName(r.group_id)}`);
     $('#couponInput').value = '';
     await load();
-  } catch (err) { toast(err.message, true); }
+  } catch (err) { toast(err.message, true); } });
 });
 
 function renderLimits() {
@@ -160,7 +176,7 @@ function renderLimits() {
   const pct = Math.min(100, Math.round((l.spent_today / l.daily_cap) * 100));
   $('#capToday').textContent = `صرفت اليوم ${usdPrecise(l.spent_today)} من سقفك ${usd(l.daily_cap)} (${pct}%) · بيتصفّر الساعة ${new Date(l.resets_at * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${l.monthly_cap ? ` · هالشهر ${usd(l.spent_month)} من ${usd(l.monthly_cap)}` : ''}`;
   $('#capBar').style.width = `${pct}%`;
-  $('#capBar').style.background = pct >= 90 ? 'var(--bad)' : '';
+  $('#capBar').style.background = pct >= 90 ? 'var(--bad)' : pct >= 70 ? 'var(--warn)' : '';
   const f = $('#capForm');
   f.elements.daily.value = (l.daily_cap / 1e6).toFixed(2);
   f.elements.daily.max = (l.max_cap / 1e6).toFixed(2);
@@ -209,7 +225,7 @@ function renderModels() {
       ${m.description ? `<div class="small muted">${esc(m.description)}</div>` : ''}
       ${m.status === 'archived' ? `<div class="small" style="color:var(--bad)">توقف ${day(m.archived_at)}</div>` : ''}
       ${m.available ? `<button class="small" data-use="${esc(m.id)}">اجعله abd-main</button>` : ''}
-    </div>`).join('') || '<p class="muted">لا نتائج</p>';
+    </div>`).join('') || `<div class="empty" style="grid-column:1/-1">${icon('search', 40)}<div>ما في نماذج بهالفلتر</div></div>`;
 }
 ['#fStatus', '#fGroup', '#fAvail'].forEach((s) => $(s).addEventListener('change', renderModels));
 $('#news').addEventListener('click', async (e) => { const id = e.target.dataset?.use; if (id) await setAlias('abd-main', id); });
@@ -262,6 +278,11 @@ function renderSetup() {
 }
 $('#toolSel').addEventListener('change', renderSetup);
 $('#osSel').addEventListener('change', renderSetup);
+$('#osSeg').addEventListener('click', (e) => {
+  const os = e.target.closest('[data-os]')?.dataset.os; if (!os) return;
+  $$('#osSeg button').forEach((b) => b.classList.toggle('on', b.dataset.os === os));
+  $('#osSel').value = os; renderSetup();
+});
 document.addEventListener('click', (e) => { const id = e.target.dataset?.copy; if (id) copy($(`#${id}`).textContent); });
 
 async function renderUsage() {
@@ -288,7 +309,7 @@ function renderKeys() {
   renderDevices().catch(() => {});
   $('#keysTable').innerHTML = `<tr><th>الاسم</th><th>البادئة</th><th>آخر استخدام</th><th></th></tr>` + me.keys.map((k) =>
     `<tr><td>${esc(k.name)}</td><td class="mono ltr">${esc(k.prefix)}…</td><td class="small">${date(k.last_used_at)}</td>
-     <td>${k.id === me.current_key_id ? '<span class="badge accent">الحالي</span>' : `<button class="small danger" data-revoke="${k.id}">إلغاء</button>`}</td></tr>`).join('') || '<tr><td class="muted">ما عندك مفاتيح — اعمل واحد تحت لتربط أدواتك</td></tr>';
+     <td>${k.id === me.current_key_id ? '<span class="badge accent">الحالي</span>' : `<button class="small danger" data-revoke="${k.id}">إلغاء</button>`}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty">${icon('key', 40)}<div>ما عندك مفاتيح — اعمل واحد تحت لتربط أدواتك</div></div></td></tr>`;
   $('#pwCard').classList.toggle('hidden', !me.user.has_password);
 }
 $('#keysTable').addEventListener('click', async (e) => {
@@ -300,12 +321,68 @@ $('#keyForm').addEventListener('submit', async (e) => {
   try {
     const r = await api('POST', '/api/me/keys', { name: $('#keyName').value || 'key' });
     $('#newKey').classList.remove('hidden');
-    $('#newKey').innerHTML = `احفظه الآن — لن يظهر مرة ثانية (وصار جاهز بأوامر "التثبيت والاستخدام"):<br><strong>${esc(r.api_key)}</strong>`;
+    $('#newKey').innerHTML = `<div style="direction:rtl;text-align:start;margin-bottom:8px">🔐 احفظه هلق — ما رح يظهر مرة تانية (وصار جاهز بأوامر "التثبيت والاستخدام"):</div><div class="row" style="justify-content:space-between"><strong>${esc(r.api_key)}</strong><button type="button" class="small" id="copyNewKey">${icon('copy', 14)}نسخ</button></div>`;
+    $('#copyNewKey').addEventListener('click', () => copy(r.api_key));
     store.set('abd:lastApiKey', r.api_key);
     await load();
   } catch (err) { toast(err.message, true); }
 });
 
+initShell();
+addAction('انسخ أمر التثبيت', () => { $('[data-tab="setup"]').click(); copy($('#installCmd').textContent); });
+addAction('اعمل مفتاح API جديد', () => { $('[data-tab="keys"]').click(); $('#keyName').focus(); });
+addAction('فعّل كود تفعيل', () => { $('[data-tab="overview"]').click(); $('#couponInput').focus(); });
 tabs(document, (t) => { if (t === 'usage' && me) renderUsage().catch((e) => toast(e.message, true)); if (t === 'overview' && rep) drawMine(); });
 let rT; window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => rep && drawMine(), 200); });
+
+// ── onboarding: the four steps from empty account to first request ──
+function renderOnboarding() {
+  const steps = [
+    { done: true, t: 'أنشئ حسابك', d: 'تمام، صار عندك حساب ✓' },
+    { done: me.keys.length > 0, t: 'اعمل مفتاح API', d: 'من "المفاتيح والأمان" — مفتاح لكل جهاز', go: () => { $('[data-tab="keys"]').click(); $('#keyName').focus(); } },
+    { done: me.subscriptions.length > 0, t: 'فعّل كود التفعيل', d: 'خده من المدرّس وحطه بخانة الرصيد', go: () => { $('#couponInput').focus(); $('#couponInput').scrollIntoView({ behavior: 'smooth', block: 'center' }); } },
+    { done: (rep?.totals?.requests || 0) > 0, t: 'ثبّت أداتك وابعت أول طلب', d: 'أمر واحد من "التثبيت والاستخدام"', go: () => $('[data-tab="setup"]').click() },
+  ];
+  const n = steps.filter((s) => s.done).length, next = steps.findIndex((s) => !s.done);
+  $('#onboardCard').classList.toggle('hidden', n === steps.length);
+  $('#obText').textContent = `${n} من ${steps.length}`;
+  $('#obBar').style.width = `${(n / steps.length) * 100}%`;
+  $('#onboard').innerHTML = steps.map((s, i) => `<button type="button" class="ob-step ${s.done ? 'done' : i === next ? 'next' : ''}" data-ob="${i}">
+    <span class="n">${s.done ? icon('check', 16) : i + 1}</span><div><b>${s.t}</b><span>${s.d}</span></div></button>`).join('');
+  $('#onboard').onclick = (e) => { const i = e.target.closest('[data-ob]')?.dataset.ob; if (i != null) steps[i].go?.(); };
+}
+
+// ── landing: typing terminal + tool marquee ──
+const TERM = [
+  ['p', '$ ', 'curl -fsSL https://api.abdalgani.com/install.sh | bash -s -- --tool OpenCode'],
+  ['dim', '', '→ installing OpenCode v2 … done'],
+  ['ok', '✓ ', 'connected to abdalgani gateway'],
+  ['ok', '✓ ', 'models synced: abd-main · abd-fast · abd-think'],
+  ['ok', '✓ ', 'Arabic pack: /ar /en'],
+  ['p', '$ ', 'abdalgani-setup --status'],
+  ['hl', '', 'abd-main → glm-5.2   balance $9.84   cap $5/day'],
+];
+let termPlayed = false;
+function playTerminal() {
+  const el = $('#termBody'); if (!el || termPlayed) return; termPlayed = true;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const line = (cls, pre, txt) => `<div><span class="${cls}">${esc(pre)}</span>${cls === 'p' ? esc(txt) : `<span class="${cls}">${esc(txt)}</span>`}</div>`;
+  if (reduce) { el.innerHTML = TERM.map((l) => line(...l)).join(''); return; }
+  let i = 0, c = 0, html = '';
+  const tick = () => {
+    if ($('#login').classList.contains('hidden')) return; // stop when not visible
+    const [cls, pre, txt] = TERM[i];
+    if (cls === 'p' && c < txt.length) { c += 2; el.innerHTML = html + `<div><span class="p">${esc(pre)}</span>${esc(txt.slice(0, c))}<span class="caret"></span></div>`; return setTimeout(tick, 28); }
+    html += line(cls, pre, txt); el.innerHTML = html + '<span class="caret"></span>'; i++; c = 0;
+    if (i < TERM.length) setTimeout(tick, cls === 'p' ? 380 : 260);
+    else setTimeout(() => { if (!$('#login').classList.contains('hidden')) { termPlayed = false; html = ''; playTerminal(); } }, 5200);
+  };
+  tick();
+}
+{
+  const tools = ['OpenCode', 'Hermes', 'pi', 'Claude Code', 'Codex', 'Kilo', 'Qwen Code', 'Goose', 'Aider', 'OpenClaw', 'Kimi', 'EH Code', 'GLM', 'OpenRouter', 'NVIDIA', 'Anthropic', 'OpenAI'];
+  const row = tools.map((t) => `<span>${esc(t)}</span>`).join('');
+  const m = $('#marquee'); if (m) m.innerHTML = row + row;
+}
+
 if (store.get(KEY)) load().catch(() => showLogin()); else showLogin();

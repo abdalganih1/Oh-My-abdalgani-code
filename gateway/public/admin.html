@@ -5,37 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>إدارة abdalgani</title>
 <meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236a4bff'/%3E%3Cstop offset='1' stop-color='%231fb7d6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M18 5 8 18h7l-1 9 10-13h-7z' fill='white'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<section id="login" class="login hidden">
-  <div class="card">
-    <h2>🛡️ لوحة المدير</h2>
-    <p class="muted small">ادخل <code>ADMIN_TOKEN</code> (السر المضبوط بـ wrangler secret).</p>
-    <form id="loginForm"><input id="tokenInput" type="password" placeholder="admin token" required><button class="primary" style="width:100%">دخول</button></form>
+<section id="login" class="login solo hidden">
+  <div class="auth-card">
+    <a class="brand" href="/admin" style="padding:0 0 18px"><span class="logo"><i data-i="shield" data-s="18"></i></span><span>abdalgani<small>لوحة المدير</small></span></a>
+    <h2>دخول المدير</h2>
+    <p class="hint">ادخل <code>ADMIN_TOKEN</code> — السر المضبوط بـ <span class="ltr">wrangler secret</span>.</p>
+    <form id="loginForm"><label class="field"><i data-i="key"></i><input id="tokenInput" type="password" placeholder="admin token" required autocomplete="current-password"></label><button class="primary block">دخول <i data-i="arrow" data-s="16"></i></button></form>
+    <p class="fine">المحاولات الخاطئة المتكررة بتحظر العنوان تلقائياً.</p>
   </div>
 </section>
 
-<section id="app" class="hidden">
-  <header class="top">
-    <h1>🛡️ إدارة البوابة</h1>
-    <div class="row"><a class="small" href="/" target="_blank">لوحة الطالب ↗</a><button class="small" id="logout">خروج</button></div>
-  </header>
-  <main>
+<section id="app" class="shell hidden">
+  <aside class="side" aria-label="القائمة">
+    <a class="brand" href="/admin"><span class="logo"><i data-i="shield" data-s="18"></i></span><span>abdalgani<small>إدارة البوابة</small></span></a>
     <nav class="tabs">
-      <button data-tab="overview">📊 التقارير</button>
-      <button data-tab="security">🛡️ الأمان <span id="secBadge" class="badge bad hidden"></span></button>
-      <button data-tab="updates">التحديثات <span id="unreadBadge" class="badge new hidden"></span></button>
-      <button data-tab="providers">المزوّدون والمفاتيح</button>
-      <button data-tab="models">النماذج والتوجيه</button>
-      <button data-tab="users">الطلاب</button>
-      <button data-tab="coupons">الكوبونات</button>
-      <button data-tab="usage">السجل</button>
-      <button data-tab="settings">الفئات والأسماء الثابتة</button>
+      <div class="nav-label">المراقبة</div>
+      <button data-tab="overview" data-sub="الاستخدام والمال والذروة لأي فترة"><i data-i="chart"></i><span class="lbl">التقارير</span></button>
+      <button data-tab="usage" data-sub="كل طلب لحظة بلحظة — بيتحدّث كل 5 ثواني"><i data-i="activity"></i><span class="lbl">السجل المباشر</span></button>
+      <button data-tab="security" data-sub="تنبيهات الإساءة، الحظر، الأجهزة وقواعد الحماية"><i data-i="shield"></i><span class="lbl">الأمان</span><span id="secBadge" class="badge bad hidden"></span></button>
+      <button data-tab="updates" data-sub="نماذج جديدة، أرشفة تلقائية وأحداث المزوّدين"><i data-i="bell"></i><span class="lbl">التحديثات</span><span id="unreadBadge" class="badge new hidden"></span></button>
+      <div class="nav-label">الإعداد</div>
+      <button data-tab="providers" data-sub="المزوّدون ومفاتيحهم المشفّرة وطريقة الدفع"><i data-i="plug"></i><span class="lbl">المزوّدون والمفاتيح</span></button>
+      <button data-tab="models" data-sub="الأسعار والحالة ومسارات التوجيه"><i data-i="cpu"></i><span class="lbl">النماذج والتوجيه</span></button>
+      <button data-tab="settings" data-sub="فئات النماذج والأسماء الثابتة الافتراضية"><i data-i="layers"></i><span class="lbl">الفئات والأسماء</span></button>
+      <div class="nav-label">الناس والمال</div>
+      <button data-tab="users" data-sub="الحسابات، الموافقات، السقوف وكلمات السر"><i data-i="users"></i><span class="lbl">الطلاب</span></button>
+      <button data-tab="coupons" data-sub="أكواد التفعيل وسعر بيعها"><i data-i="ticket"></i><span class="lbl">الكوبونات</span></button>
     </nav>
+    <div class="side-foot">
+      <a class="btn ghost small" href="/" target="_blank" rel="noopener" style="justify-content:flex-start;border:0"><i data-i="external" data-s="16"></i>لوحة الطالب</a>
+      <button class="ghost" id="logout" style="justify-content:flex-start"><i data-i="logout"></i>خروج</button>
+    </div>
+  </aside>
+  <div id="scrim"></div>
 
+  <div class="main-col">
+    <header class="top">
+      <button class="icon-btn ghost" id="menuBtn" aria-label="القائمة"><i data-i="menu"></i></button>
+      <div><h1 id="pageTitle">التقارير</h1><div class="sub" id="pageSub"></div></div>
+      <div class="top-actions">
+        <button class="pal-btn" id="palBtn" aria-label="بحث سريع"><i data-i="search" data-s="16"></i><span class="lbl">روح لـ…</span><kbd>Ctrl K</kbd></button>
+        <button class="icon-btn" id="themeBtn" aria-label="المظهر"></button>
+      </div>
+    </header>
+  <main>
     <div data-panel="overview">
       <div class="card">
         <div class="row">
@@ -46,14 +66,14 @@
           <label class="row small muted">من <input type="date" id="rFrom"></label>
           <label class="row small muted">إلى <input type="date" id="rTo"></label>
           <span class="spacer"></span>
-          <button id="csvBtn">⬇️ تصدير CSV</button>
+          <button id="csvBtn">⬇ تصدير CSV</button>
         </div>
         <div class="small muted" id="rangeLabel" style="margin-top:8px"></div>
       </div>
 
-      <h3 class="muted" style="margin:6px 4px">الاستخدام</h3>
+      <div class="section-title">الاستخدام</div>
       <div class="grid" id="kpiUse"></div>
-      <h3 class="muted" style="margin:16px 4px 6px">المال</h3>
+      <div class="section-title" style="margin-top:22px">المال</div>
       <div class="grid" id="kpiMoney"></div>
 
       <div class="card" style="margin-top:16px">
@@ -64,25 +84,25 @@
 
       <div class="two">
         <div class="card">
-          <div class="row"><h2 style="margin:0">🏆 أكثر النماذج استخداماً</h2><span class="spacer"></span>
+          <div class="row"><h2 style="margin:0"><i data-i="cpu"></i>أكثر النماذج استخداماً</h2><span class="spacer"></span>
             <select id="modelSort"><option value="requests">حسب الطلبات</option><option value="tokens">حسب التوكنات</option><option value="consumed">حسب المستهلك</option><option value="upstream_cost">حسب كلفتنا</option></select></div>
           <div class="table-wrap"><table id="topModels"></table></div>
         </div>
         <div class="card">
-          <div class="row"><h2 style="margin:0">👤 أكثر الطلاب طلباً</h2><span class="spacer"></span>
+          <div class="row"><h2 style="margin:0"><i data-i="users"></i>أكثر الطلاب طلباً</h2><span class="spacer"></span>
             <select id="userSort"><option value="requests">حسب الطلبات</option><option value="tokens">حسب التوكنات</option><option value="consumed">حسب المستهلك</option></select></div>
           <div class="table-wrap"><table id="topUsers"></table></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="row"><h2 style="margin:0">⏰ ساعات الذروة</h2><span class="spacer"></span><span class="small muted" id="peakText"></span></div>
+        <div class="row"><h2 style="margin:0"><i data-i="activity"></i>ساعات الذروة</h2><span class="spacer"></span><span class="small muted" id="peakText"></span></div>
         <p class="small muted">عدد الطلبات لكل ساعة من كل يوم (بتوقيتك). اللون الأقوى = ضغط أعلى.</p>
         <div id="heat"></div>
       </div>
 
       <div class="card">
-        <h2>💰 الإيراد مقابل المدفوع — شهرياً</h2>
+        <h2><i data-i="wallet"></i>الإيراد مقابل المدفوع — شهرياً</h2>
         <div id="moneyLegend"></div>
         <div id="moneyChart"></div>
         <div class="table-wrap" style="margin-top:10px"><table id="moneyTable"></table></div>
@@ -90,12 +110,12 @@
 
       <div class="two">
         <div class="card">
-          <h2>🧾 تفصيل المدفوع للمزوّدين</h2>
+          <h2><i data-i="list"></i>تفصيل المدفوع للمزوّدين</h2>
           <div class="table-wrap"><table id="paidTable"></table></div>
           <p class="small muted">الاشتراكات الشهرية الثابتة (مثل z.ai coding plan) تُضبط من تبويب المزوّدين ← "طريقة الدفع". تكاليف الاستخدام تُحسب من الكلفة الحقيقية اللي بيرجعها المزوّد (OpenRouter) أو من سعر المسار.</p>
         </div>
         <div class="card">
-          <h2>➕ مصروف يدوي</h2>
+          <h2><i data-i="wallet"></i>مصروف يدوي</h2>
           <form id="expenseForm" class="form">
             <label class="f">المبلغ ($)<input name="amount" type="number" step="0.01" min="0.01" required></label>
             <label class="f">المزوّد<select name="provider_id" id="expProvider"></select></label>
@@ -107,24 +127,24 @@
         </div>
       </div>
 
-      <div class="card"><h2>🔌 المزوّدون خلال الفترة</h2><div class="table-wrap"><table id="provReport"></table></div></div>
+      <div class="card"><h2><i data-i="plug"></i>المزوّدون خلال الفترة</h2><div class="table-wrap"><table id="provReport"></table></div></div>
     </div>
 
     <div data-panel="security">
       <div class="card">
-        <div class="row"><h2 style="margin:0">🚨 تنبيهات الإساءة</h2><span class="spacer"></span>
+        <div class="row"><h2 style="margin:0"><i data-i="bell"></i>تنبيهات الإساءة</h2><span class="spacer"></span>
           <label class="row small"><input type="checkbox" id="alertsAll"> عرض المحلولة</label>
-          <button id="scanNow" class="primary">🔍 افحص الآن</button></div>
+          <button id="scanNow" class="primary"><i data-i="search" data-s="16"></i>افحص الآن</button></div>
         <p class="small muted">فحص تلقائي كل 30 دقيقة: يوم استخدام ثقيل، قفزة مفاجئة، مفتاح من شبكات كثيرة، شبكة عليها حسابات كثيرة، أخطاء كثيرة (سكربت عم يجرّب)، أداة عالقة بحلقة، تسجيلات بالجملة. نفس التنبيه ما بيتكرر بنفس اليوم.</p>
         <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="alertTable"></table></div>
       </div>
-      <div class="card hidden" id="unpricedCard" style="border-color:var(--bad)">
-        <h2 style="color:var(--bad)">⚠️ نماذج بسعر صفر</h2>
+      <div class="card danger-card hidden" id="unpricedCard">
+        <h2>⚠️ نماذج بسعر صفر</h2>
         <p class="small">أي طالب عنده رصيد بيستخدم هالنماذج <b>مجاناً</b> (الحد الوحيد هو سقف التوكنات اليومي). حدّد سعرها من "النماذج والتوجيه": <span id="unpricedList" class="mono ltr"></span></p>
       </div>
 
       <div class="card">
-        <h2>⚙️ قواعد الحماية</h2>
+        <h2><i data-i="sliders"></i>قواعد الحماية</h2>
         <form id="secForm" class="form">
           <label class="f">ربط الأجهزة<select name="device_policy">
             <option value="off">معطّل</option>
@@ -162,7 +182,7 @@
       </div>
 
       <div class="card">
-        <h2>⛔ المحظورون</h2>
+        <h2><i data-i="lock"></i>المحظورون</h2>
         <form id="blockForm" class="row">
           <select name="kind"><option value="ip">عنوان IP</option><option value="device">جهاز</option></select>
           <input name="value" class="ltr" placeholder="1.2.3.4 أو معرّف الجهاز" required style="flex:1;min-width:180px">
@@ -174,29 +194,29 @@
       </div>
 
       <div class="card">
-        <h2>📱 أجهزة الطلاب</h2>
+        <h2><i data-i="monitor"></i>أجهزة الطلاب</h2>
         <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="deviceTable"></table></div>
       </div>
 
       <div class="two">
-        <div class="card"><h2>🌐 أكثر العناوين نشاطاً (24 ساعة)</h2><div class="table-wrap"><table id="ipTable"></table></div></div>
-        <div class="card"><h2>🔔 أحداث الأمان</h2><div class="table-wrap" style="max-height:360px;overflow:auto"><table id="secEvents"></table></div></div>
+        <div class="card"><h2><i data-i="globe"></i>أكثر العناوين نشاطاً (24 ساعة)</h2><div class="table-wrap"><table id="ipTable"></table></div></div>
+        <div class="card"><h2><i data-i="bell"></i>أحداث الأمان</h2><div class="table-wrap" style="max-height:360px;overflow:auto"><table id="secEvents"></table></div></div>
       </div>
     </div>
 
     <div data-panel="updates">
       <div class="card">
-        <div class="row"><h2 style="margin:0">🔔 تحديثات المزوّدين</h2><span class="spacer"></span>
-          <button id="runNow" class="primary">🔄 افحص الآن</button><button id="markRead">تعليم الكل كمقروء</button></div>
+        <div class="row"><h2 style="margin:0"><i data-i="bell"></i>تحديثات المزوّدين</h2><span class="spacer"></span>
+          <button id="runNow" class="primary"><i data-i="activity" data-s="16"></i>افحص الآن</button><button id="markRead">تعليم الكل كمقروء</button></div>
         <p class="muted small">كل 30 دقيقة البوابة بتسحب قائمة نماذج كل مزوّد: الجديد بينشر تلقائياً (حسب سياسة المزوّد) كـ <b>جديد</b> لمدة الأيام المحددة، والمحذوف عند المزوّد بيتأرشف، وأي مزوّد/نموذج ما رد بنجاح طول المدة المحددة (مع إنو إجتو طلبات) بيتأرشف. للتنبيهات على Discord/Slack/Telegram: <code class="ltr">wrangler secret put NOTIFY_WEBHOOK</code></p>
         <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="eventTable"></table></div>
       </div>
       <div class="card">
-        <h2>🆕 نماذج جديدة عند المزوّدين بانتظار قرارك</h2>
+        <h2><i data-i="sparkles"></i>نماذج جديدة عند المزوّدين بانتظار قرارك</h2>
         <div class="table-wrap"><table id="pendingTable"></table></div>
       </div>
       <div class="card">
-        <h2>⚙️ إعدادات الأرشفة</h2>
+        <h2><i data-i="sliders"></i>إعدادات الأرشفة</h2>
         <form id="lifecycleForm" class="form">
           <label class="f">أرشفة بعد فشل متواصل (ساعات)<input name="archive_after_hours" type="number" min="1"></label>
           <label class="f">مدة شارة "جديد" (أيام)<input name="new_days" type="number" min="0"></label>
@@ -209,7 +229,7 @@
     <div data-panel="providers">
       <div id="providerList"></div>
       <div class="card">
-        <h2>➕ مزوّد جديد / تعديل</h2>
+        <h2><i data-i="plug"></i>مزوّد جديد / تعديل</h2>
         <form id="providerForm" class="form">
           <label class="f">المعرّف<input name="id" class="ltr" required placeholder="deepseek"></label>
           <label class="f">الاسم<input name="name" placeholder="DeepSeek"></label>
@@ -228,7 +248,7 @@
 
     <div data-panel="models">
       <div class="card">
-        <div class="row"><h2 style="margin:0">النماذج</h2><span class="spacer"></span><button class="primary" id="newModel">➕ نموذج</button></div>
+        <div class="row"><h2 style="margin:0"><i data-i="cpu"></i>النماذج</h2><span class="spacer"></span><button class="primary" id="newModel">+ نموذج جديد</button></div>
         <p class="muted small">الأسعار بالدولار. وضع التسعير: <b>token</b> = جدولك لكل مليون توكن · <b>request</b> = سعر ثابت لكل طلب · <b>provider</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك. النسبة الإضافية تنضاف فوق.</p>
         <div class="table-wrap"><table id="modelTable"></table></div>
       </div>
@@ -236,7 +256,7 @@
 
     <div data-panel="users">
       <div class="card">
-        <h2>➕ طالب جديد</h2>
+        <h2><i data-i="users"></i>طالب جديد</h2>
         <form id="userForm" class="form">
           <label class="f">الاسم<input name="name" required></label>
           <label class="f">الإيميل<input name="email" type="email" class="ltr"></label>
@@ -245,12 +265,12 @@
         </form>
         <div id="userSecret" class="secret hidden" style="margin-top:10px"></div>
       </div>
-      <div class="card"><div class="row"><h2 style="margin:0">الطلاب</h2><span class="spacer"></span><input id="userSearch" placeholder="بحث..." style="max-width:200px"></div><div class="table-wrap"><table id="userTable"></table></div></div>
+      <div class="card"><div class="row"><h2 style="margin:0"><i data-i="users"></i>الطلاب</h2><span class="spacer"></span><label class="search"><i data-i="search" data-s="16"></i><input id="userSearch" type="search" placeholder="بحث… (/)"></label></div><div class="table-wrap"><table id="userTable"></table></div></div>
     </div>
 
     <div data-panel="coupons">
       <div class="card">
-        <h2>🎟️ توليد كوبونات</h2>
+        <h2><i data-i="ticket"></i>توليد كوبونات</h2>
         <form id="couponForm" class="form">
           <label class="f">النوع<select name="kind"><option value="usd">رصيد دولار</option><option value="tokens">توكنات</option></select></label>
           <label class="f">القيمة (دولار أو مليون توكن)<input name="amount" type="number" step="0.01" min="0.01" required value="10"></label>
@@ -265,13 +285,13 @@
         </form>
         <pre id="newCoupons" class="hidden"></pre>
       </div>
-      <div class="card"><h2>الكوبونات</h2><div class="table-wrap"><table id="couponTable"></table></div></div>
+      <div class="card"><h2><i data-i="list"></i>الكوبونات</h2><div class="table-wrap"><table id="couponTable"></table></div></div>
     </div>
 
     <div data-panel="usage">
       <div class="card">
         <div class="row">
-          <h2 style="margin:0">📡 السجل المباشر</h2>
+          <h2 style="margin:0"><i data-i="activity"></i>السجل المباشر</h2>
           <span id="liveDot" class="badge">متوقف</span>
           <span class="spacer"></span>
           <select id="liveUser"><option value="">كل الطلاب</option></select>
@@ -286,7 +306,7 @@
 
     <div data-panel="settings">
       <div class="card">
-        <h2>الفئات (Model groups)</h2>
+        <h2><i data-i="layers"></i>الفئات (Model groups)</h2>
         <p class="muted small">الكوبون أو الاشتراك ممكن ينحصر بفئة. نموذج بلا فئة يغطيه فقط اشتراك "كل النماذج".</p>
         <table id="groupTable"></table>
         <form id="groupForm" class="form" style="margin-top:10px">
@@ -297,13 +317,14 @@
         </form>
       </div>
       <div class="card">
-        <h2>الأسماء الثابتة الافتراضية (aliases)</h2>
+        <h2><i data-i="shuffle"></i>الأسماء الثابتة الافتراضية (aliases)</h2>
         <p class="muted small">الأدوات بتنضبط على هالأسماء. كل طالب بيقدر يغيّرها لنفسه من لوحته. JSON: <code>{"abd-main": "glm-5.2"}</code></p>
         <textarea id="aliasesJson" class="mono ltr" rows="6"></textarea>
         <button class="primary" id="saveAliases" style="margin-top:8px">حفظ</button>
       </div>
     </div>
   </main>
+  </div>
 </section>
 
 <dialog id="modelDlg"><form id="modelForm" method="dialog">

@@ -2,176 +2,254 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>لوحة abdalgani</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>abdalgani AI — كل النماذج بمفتاح واحد</title>
+<meta name="description" content="بوابة abdalgani للذكاء الاصطناعي: كل نماذج البرمجة بمفتاح واحد، مع لوحة بتشرحلك استهلاكك.">
+<meta name="theme-color" content="#060812" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5fb" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236a4bff'/%3E%3Cstop offset='1' stop-color='%231fb7d6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M18 5 8 18h7l-1 9 10-13h-7z' fill='white'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
+
+<!-- ═══════════ landing + auth ═══════════ -->
 <section id="login" class="login hidden">
-  <div class="card">
-    <h2>⚡ abdalgani AI</h2>
-    <div class="seg" id="authTabs" style="margin:8px 0 14px"><button data-a="login" class="on">دخول</button><button data-a="register">حساب جديد</button><button data-a="key">دخول بمفتاح API</button></div>
-    <form id="loginForm" data-a="login">
-      <input name="email" type="email" placeholder="الإيميل" autocomplete="email" required>
-      <input name="password" type="password" placeholder="كلمة السر" autocomplete="current-password" required>
-      <button class="primary" style="width:100%">دخول</button>
-    </form>
-    <form id="registerForm" data-a="register" class="hidden">
-      <input name="name" placeholder="اسمك" autocomplete="name" required style="direction:rtl">
-      <input name="email" type="email" placeholder="الإيميل" autocomplete="email" required>
-      <input name="password" type="password" placeholder="كلمة سر (8 أحرف على الأقل)" autocomplete="new-password" minlength="8" required>
-      <div id="turnstile"></div>
-      <button class="primary" style="width:100%">إنشاء حساب</button>
-      <p class="small muted">الحساب مجاني بس ما فيه رصيد: بعد التسجيل بتعمل مفتاح API لحالك، وبتاخد <b>كود تفعيل</b> من المدرّس لتشحن رصيدك.</p>
-    </form>
-    <form id="keyForm0" data-a="key" class="hidden">
-      <input id="keyInput" placeholder="sk-abd-..." autocomplete="off" required>
-      <button class="primary" style="width:100%">دخول</button>
-    </form>
+  <div class="pitch">
+    <a class="brand" href="/"><span class="logo"><i data-i="zap" data-s="18"></i></span><span>abdalgani AI<small>بوابة الذكاء الاصطناعي للطلاب</small></span></a>
+    <span class="eyebrow"><b>جديد</b> نماذج جديدة بتنضاف تلقائياً أول ما تنزل</span>
+    <h1 class="display">كل نماذج البرمجة<br><span class="grad-text">بمفتاح واحد.</span></h1>
+    <p class="lede">مفتاح واحد بيشتغل مع OpenCode وHermes وpi وClaude Code وCodex وغيرهم. وبتشوف بالضبط وين راح كل سنت من رصيدك، وبتبدّل بين النماذج بضغطة بدون ما تعيد تثبيت شي.</p>
+    <div class="term" aria-hidden="true">
+      <div class="code-bar"><span class="dots"><i></i><i></i><i></i></span><span class="code-title">~ terminal</span></div>
+      <div class="term-body" id="termBody"></div>
+    </div>
+    <div class="feats">
+      <div class="feat"><i data-i="shuffle"></i><div><b>بدّل بضغطة</b>أسماء ثابتة بأدواتك، وبتشوف النموذج الحقيقي ورا كل اسم</div></div>
+      <div class="feat"><i data-i="gauge"></i><div><b>سقف بإيدك</b>حد يومي بيحمي رصيدك من الحلقات والمفاتيح المسروقة</div></div>
+      <div class="feat"><i data-i="globe"></i><div><b>عربي بالتيرمينال</b>الأمر <span class="ltr">/ar</span> بيخلي أي أداة تحكي عربي</div></div>
+    </div>
+    <div class="marquee" aria-hidden="true"><div class="marquee-track" id="marquee"></div></div>
+  </div>
+
+  <div class="auth-side">
+    <div class="auth-card">
+      <h2 id="authTitle">أهلاً فيك 👋</h2>
+      <p class="hint" id="authHint">سجّل دخولك لتشوف رصيدك ونماذجك.</p>
+      <div class="seg big" id="authTabs" style="margin-bottom:18px"><button data-a="login" class="on">دخول</button><button data-a="register">حساب جديد</button><button data-a="key">مفتاح API</button></div>
+      <form id="loginForm" data-a="login">
+        <label class="field"><i data-i="globe"></i><input name="email" type="email" placeholder="الإيميل" autocomplete="email" required></label>
+        <label class="field"><i data-i="lock"></i><input name="password" type="password" placeholder="كلمة السر" autocomplete="current-password" required></label>
+        <button class="primary block">دخول <i data-i="arrow" data-s="16"></i></button>
+      </form>
+      <form id="registerForm" data-a="register" class="hidden">
+        <label class="field"><i data-i="users"></i><input name="name" placeholder="اسمك" autocomplete="name" required></label>
+        <label class="field"><i data-i="globe"></i><input name="email" type="email" placeholder="الإيميل" autocomplete="email" required></label>
+        <label class="field"><i data-i="lock"></i><input name="password" type="password" placeholder="كلمة سر (8 أحرف على الأقل)" autocomplete="new-password" minlength="8" required></label>
+        <div id="turnstile"></div>
+        <button class="primary block">إنشاء حساب <i data-i="arrow" data-s="16"></i></button>
+        <div class="steps-mini">
+          <div><i>1</i>بتعمل حسابك هون (مجاني، بدون رصيد)</div>
+          <div><i>2</i>بتعمل مفتاح API لحالك من اللوحة</div>
+          <div><i>3</i>بتاخد <b>كود تفعيل</b> من المدرّس وبتشحن فيه</div>
+        </div>
+      </form>
+      <form id="keyForm0" data-a="key" class="hidden">
+        <label class="field"><i data-i="key"></i><input id="keyInput" placeholder="sk-abd-..." autocomplete="off" required></label>
+        <button class="primary block">دخول <i data-i="arrow" data-s="16"></i></button>
+        <p class="fine">إذا عندك مفتاح قديم من المدرّس بتقدر تدخل فيه مباشرة.</p>
+      </form>
+      <p class="fine">بياناتك محمية: كلمات السر مشفّرة، ومفاتيحك ما بتنحفظ إلا كبصمة.</p>
+    </div>
   </div>
 </section>
 
-<section id="app" class="hidden">
-  <header class="top">
-    <h1>⚡ abdalgani AI</h1>
-    <div class="row"><span class="who" id="who"></span><button class="small" id="logout">خروج</button></div>
-  </header>
-  <main>
+<!-- ═══════════ app ═══════════ -->
+<section id="app" class="shell hidden">
+  <aside class="side" aria-label="القائمة">
+    <a class="brand" href="/"><span class="logo"><i data-i="zap" data-s="18"></i></span><span>abdalgani AI<small>لوحة الطالب</small></span></a>
     <nav class="tabs">
-      <button data-tab="overview">حسابي</button>
-      <button data-tab="models">النماذج</button>
-      <button data-tab="switch">تبديل النماذج</button>
-      <button data-tab="setup">التثبيت والاستخدام</button>
-      <button data-tab="usage">السجل</button>
-      <button data-tab="keys">المفاتيح</button>
+      <button data-tab="overview" data-sub="رصيدك وحدودك ووين راح استهلاكك"><i data-i="home"></i><span class="lbl">حسابي</span></button>
+      <button data-tab="models" data-sub="كل النماذج، الجديد والقديم والمسموح إلك"><i data-i="cpu"></i><span class="lbl">النماذج</span></button>
+      <button data-tab="switch" data-sub="غيّر النموذج ورا أي اسم ثابت — بيشتغل فوراً بكل أدواتك"><i data-i="shuffle"></i><span class="lbl">تبديل النماذج</span></button>
+      <button data-tab="setup" data-sub="أمر واحد بيثبّت الأداة وبيربطها بحسابك"><i data-i="terminal"></i><span class="lbl">التثبيت والاستخدام</span></button>
+      <button data-tab="usage" data-sub="كل طلباتك الأخيرة بالتفصيل"><i data-i="list"></i><span class="lbl">السجل</span></button>
+      <button data-tab="keys" data-sub="مفاتيح API وأجهزتك وكلمة السر"><i data-i="key"></i><span class="lbl">المفاتيح والأمان</span></button>
     </nav>
+    <div class="side-foot">
+      <div class="user-chip"><span class="avatar" id="avatar">؟</span><div style="min-width:0"><div class="nm" id="who"></div><div class="em" id="whoEmail"></div></div></div>
+      <button class="ghost" id="logout" style="justify-content:flex-start"><i data-i="logout"></i>خروج</button>
+    </div>
+  </aside>
+  <div id="scrim"></div>
 
-    <div data-panel="overview">
-      <div class="card" id="heroCard">
-        <div class="small muted">رصيدك الحالي</div>
-        <div class="hero" id="heroValue">—</div>
-        <div class="bar" style="height:8px;margin-top:10px"><i id="heroBar" style="width:0"></i></div>
-        <div class="hero-sub" id="heroSub"></div>
-        <div class="hero-sub" id="heroTokens"></div>
+  <div class="main-col">
+    <header class="top">
+      <button class="icon-btn ghost" id="menuBtn" aria-label="القائمة"><i data-i="menu"></i></button>
+      <div><h1 id="pageTitle">حسابي</h1><div class="sub" id="pageSub"></div></div>
+      <div class="top-actions">
+        <button class="pal-btn" id="palBtn" aria-label="بحث سريع"><i data-i="search" data-s="16"></i><span class="lbl">روح لـ…</span><kbd>Ctrl K</kbd></button>
+        <button class="icon-btn" id="themeBtn" aria-label="المظهر"></button>
       </div>
-      <div class="grid" id="stats"></div>
+    </header>
 
-      <div class="card" style="margin-top:16px">
-        <h2>🧯 حدود صرفي</h2>
-        <p class="small muted">حماية لرصيدك: إذا علقت أداة بحلقة أو انسرق مفتاحك، ما بيقدر يصرف أكثر من سقفك. السقف اليومي إجباري (بيبدأ بـ $5) وبتقدر تغيّره هون.</p>
-        <div class="row" style="margin-bottom:8px"><span id="capToday" class="small"></span></div>
-        <div class="bar" style="height:8px"><i id="capBar" style="width:0"></i></div>
-        <form id="capForm" class="form" style="margin-top:12px">
-          <label class="f">السقف اليومي ($)<input name="daily" type="number" step="0.01" min="0.1" required></label>
-          <label class="f">السقف الشهري ($، اختياري)<input name="monthly" type="number" step="0.01" min="0.1" placeholder="بلا"></label>
-          <button class="primary">حفظ</button>
-        </form>
-      </div>
+    <main>
+      <!-- ── overview ── -->
+      <div data-panel="overview">
+        <div class="card" id="onboardCard">
+          <div class="card-head"><h2><i data-i="sparkles"></i>ابدأ بأربع خطوات</h2><span class="spacer"></span><span class="small muted" id="obText"></span></div>
+          <div class="ob-progress"><i id="obBar" style="width:0"></i></div>
+          <div class="onboard" id="onboard"></div>
+        </div>
 
-      <div class="card" style="margin-top:16px">
-        <div class="row"><h2 style="margin:0" id="myTsTitle">استهلاكك آخر 30 يوم</h2><span class="spacer"></span>
-          <div class="seg" id="myMetric"><button data-m="cost">الكلفة $</button><button data-m="requests">الطلبات</button><button data-m="tokens">التوكنات</button></div></div>
-        <div id="myChart" style="margin-top:12px"></div>
-      </div>
+        <div class="card hero-card" id="heroCard">
+          <div>
+            <div class="eyebrow-sm"><i data-i="wallet" data-s="16"></i>رصيدك الحالي</div>
+            <div class="hero" id="heroValue">—</div>
+            <div class="hero-sub" id="heroSub"></div>
+            <div class="hero-sub" id="heroTokens"></div>
+            <form id="redeemForm" class="redeem" style="margin-top:18px">
+              <input id="couponInput" class="ltr" placeholder="ABD-XXXX-XXXX-XXXX" required aria-label="كود التفعيل" autocomplete="off">
+              <button class="primary"><i data-i="ticket" data-s="16"></i>فعّل الكود</button>
+            </form>
+          </div>
+          <div class="ring" id="heroRing"><div><b id="ringPct">0%</b><span>متبقي</span></div></div>
+          <i id="heroBar" hidden></i>
+        </div>
 
-      <div class="card">
-        <h2>🧭 وين راح رصيدك؟</h2>
-        <div class="table-wrap"><table id="byModel"></table></div>
-        <div class="small muted" id="avgLine" style="margin-top:8px"></div>
-      </div>
+        <div class="grid" id="stats"></div>
 
-      <div class="card">
+        <div class="two" style="margin-top:18px">
+          <div class="card">
+            <div class="card-head"><h2><i data-i="gauge"></i>حدود صرفي</h2></div>
+            <p class="small muted" style="margin-top:-6px">حماية لرصيدك: إذا علقت أداة بحلقة أو انسرق مفتاحك، ما بيقدر يصرف أكثر من سقفك. السقف اليومي إجباري (بيبدأ بـ <span class="ltr">$5</span>) وبتقدر تغيّره هون.</p>
+            <div class="row" style="margin-bottom:6px"><span id="capToday" class="small"></span></div>
+            <div class="bar" style="height:10px"><i id="capBar" style="width:0"></i></div>
+            <form id="capForm" class="form" style="margin-top:16px">
+              <label class="f">السقف اليومي ($)<input name="daily" type="number" step="0.01" min="0.1" required></label>
+              <label class="f">السقف الشهري ($، اختياري)<input name="monthly" type="number" step="0.01" min="0.1" placeholder="بلا"></label>
+              <button class="primary">حفظ</button>
+            </form>
+          </div>
+          <div class="card" id="realCard">
+            <div class="card-head"><h2><i data-i="cpu"></i>النماذج الحقيقية ورا أسمائك</h2></div>
+            <div class="table-wrap"><table id="realTable"></table></div>
+            <p class="muted small">كل رد من البوابة فيه كمان الترويسة <code>x-abdalgani-model</code> وحقل <code>model</code> بالنموذج الحقيقي.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 id="myTsTitle">استهلاكك آخر 30 يوم</h2><span class="spacer"></span>
+            <div class="seg" id="myMetric"><button data-m="cost">الكلفة $</button><button data-m="requests">الطلبات</button><button data-m="tokens">التوكنات</button></div></div>
+          <div id="myChart"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2><i data-i="chart"></i>وين راح رصيدك؟</h2></div>
+          <div class="table-wrap"><table id="byModel"></table></div>
+          <div class="small muted" id="avgLine" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card hidden" id="newsCard"><div class="card-head"><h2><i data-i="sparkles"></i>ما الجديد</h2></div><div id="news"></div></div>
+
+        <div class="card"><div class="card-head"><h2><i data-i="wallet"></i>اشتراكاتي</h2></div><div class="table-wrap"><table id="subsTable"></table></div></div>
+
         <details class="explain">
-          <summary>❓ شو يعني "توكن"؟ وليش بعض الطلبات أغلى من غيرها؟</summary>
+          <summary>شو يعني "توكن"؟ وليش بعض الطلبات أغلى من غيرها؟</summary>
           <ul>
             <li><b>التوكن</b> = قطعة صغيرة من النص: تقريباً ¾ كلمة إنجليزية، أو نص كلمة عربية. الكود كمان بيتقسّم لتوكنات.</li>
             <li>كل طلب إله جزئين: <b>الدخل</b> (اللي بتبعته أنت: سؤالك + الملفات + كل المحادثة اللي قبل) و<b>الخرج</b> (رد النموذج). الخرج عادة أغلى.</li>
             <li><b>المحادثات الطويلة أغلى</b>: كل رسالة جديدة بتبعت معها كل اللي قبلها. أدوات البرمجة (OpenCode، Claude Code…) بتبعت كمان ملفات المشروع، فالطلب الواحد ممكن يكون عشرات آلاف التوكنات.</li>
-            <li><b>بعض النماذج سعرها ثابت لكل طلب</b> مهما كان طوله، وبعضها حسب التوكنات — شوف السعر بتبويب "النماذج".</li>
+            <li><b>بعض النماذج سعرها ثابت لكل طلب</b> مهما كان طوله، وبعضها حسب التوكنات — شوف السعر بصفحة "النماذج".</li>
           </ul>
           <p><b>نصائح لتوفير رصيدك:</b> ابدأ محادثة جديدة لكل مهمة جديدة · استخدم <code>abd-fast</code> للأسئلة السريعة · لا تفتح ملفات ضخمة ما بتحتاجها · اطلب من الأداة تلخّص بدل ما تعيد قراءة كل شي.</p>
         </details>
       </div>
-      <div class="card hidden" id="newsCard" style="margin-top:16px"><h2>✨ ما الجديد</h2><div id="news"></div></div>
-      <div class="card" style="margin-top:16px">
-        <h2>🎯 النماذج الحقيقية اللي عم تستخدمها هلق</h2>
-        <div class="table-wrap"><table id="realTable"></table></div>
-        <p class="muted small">كل رد من البوابة فيه كمان الترويسة <code>x-abdalgani-model</code> وحقل <code>model</code> بالنموذج الحقيقي.</p>
-      </div>
-      <div class="card">
-        <h2>🎟️ تفعيل كوبون</h2>
-        <form id="redeemForm" class="row"><input id="couponInput" class="ltr" placeholder="ABD-XXXX-XXXX-XXXX" required style="flex:1;min-width:200px"><button class="primary">تفعيل</button></form>
-      </div>
-      <div class="card"><h2>اشتراكاتي</h2><div class="table-wrap"><table id="subsTable"></table></div></div>
-    </div>
 
-    <div data-panel="models">
-      <div class="card">
-        <div class="row">
-          <select id="fStatus"><option value="">كل الحالات</option><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option><option value="archived">مؤرشف</option></select>
-          <select id="fGroup"><option value="">كل الفئات</option></select>
-          <label class="row small"><input type="checkbox" id="fAvail"> المتاح لي فقط</label>
-          <span class="spacer"></span><input id="fSearch" placeholder="بحث..." style="max-width:200px">
+      <!-- ── models ── -->
+      <div data-panel="models">
+        <div class="card" style="padding:14px 16px">
+          <div class="filters">
+            <label class="search"><i data-i="search" data-s="16"></i><input id="fSearch" type="search" placeholder="بحث عن نموذج… (/)"></label>
+            <select id="fStatus" aria-label="الحالة"><option value="">كل الحالات</option><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option><option value="archived">مؤرشف</option></select>
+            <select id="fGroup" aria-label="الفئة"><option value="">كل الفئات</option></select>
+            <label class="row small"><input type="checkbox" id="fAvail"> المتاح لي فقط</label>
+          </div>
+        </div>
+        <div class="grid" id="modelGrid"></div>
+      </div>
+
+      <!-- ── switch ── -->
+      <div data-panel="switch">
+        <div class="callout" style="margin-bottom:18px"><i data-i="sparkles"></i><div>أدواتك مضبوطة على أسماء ثابتة مثل <code>abd-main</code> و<code>abd-fast</code>. غيّر هون لأي نموذج مسموح إلك، وبيشتغل <b>فوراً</b> بكل الأدوات بدون إعادة تثبيت. ولتحديث الأسماء الظاهرة داخل أدواتك (اختياري) شغّل <code>abdalgani-setup --sync</code>.</div></div>
+        <div class="card">
+          <div class="card-head"><h2><i data-i="shuffle"></i>أسمائي الثابتة</h2></div>
+          <div class="table-wrap"><table id="aliasTable"></table></div>
+          <h3>اسم مخصص جديد</h3>
+          <form id="aliasForm" class="row"><input id="aliasName" class="ltr" placeholder="my-model" required><select id="aliasModel" style="flex:1;min-width:200px"></select><button class="primary">حفظ</button></form>
         </div>
       </div>
-      <div class="grid" id="modelGrid"></div>
-    </div>
 
-    <div data-panel="switch">
-      <div class="card">
-        <h2>🔀 تبديل النماذج بدون إعادة تثبيت</h2>
-        <p class="muted small">أدواتك (OpenCode, Hermes, Claude Code…) مضبوطة على أسماء ثابتة مثل <code>abd-main</code> و<code>abd-fast</code>. غيّر هون لأي نموذج مسموح لك يشتغل فوراً بكل الأدوات. ولتحديث الأسماء الظاهرة داخل أدواتك (اختياري) شغّل <code class="ltr">abdalgani-setup --sync</code>.</p>
-        <div class="table-wrap"><table id="aliasTable"></table></div>
-        <h3>اسم مخصص جديد</h3>
-        <form id="aliasForm" class="row"><input id="aliasName" class="ltr" placeholder="my-model" required><select id="aliasModel"></select><button class="primary">حفظ</button></form>
+      <!-- ── setup ── -->
+      <div data-panel="setup">
+        <div class="card">
+          <div class="card-head"><h2><i data-i="terminal"></i>تثبيت أدوات البرمجة بأمر واحد</h2></div>
+          <p class="muted small" style="margin-top:-6px">بيثبّت الأداة إذا مش موجودة، وبيربطها بالبوابة مع مفتاحك، وبيضيف دعم العربي.</p>
+          <div class="row"><select id="toolSel" aria-label="الأداة"></select><div class="seg" id="osSeg"><button data-os="unix" class="on">macOS / Linux</button><button data-os="win">Windows</button></div>
+            <select id="osSel" hidden><option value="unix">unix</option><option value="win">win</option></select></div>
+          <pre id="installCmd" data-copyable data-title="install"></pre>
+          <h3>أوامر مفيدة بعد التثبيت</h3>
+          <pre id="helperCmds" data-copyable data-title="abdalgani-setup"></pre>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2><i data-i="plug"></i>استخدام مباشر (أي أداة أو SDK متوافق)</h2></div>
+          <h3>OpenAI-compatible</h3>
+          <pre id="oaSnippet" data-copyable data-title="openai"></pre>
+          <h3>Anthropic-compatible (Claude Code)</h3>
+          <pre id="anSnippet" data-copyable data-title="claude code"></pre>
+        </div>
       </div>
-    </div>
 
-    <div data-panel="setup">
-      <div class="card">
-        <h2>🧰 تثبيت أدوات البرمجة (أمر واحد)</h2>
-        <p class="muted small">بيثبّت الأداة إذا مش موجودة ويربطها بالبوابة مع مفتاحك. اختر الأداة:</p>
-        <div class="row"><select id="toolSel"></select><select id="osSel"><option value="unix">macOS / Linux / Git Bash</option><option value="win">Windows PowerShell</option></select></div>
-        <pre id="installCmd"></pre><button class="small" data-copy="installCmd">نسخ</button>
-        <h3>أوامر مفيدة بعد التثبيت</h3>
-        <pre id="helperCmds"></pre>
-      </div>
-      <div class="card">
-        <h2>🔌 استخدام مباشر (أي أداة/SDK متوافق)</h2>
-        <h3>OpenAI-compatible</h3>
-        <pre id="oaSnippet"></pre>
-        <h3>Anthropic-compatible (Claude Code)</h3>
-        <pre id="anSnippet"></pre>
-      </div>
-    </div>
+      <!-- ── usage ── -->
+      <div data-panel="usage"><div class="card"><div class="card-head"><h2><i data-i="list"></i>آخر الطلبات</h2></div><div class="table-wrap"><table id="usageTable"></table></div></div></div>
 
-    <div data-panel="usage"><div class="card"><h2>آخر الطلبات</h2><div class="table-wrap"><table id="usageTable"></table></div></div></div>
+      <!-- ── keys ── -->
+      <div data-panel="keys">
+        <div class="card">
+          <div class="card-head"><h2><i data-i="key"></i>مفاتيحي</h2></div>
+          <div class="table-wrap"><table id="keysTable"></table></div>
+          <form id="keyForm" class="row" style="margin-top:14px"><input id="keyName" placeholder="اسم الجهاز (laptop)" style="flex:1;min-width:180px"><button class="primary"><i data-i="key" data-s="16"></i>مفتاح جديد</button></form>
+          <div id="newKey" class="secret hidden"></div>
+        </div>
+        <div class="two">
+          <div class="card">
+            <div class="card-head"><h2><i data-i="monitor"></i>أجهزتي</h2></div>
+            <p class="small muted" style="margin-top:-6px">الأجهزة اللي استخدمت مفتاحك عبر أدوات abdalgani-setup. إذا شفت جهاز ما بتعرفه، بلّغ المدرّس فوراً وغيّر مفتاحك.</p>
+            <div class="table-wrap"><table id="devTable"></table></div>
+          </div>
+          <div class="card" id="pwCard">
+            <div class="card-head"><h2><i data-i="lock"></i>كلمة السر</h2></div>
+            <form id="pwForm" class="form">
+              <label class="f">الحالية<input name="current" type="password" autocomplete="current-password"></label>
+              <label class="f">الجديدة<input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+              <button class="primary">تغيير</button>
+            </form>
+            <p class="small muted">تغيير كلمة السر بيطلّعك من كل الأجهزة.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
 
-    <div data-panel="keys">
-      <div class="card">
-        <h2>🔑 مفاتيحي</h2>
-        <div class="table-wrap"><table id="keysTable"></table></div>
-        <form id="keyForm" class="row" style="margin-top:12px"><input id="keyName" placeholder="اسم الجهاز (laptop)"><button class="primary">مفتاح جديد</button></form>
-        <div id="newKey" class="secret hidden"></div>
-      </div>
-      <div class="card" id="pwCard">
-        <h2>🔒 كلمة السر</h2>
-        <form id="pwForm" class="form">
-          <label class="f">الحالية<input name="current" type="password" autocomplete="current-password"></label>
-          <label class="f">الجديدة<input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
-          <button class="primary">تغيير</button>
-        </form>
-        <p class="small muted">تغيير كلمة السر بيطلّعك من كل الأجهزة.</p>
-      </div>
-      <div class="card">
-        <h2>💻 أجهزتي</h2>
-        <p class="small muted">الأجهزة اللي استخدمت مفتاحك عبر أدوات abdalgani-setup. إذا شفت جهاز ما بتعرفه، بلّغ المدرّس فوراً وغيّر مفتاحك.</p>
-        <div class="table-wrap"><table id="devTable"></table></div>
-      </div>
-    </div>
-  </main>
+  <nav class="tabs bottom" aria-label="تنقل سريع">
+    <button data-tab="overview"><i data-i="home" data-s="20"></i>حسابي</button>
+    <button data-tab="models"><i data-i="cpu" data-s="20"></i>النماذج</button>
+    <button data-tab="switch"><i data-i="shuffle" data-s="20"></i>تبديل</button>
+    <button data-tab="setup"><i data-i="terminal" data-s="20"></i>تثبيت</button>
+    <button data-tab="keys"><i data-i="key" data-s="20"></i>مفاتيح</button>
+  </nav>
 </section>
 <script type="module" src="/me.js"></script>
 </body>

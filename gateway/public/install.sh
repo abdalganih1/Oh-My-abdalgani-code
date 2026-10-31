@@ -9,7 +9,7 @@ need() { command -v "$1" >/dev/null 2>&1; }
 if ! need git; then
   echo "→ installing git"; (need brew && brew install git) || (need apt-get && sudo apt-get update && sudo apt-get install -y git) || (need dnf && sudo dnf install -y git) || { echo "install git first"; exit 1; }
 fi
-if ! need node || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
+if ! need node || [ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 20 ]; then
   echo "→ installing Node.js 22 (via nvm)"
   export NVM_DIR="$HOME/.nvm"
   [ -s "$NVM_DIR/nvm.sh" ] || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash

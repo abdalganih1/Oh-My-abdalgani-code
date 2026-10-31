@@ -1,5 +1,14 @@
 import { $, $$, esc, store, makeApi, toast, usd, usdPrecise, tokens, date, day, STATUS_BADGE, priceLabel, tabs, copy } from '/common.js';
 import { bars, heatmap, legend, fillSeries, css } from '/charts.js';
+import { initShell, addAction } from '/ui.js';
+
+initShell();
+const goTab = (t) => $(`aside [data-tab="${t}"]`)?.click();
+addAction('افحص الإساءة الآن', () => { goTab('security'); setTimeout(() => $('#scanNow')?.click(), 50); });
+addAction('ولّد كوبونات', () => { goTab('coupons'); $('#couponForm [name="amount"]')?.focus(); });
+addAction('أضف نموذج جديد', () => { goTab('models'); setTimeout(() => $('#newModel')?.click(), 50); });
+addAction('افحص تحديثات المزوّدين', () => { goTab('updates'); setTimeout(() => $('#runNow')?.click(), 50); });
+addAction('صدّر تقرير CSV', () => { goTab('overview'); $('#csvBtn')?.click(); });
 
 const KEY = 'abd:adminToken';
 const api = makeApi(KEY, () => { store.del(KEY); showLogin(); });
