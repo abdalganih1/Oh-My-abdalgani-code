@@ -18,7 +18,7 @@ cli/
   tools/*.js              كاتب إعداد لكل أداة (build* دوال نقية مُختبرة + configure* تكتب الملف)
 gateway/
   wrangler.toml           D1 + Assets + الدومين
-  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة، 0003 compat/vision/NVIDIA/Zen، 0004 دورة الحياة/Nous
+  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة، 0003 compat/vision/NVIDIA/Zen، 0004 دورة الحياة/Nous، 0005 المال (upstream_cost، billing، sale_price، expenses)
   src/index.js            الراوتر
   src/proxy.js            /v1/chat/completions، /v1/messages، /v1/responses، /v1/models + البث والمحاسبة
   src/routing.js          حلّ النموذج، المسارات، مفاتيح موزونة + تبريد، الترويسات
@@ -55,6 +55,7 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 - **دورة الحياة** (`gateway/src/lifecycle.js`): Cron كل 30د. لا تؤرشف إلا بفشل متواصل ≥ 6 ساعات بلا نجاح (ليميت 5 ساعات شائع). دوال تقبل `now` للاختبار — اختبر أي تعديل بـ `gateway/test/lifecycle.test.js`.
 - **حزمة العربي** (`cli/arabic.js`): العرض عبر WezTerm (bidi + shaping) + أوامر `<tool>-ar`، والردود بـ /ar /en. Claude Code مستثنى. لا تكتب فوق إعداد WezTerm خاص بالمستخدم.
 - **التحديث التلقائي عند الطالب** (`cli/schedule.js`): Task Scheduler (ويندوز) / cron أو systemd timer (لينكس/ماك) ← `--sync --quiet` يكتب فقط عند تغيّر الكتالوج.
+- **التقارير** (`gateway/src/reports.js` + `public/charts.js`): SVG بدون مكتبات، حسب قواعد مهارة dataviz (محور واحد، tooltip لكل علامة، جدول مع كل رسم، ألوان مُتحقق منها فاتح/داكن). أي رقم مالي = µ$ صحيح. التواريخ داخل نص عربي تُعزل بـ LRI/PDI.
 - **OpenCode Go** لا يُضاف كمزوّد مشترك (شروطه: workspace بعضو واحد). المعتمد: OpenCode Zen.
 - كتّاب الإعداد يدمجون ولا يحذفون مزوّدات المستخدم الأخرى، ويأخذون نسخة `*.abdalgani.bak` أول مرة.
 - أي تعديل على البوابة: أضف/حدّث اختبار في `gateway/test/` وشغّل `npm test`.

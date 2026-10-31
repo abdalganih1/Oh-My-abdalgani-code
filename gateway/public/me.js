@@ -1,8 +1,10 @@
-import { $, esc, store, makeApi, toast, usd, usdPrecise, tokens, date, day, STATUS_BADGE, priceLabel, tabs, copy } from '/common.js';
+import { $, $$, esc, store, makeApi, toast, usd, usdPrecise, tokens, date, day, STATUS_BADGE, priceLabel, tabs, copy } from '/common.js';
+import { bars, fillSeries, css } from '/charts.js';
 
 const KEY = 'abd:userKey';
 const api = makeApi(KEY, () => { store.del(KEY); showLogin(); });
-let me = null, catalog = { models: [], groups: [] };
+let me = null, catalog = { models: [], groups: [] }, rep = null, myMetric = 'cost';
+const TZ = -new Date().getTimezoneOffset();
 
 const TOOLS = ['OpenCode', 'Hermes', 'ClaudeCode', 'CodexCLI', 'KiloCLI', 'PiCode', 'QwenCode', 'Goose', 'Aider', 'OpenClaw', 'KimiCode', 'EHCode'];
 
@@ -16,8 +18,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
 $('#logout').addEventListener('click', () => { store.del(KEY); location.reload(); });
 
 async function load() {
-  me = await api('GET', '/api/me');
-  catalog = await api('GET', '/api/me/models');
+  [me, catalog, rep] = await Promise.all([api('GET', '/api/me'), api('GET', '/api/me/models'), api('GET', `/api/me/report?tz=${TZ}`)]);
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#who').textContent = me.user.name;
   renderOverview(); renderModels(); renderAliases(); renderSetup(); renderKeys();
@@ -32,12 +33,45 @@ function renderOverview() {
   const usdLeft = active.filter((s) => s.kind === 'usd').reduce((a, s) => a + s.remaining, 0);
   const tokLeft = active.filter((s) => s.kind === 'tokens').reduce((a, s) => a + s.remaining, 0);
   const avail = catalog.models.filter((m) => m.available).length;
+  // ── hero: the balance in one plain sentence ──
+  const usdTotal = active.filter((s) => s.kind === 'usd').reduce((a, s) => a + s.total, 0);
+  const tokTotal = active.filter((s) => s.kind === 'tokens').reduce((a, s) => a + s.total, 0);
+  const b = rep.burn;
+  const soonest = active.filter((s) => s.expires_at).sort((x, y) => x.expires_at - y.expires_at)[0];
+  const daysTo = soonest ? Math.max(0, Math.ceil((soonest.expires_at * 1000 - Date.now()) / 86400000)) : null;
+  if (!active.length) {
+    $('#heroValue').textContent = 'ما عندك رصيد';
+    $('#heroBar').style.width = '0';
+    $('#heroSub').textContent = 'اطلب كوبون من المدرّس وفعّله تحت — بدون رصيد ما بتشتغل الأدوات.';
+    $('#heroTokens').textContent = '';
+  } else {
+    const main = usdTotal ? usd(usdLeft) : `${tokens(tokLeft)} توكن`;
+    $('#heroValue').textContent = main;
+    const usedPct = usdTotal ? (1 - usdLeft / usdTotal) : (1 - tokLeft / tokTotal);
+    $('#heroBar').style.width = `${Math.round((1 - usedPct) * 100)}%`;
+    const left = usdTotal ? b.usd_days_left : b.tokens_days_left;
+    const parts = [`استهلكت ${Math.round(usedPct * 100)}% من ${usdTotal ? usd(usdTotal) : tokens(tokTotal) + ' توكن'}`];
+    if (left != null) parts.push(`بمعدل استهلاكك آخر أسبوع بيكفيك تقريباً ${left > 365 ? 'أكثر من سنة' : left + ' يوم'}`);
+    else parts.push('ما استخدمت شي آخر أسبوع');
+    if (daysTo != null) parts.push(`أقرب اشتراك بينتهي بعد ${daysTo} يوم (${day(soonest.expires_at)})`);
+    $('#heroSub').textContent = parts.join(' · ');
+    $('#heroTokens').textContent = usdTotal && tokTotal ? `وعندك كمان ${tokens(tokLeft)} توكن مخصصة${b.tokens_days_left != null ? ` (تكفي تقريباً ${b.tokens_days_left} يوم)` : ''}.` : '';
+  }
+  const t = rep.totals;
   $('#stats').innerHTML = [
-    ['رصيد بالدولار', usd(usdLeft), `${active.filter((s) => s.kind === 'usd').length} اشتراك فعّال`],
-    ['رصيد توكنات', tokens(tokLeft), `${active.filter((s) => s.kind === 'tokens').length} اشتراك فعّال`],
-    ['نماذج متاحة لك', `${avail} / ${catalog.models.length}`, 'حسب فئات اشتراكاتك'],
-    ['آخر 30 يوم', `${me.stats_30d.req} طلب`, `${tokens(me.stats_30d.tokens)} توكن · ${usd(me.stats_30d.cost)}`],
+    ['طلبات آخر 30 يوم', t.requests.toLocaleString('en'), `≈ ${b.per_day_requests} طلب باليوم آخر أسبوع`],
+    ['توكنات آخر 30 يوم', tokens(t.tokens), `دخل ${tokens(t.prompt_tokens)} · خرج ${tokens(t.completion_tokens)}`],
+    ['صرفت آخر 30 يوم', usdPrecise(t.cost), `متوسط الطلب ${usdPrecise(t.avg_cost)}`],
+    ['نماذج متاحة لك', `${avail} / ${catalog.models.filter((m) => m.status !== 'archived').length}`, 'حسب فئات اشتراكاتك'],
   ].map(([l, v, s]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join('');
+  drawMine();
+  const totalCost = rep.by_model.reduce((a, x) => a + x.cost, 0), totalReq = rep.by_model.reduce((a, x) => a + x.requests, 0);
+  const key = totalCost ? 'cost' : 'requests', max = Math.max(0, ...rep.by_model.map((x) => x[key]));
+  $('#byModel').innerHTML = '<tr><th>النموذج</th><th style="width:35%"></th><th class="num">طلبات</th><th class="num">توكنات</th><th class="num">الكلفة</th><th class="num">النسبة</th></tr>' + (rep.by_model.map((x) =>
+    `<tr><td><strong>${esc(x.name || x.model_id)}</strong></td><td><div class="inbar-wrap"><div class="inbar" style="width:${max ? Math.max(1, (x[key] / max) * 100) : 0}%"></div></div></td>
+     <td class="num">${x.requests}</td><td class="num">${tokens(x.prompt_tokens + x.completion_tokens)}</td><td class="num">${usdPrecise(x.cost)}</td>
+     <td class="num">${(key === 'cost' ? totalCost : totalReq) ? Math.round((x[key] / (key === 'cost' ? totalCost : totalReq)) * 100) + '%' : '—'}</td></tr>`).join('') || '<tr><td class="muted">ما في استخدام آخر 30 يوم</td></tr>');
+  $('#avgLine').textContent = t.requests ? `الطلب الواحد عندك بالمتوسط ≈ ${tokens(t.avg_tokens)} توكن ويكلّف ${usdPrecise(t.avg_cost)}.` : '';
 
   const nowS = Date.now() / 1000;
   const fresh = catalog.models.filter((m) => m.status === 'new');
@@ -79,6 +113,17 @@ $('#redeemForm').addEventListener('submit', async (e) => {
     await load();
   } catch (err) { toast(err.message, true); }
 });
+
+function drawMine() {
+  const r = rep.range;
+  const rows = fillSeries(rep.series, r.from, r.to, TZ, 'day');
+  $$('#myMetric button').forEach((x) => x.classList.toggle('on', x.dataset.m === myMetric));
+  const fmt = myMetric === 'cost' ? (v, axis) => (axis ? usd(v, v < 1e6 ? 2 : 0) : usdPrecise(v)) : myMetric === 'tokens' ? (v) => tokens(v) : (v) => Number(v).toLocaleString('en');
+  const names = { cost: 'الكلفة', requests: 'الطلبات', tokens: 'التوكنات' };
+  $('#myTsTitle').textContent = `${names[myMetric]} آخر 30 يوم`;
+  bars($('#myChart'), { labels: rows.map((x) => x.t.slice(5)), series: [{ name: names[myMetric], color: css('--series-1'), values: rows.map((x) => x[myMetric] || 0) }], format: fmt, height: 200 });
+}
+$('#myMetric').addEventListener('click', (e) => { const m = e.target.dataset?.m; if (m && rep) { myMetric = m; drawMine(); } });
 
 function renderModels() {
   const sel = $('#fGroup');
@@ -184,5 +229,6 @@ $('#keyForm').addEventListener('submit', async (e) => {
   } catch (err) { toast(err.message, true); }
 });
 
-tabs(document, (t) => { if (t === 'usage' && me) renderUsage().catch((e) => toast(e.message, true)); });
+tabs(document, (t) => { if (t === 'usage' && me) renderUsage().catch((e) => toast(e.message, true)); if (t === 'overview' && rep) drawMine(); });
+let rT; window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => rep && drawMine(), 200); });
 if (store.get(KEY)) load().catch(() => showLogin()); else showLogin();

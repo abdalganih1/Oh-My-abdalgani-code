@@ -12,7 +12,7 @@ npx wrangler d1 create abdalgani-gateway        # انسخ database_id إلى wr
 npx wrangler secret put ADMIN_TOKEN             # كلمة سر لوحة المدير (طويلة وعشوائية)
 npx wrangler secret put ENCRYPTION_KEY          # مفتاح تشفير مفاتيح المزوّدين — لا تغيّره بعدين
 npx wrangler secret put NOTIFY_WEBHOOK          # اختياري: تنبيهات (Discord/Slack webhook، أو Telegram: https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>)
-npm run db:migrate                              # الجداول + المزوّدون (zai, openrouter, anthropic, openai, nvidia, opencode-zen) + فئات + نماذج GLM
+npm run db:migrate                              # كل الـ migrations (0001…0005): الجداول + المزوّدون (zai, openrouter, anthropic, openai, nvidia, opencode-zen) + فئات + نماذج GLM
 npm run deploy
 ```
 
@@ -45,6 +45,13 @@ npm run deploy
 - **توافق لكل مزوّد (`compat` JSON بلوحة المدير):** `max_tokens_field` (يحوّل max_tokens ⇄ max_completion_tokens)، `developer_role: false` (يحوّل رسائل developer إلى system)، `efforts` (المستويات المقبولة؛ الباقي يُقرّب لأقرب مستوى — Hermes يرسل `reasoning_effort` دائماً، و`ultra` ← `max`). مضبوطة مسبقاً لـ Z.AI و NVIDIA و OpenAI و OpenRouter و Anthropic.
 - **شفافية النموذج الحقيقي:** كل رد يرجع `model` = المعرّف الحقيقي + ترويسات `x-abdalgani-model` و `x-abdalgani-upstream` (مزوّد/معرّف) و `x-abdalgani-alias`، والسجل يحفظ `requested_model` و `upstream_model`.
 - كل الطلبات للمزوّدين تحمل `User-Agent: abdalgani-gateway/2.1` (OpenCode يطلب تعريف العميل).
+
+## 📊 التقارير والمال
+
+- كل طلب يسجّل `cost` (ما خُصم من الطالب) و `upstream_cost` (ما دفعناه فعلاً): كلفة المزوّد المبلّغ عنها (OpenRouter) ← وإلا `model_routes.cost_in/cost_out` ← وإلا سعر النموذج بدون الهامش؛ وصفر للمزوّدين `billing = subscription` (رسمهم الشهري `monthly_fee` يُحسب نسبياً بالتقارير).
+- `coupons.sale_price` / `subscriptions.sale_price` = المال الحقيقي اللي دفعه الطالب (افتراضياً = قيمة كوبون الدولار؛ كوبون التوكنات حدّد سعره).
+- `expenses` لأي دفعات يدوية (شحن رصيد، خطط…).
+- `GET /api/admin/reports?from&to&tz` — الإجماليات، السلسلة الزمنية، أعلى النماذج/الطلاب، خريطة الذروة، المزوّدون، المال شهرياً. `GET /api/admin/reports/export` — CSV. `GET /api/me/report` — تقرير الطالب (اتجاه، حسب النموذج، كم يكفيه رصيده).
 
 ## ⏱ دورة حياة النماذج (Cron كل 30 دقيقة — `[triggers]` بـ wrangler.toml)
 

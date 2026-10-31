@@ -6,6 +6,7 @@ import {
 } from '../util.js';
 import { upstreamHeaders } from '../routing.js';
 import { runMaintenance, restoreProvider, restoreModel, normalizeUpstreamModel } from '../lifecycle.js';
+import { adminReport, exportCsv } from '../reports.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._:/-]{0,80}$/i;
 const need = (cond, msg) => { if (!cond) throw new HttpError(400, msg); };
@@ -60,10 +61,12 @@ export async function handleAdmin(request, env, ctx, path) {
         if (p[f]) { try { const v = JSON.parse(p[f]); need(v && typeof v === 'object' && !Array.isArray(v), `${f} must be a JSON object`); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, `${f} must be a JSON object`); } }
       }
       await db.prepare(
-        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, auto, enabled) VALUES (?,?,?,?,?,?,?,?,?)
+        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, auto, enabled, billing, monthly_fee) VALUES (?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, openai_base_url=excluded.openai_base_url, anthropic_base_url=excluded.anthropic_base_url,
-           auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, compat=excluded.compat, auto=excluded.auto, enabled=excluded.enabled`
-      ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.compat || null, p.auto || null, p.enabled === false || p.enabled === 0 ? 0 : 1).run();
+           auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, compat=excluded.compat, auto=excluded.auto, enabled=excluded.enabled,
+           billing=excluded.billing, monthly_fee=excluded.monthly_fee`
+      ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.compat || null, p.auto || null, p.enabled === false || p.enabled === 0 ? 0 : 1,
+        p.billing === 'subscription' ? 'subscription' : 'usage', toInt(p.monthly_fee, 0)).run();
       return json({ ok: true });
     }
     if (b && !c && method === 'DELETE') {
@@ -187,14 +190,29 @@ export async function handleAdmin(request, env, ctx, path) {
         stmts.push(db.prepare('DELETE FROM model_routes WHERE model_id = ?').bind(m.id));
         m.routes.forEach((r, i) => {
           need(r.provider_id && r.upstream_model, 'each route needs provider_id + upstream_model');
-          stmts.push(db.prepare('INSERT INTO model_routes (model_id, provider_id, upstream_model, priority, enabled) VALUES (?,?,?,?,?)')
-            .bind(m.id, r.provider_id, r.upstream_model, toInt(r.priority, i), r.enabled === false || r.enabled === 0 ? 0 : 1));
+          const opt = (v) => (v === undefined || v === null || v === '' ? null : toInt(v));
+          stmts.push(db.prepare('INSERT INTO model_routes (model_id, provider_id, upstream_model, priority, enabled, cost_in, cost_out) VALUES (?,?,?,?,?,?,?)')
+            .bind(m.id, r.provider_id, r.upstream_model, toInt(r.priority, i), r.enabled === false || r.enabled === 0 ? 0 : 1, opt(r.cost_in), opt(r.cost_out)));
         });
       }
       await db.batch(stmts);
       return json({ ok: true });
     }
     if (method === 'DELETE' && b) { await db.prepare('DELETE FROM models WHERE id = ?').bind(seg.slice(1).join('/')).run(); return json({ ok: true }); }
+  }
+
+  // ── reports & money ──
+  if (a === 'reports' && !b && method === 'GET') return json(await adminReport(db, new URL(request.url)));
+  if (a === 'reports' && b === 'export' && method === 'GET') return exportCsv(db, new URL(request.url));
+  if (a === 'expenses') {
+    if (method === 'GET') return json((await db.prepare('SELECT e.*, p.name AS provider_name FROM expenses e LEFT JOIN providers p ON p.id = e.provider_id ORDER BY spent_at DESC LIMIT 300').all()).results);
+    if (method === 'POST') {
+      const e = await readJson(request);
+      need(toInt(e.amount) > 0, 'amount (µ$) must be > 0');
+      await db.prepare('INSERT INTO expenses (provider_id, amount, note, spent_at) VALUES (?,?,?,?)').bind(e.provider_id || null, toInt(e.amount), e.note || null, toInt(e.spent_at) || now()).run();
+      return json({ ok: true });
+    }
+    if (method === 'DELETE' && b) { await db.prepare('DELETE FROM expenses WHERE id = ?').bind(toInt(b)).run(); return json({ ok: true }); }
   }
 
   // ── lifecycle: update feed, upstream catalogs, run-now ──
@@ -287,8 +305,8 @@ export async function handleAdmin(request, env, ctx, path) {
       need(['usd', 'tokens'].includes(s.kind), 'kind must be usd|tokens');
       need(toInt(s.amount) > 0, 'amount (micro-USD or tokens) must be > 0');
       const days = toInt(s.valid_days, 30);
-      await db.prepare('INSERT INTO subscriptions (user_id, kind, group_id, total, source, expires_at) VALUES (?,?,?,?,?,?)')
-        .bind(uid, s.kind, s.group_id || null, toInt(s.amount), 'admin', days > 0 ? now() + days * 86400 : null).run();
+      await db.prepare('INSERT INTO subscriptions (user_id, kind, group_id, total, source, expires_at, sale_price) VALUES (?,?,?,?,?,?,?)')
+        .bind(uid, s.kind, s.group_id || null, toInt(s.amount), 'admin', days > 0 ? now() + days * 86400 : null, toInt(s.sale_price, 0)).run();
       return json({ ok: true });
     }
   }
@@ -314,8 +332,9 @@ export async function handleAdmin(request, env, ctx, path) {
       const expiresAt = toInt(cpn.expires_in_days) > 0 ? now() + toInt(cpn.expires_in_days) * 86400 : null;
       const codes = Array.from({ length: count }, () => (cpn.code && count === 1 ? String(cpn.code).toUpperCase() : newCouponCode()));
       await db.batch(codes.map((code) => db.prepare(
-        'INSERT INTO coupons (code, kind, amount, group_id, valid_days, max_uses, expires_at, note) VALUES (?,?,?,?,?,?,?,?)'
-      ).bind(code, cpn.kind, toInt(cpn.amount), cpn.group_id || null, toInt(cpn.valid_days, 30), Math.max(1, toInt(cpn.max_uses, 1)), expiresAt, cpn.note || null)));
+        'INSERT INTO coupons (code, kind, amount, group_id, valid_days, max_uses, expires_at, note, sale_price) VALUES (?,?,?,?,?,?,?,?,?)'
+      ).bind(code, cpn.kind, toInt(cpn.amount), cpn.group_id || null, toInt(cpn.valid_days, 30), Math.max(1, toInt(cpn.max_uses, 1)), expiresAt, cpn.note || null,
+        cpn.sale_price === undefined || cpn.sale_price === '' || cpn.sale_price === null ? null : toInt(cpn.sale_price))));
       return json({ codes });
     }
     if (method === 'PATCH' && b) {

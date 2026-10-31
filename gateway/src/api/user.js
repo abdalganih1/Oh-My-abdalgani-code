@@ -4,6 +4,7 @@ import { authUser } from '../auth.js';
 import { isSubUsable, loadSubscriptions } from '../billing.js';
 import { getGlobalAliases } from '../routing.js';
 import { json, readJson, HttpError, now, toInt, sha256Hex, newApiKey } from '../util.js';
+import { userReport } from '../reports.js';
 
 const ALIAS_RE = /^[a-z0-9][a-z0-9._-]{0,40}$/;
 
@@ -94,8 +95,9 @@ export async function handleMe(request, env, ctx, path) {
     try {
       await db.batch([
         db.prepare('INSERT INTO coupon_redemptions (coupon_code, user_id) VALUES (?, ?)').bind(c0, user.id),
-        db.prepare('INSERT INTO subscriptions (user_id, kind, group_id, total, source, expires_at) VALUES (?,?,?,?,?,?)')
-          .bind(user.id, cpn.kind, cpn.group_id, cpn.amount, `coupon:${c0}`, cpn.valid_days > 0 ? t + cpn.valid_days * 86400 : null),
+        db.prepare('INSERT INTO subscriptions (user_id, kind, group_id, total, source, expires_at, sale_price) VALUES (?,?,?,?,?,?,?)')
+          .bind(user.id, cpn.kind, cpn.group_id, cpn.amount, `coupon:${c0}`, cpn.valid_days > 0 ? t + cpn.valid_days * 86400 : null,
+            cpn.sale_price ?? (cpn.kind === 'usd' ? cpn.amount : 0)),
       ]);
     } catch (e) {
       await db.prepare('UPDATE coupons SET used_count = used_count - 1 WHERE code = ?').bind(c0).run();
@@ -123,6 +125,8 @@ export async function handleMe(request, env, ctx, path) {
       return json({ ok: true });
     }
   }
+
+  if (a === 'report' && method === 'GET') return json(await userReport(db, user, new URL(request.url)));
 
   if (a === 'usage' && method === 'GET') {
     const limit = Math.min(500, toInt(new URL(request.url).searchParams.get('limit'), 100));

@@ -24,7 +24,7 @@
   </header>
   <main>
     <nav class="tabs">
-      <button data-tab="overview">الرصيد والاشتراكات</button>
+      <button data-tab="overview">حسابي</button>
       <button data-tab="models">النماذج</button>
       <button data-tab="switch">تبديل النماذج</button>
       <button data-tab="setup">التثبيت والاستخدام</button>
@@ -33,7 +33,39 @@
     </nav>
 
     <div data-panel="overview">
+      <div class="card" id="heroCard">
+        <div class="small muted">رصيدك الحالي</div>
+        <div class="hero" id="heroValue">—</div>
+        <div class="bar" style="height:8px;margin-top:10px"><i id="heroBar" style="width:0"></i></div>
+        <div class="hero-sub" id="heroSub"></div>
+        <div class="hero-sub" id="heroTokens"></div>
+      </div>
       <div class="grid" id="stats"></div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="row"><h2 style="margin:0" id="myTsTitle">استهلاكك آخر 30 يوم</h2><span class="spacer"></span>
+          <div class="seg" id="myMetric"><button data-m="cost">الكلفة $</button><button data-m="requests">الطلبات</button><button data-m="tokens">التوكنات</button></div></div>
+        <div id="myChart" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h2>🧭 وين راح رصيدك؟</h2>
+        <div class="table-wrap"><table id="byModel"></table></div>
+        <div class="small muted" id="avgLine" style="margin-top:8px"></div>
+      </div>
+
+      <div class="card">
+        <details class="explain">
+          <summary>❓ شو يعني "توكن"؟ وليش بعض الطلبات أغلى من غيرها؟</summary>
+          <ul>
+            <li><b>التوكن</b> = قطعة صغيرة من النص: تقريباً ¾ كلمة إنجليزية، أو نص كلمة عربية. الكود كمان بيتقسّم لتوكنات.</li>
+            <li>كل طلب إله جزئين: <b>الدخل</b> (اللي بتبعته أنت: سؤالك + الملفات + كل المحادثة اللي قبل) و<b>الخرج</b> (رد النموذج). الخرج عادة أغلى.</li>
+            <li><b>المحادثات الطويلة أغلى</b>: كل رسالة جديدة بتبعت معها كل اللي قبلها. أدوات البرمجة (OpenCode، Claude Code…) بتبعت كمان ملفات المشروع، فالطلب الواحد ممكن يكون عشرات آلاف التوكنات.</li>
+            <li><b>بعض النماذج سعرها ثابت لكل طلب</b> مهما كان طوله، وبعضها حسب التوكنات — شوف السعر بتبويب "النماذج".</li>
+          </ul>
+          <p><b>نصائح لتوفير رصيدك:</b> ابدأ محادثة جديدة لكل مهمة جديدة · استخدم <code>abd-fast</code> للأسئلة السريعة · لا تفتح ملفات ضخمة ما بتحتاجها · اطلب من الأداة تلخّص بدل ما تعيد قراءة كل شي.</p>
+        </details>
+      </div>
       <div class="card hidden" id="newsCard" style="margin-top:16px"><h2>✨ ما الجديد</h2><div id="news"></div></div>
       <div class="card" style="margin-top:16px">
         <h2>🎯 النماذج الحقيقية اللي عم تستخدمها هلق</h2>

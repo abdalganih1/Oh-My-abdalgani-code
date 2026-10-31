@@ -136,7 +136,8 @@ test('chat completion: failover past rate-limited key, flat price charged', asyn
   assert.equal(upstreamCalls.at(-1).auth, 'Bearer zai-good-key-1234');
   const prov = await admin('GET', '/providers');
   const bad = prov.data.find((p) => p.id === 'zai').keys.find((k) => k.label === 'bad');
-  assert.ok(bad.cooling, 'rate-limited key is cooling down');
+  // weighted pick: the heavy bad key is almost always tried first; when it was, it must be parked
+  if (upstreamCalls.some((c) => String(c.auth).includes('ratelimited'))) assert.ok(bad.cooling, 'rate-limited key is cooling down');
   const me = await call('GET', '/api/me', { token: userKey });
   assert.equal(me.data.subscriptions[0].used, 10_000);
 });
@@ -269,4 +270,45 @@ test('real model is visible: headers, body.model, usage log keeps alias + upstre
 test('NVIDIA + OpenCode Zen providers are seeded', async () => {
   const prov = (await admin('GET', '/providers')).data.map((p) => p.id);
   assert.ok(prov.includes('nvidia') && prov.includes('opencode-zen'));
+});
+
+test('reports: admin totals/top lists/heatmap/money + student report + CSV', async () => {
+  await admin('POST', '/expenses', { amount: 1_500_000, note: 'OpenRouter top-up', provider_id: 'openrouter' });
+  const all = await admin('GET', '/providers');
+  const zai = all.data.find((p) => p.id === 'zai');
+  await admin('POST', '/providers', { ...zai, billing: 'subscription', monthly_fee: 30_000_000 });
+  const c = await admin('POST', '/coupons', { kind: 'tokens', amount: 1_000_000, sale_price: 2_000_000 });
+  await call('POST', '/api/me/redeem', { token: userKey, body: { code: c.data.codes[0] } });
+
+  const rep = (await admin('GET', '/reports?tz=180')).data;
+  assert.ok(rep.totals.requests > 5);
+  assert.equal(rep.totals.tokens, rep.totals.prompt_tokens + rep.totals.completion_tokens);
+  assert.ok(rep.models[0].requests >= rep.models.at(-1).requests, 'sorted by requests');
+  assert.equal(rep.users[0].name, 'Student 1');
+  assert.ok(rep.users[0].top_model);
+  assert.equal(rep.heat.reduce((a, h) => a + h.requests, 0), rep.totals.requests);
+  assert.ok(rep.heat.every((h) => h.dow >= 0 && h.dow <= 6 && h.hour >= 0 && h.hour <= 23));
+  const m = rep.money;
+  assert.equal(m.expenses, 1_500_000);
+  assert.ok(m.fixed_fees > 29_000_000 && m.fixed_fees < 31_000_000, '30 days of a $30/month plan');
+  assert.equal(m.paid, m.upstream_usage + m.expenses + m.fixed_fees);
+  assert.ok(m.revenue >= 2_000_000 + 1_000_000, 'sold token coupon + face value of USD coupons');
+  assert.equal(m.profit, m.revenue - m.paid);
+  assert.ok(m.upstream_usage > 0, 'OpenRouter usage.cost / OpenAI price recorded as our cost');
+  assert.ok(rep.months.length >= 1);
+
+  const mine = (await call('GET', '/api/me/report?tz=180', { token: userKey })).data;
+  assert.ok(mine.totals.requests > 0);
+  assert.ok(mine.by_model.length > 0);
+  assert.ok(mine.series.length > 0);
+  assert.ok('usd_days_left' in mine.burn);
+
+  const pending = [];
+  const res = await worker.fetch(new Request('https://api.abdalgani.com/api/admin/reports/export', { headers: { authorization: 'Bearer admin-secret' } }), env, { waitUntil: (p) => pending.push(p) });
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'UTF-8 BOM so Excel shows Arabic names');
+  const csv = new TextDecoder().decode(bytes);
+  assert.match(res.headers.get('content-type'), /text\/csv/);
+  assert.match(csv, /^time_utc,user,requested_model/);
+  assert.ok(csv.split('\n').length > 5);
 });

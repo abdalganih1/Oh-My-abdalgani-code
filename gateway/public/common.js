@@ -31,10 +31,10 @@ export function toast(msg, err = false) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), err ? 6000 : 2600);
 }
 
-export const usd = (micro, digits = 2) => `$${(Number(micro || 0) / 1e6).toFixed(digits)}`;
+export const usd = (micro, digits = 2) => `\u2066$${(Number(micro || 0) / 1e6).toFixed(digits)}\u2069`;
 export const usdPrecise = (micro) => {
   const v = Number(micro || 0) / 1e6;
-  return `$${v < 0.01 && v > 0 ? v.toFixed(6) : v.toFixed(v < 1 ? 4 : 2)}`;
+  return `\u2066$${v < 0.01 && v > 0 ? v.toFixed(6) : v.toFixed(v < 1 ? 4 : 2)}\u2069`;
 };
 export function tokens(n) {
   n = Number(n || 0);
@@ -43,8 +43,10 @@ export function tokens(n) {
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
   return String(n);
 }
-export const date = (ts) => (ts ? new Date(ts * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-export const day = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : '—');
+// Latin dates inside RTL text get their digits reordered ("Oct 2026 2") — isolate them (LRI … PDI).
+const iso = (s) => `\u2066${s}\u2069`;
+export const date = (ts) => (ts ? iso(new Date(ts * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })) : '—');
+export const day = (ts) => (ts ? iso(new Date(ts * 1000).toLocaleDateString('en-GB', { dateStyle: 'medium' })) : '—');
 
 export const STATUS_BADGE = {
   new: '<span class="badge new">جديد</span>',

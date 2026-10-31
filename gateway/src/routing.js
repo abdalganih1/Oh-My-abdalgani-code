@@ -37,7 +37,7 @@ export async function resolveModel(db, userId, requested) {
 
 export async function loadRoutes(db, modelId) {
   const { results } = await db.prepare(
-    `SELECT r.id AS route_id, r.upstream_model, r.priority, p.*
+    `SELECT r.id AS route_id, r.upstream_model, r.priority, r.cost_in, r.cost_out, p.*
        FROM model_routes r JOIN providers p ON p.id = r.provider_id
       WHERE r.model_id = ? AND r.enabled = 1 AND p.enabled = 1 AND r.archived_at IS NULL AND p.archived_at IS NULL
       ORDER BY r.priority ASC, r.id ASC`

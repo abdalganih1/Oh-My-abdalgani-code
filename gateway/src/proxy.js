@@ -93,7 +93,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
     const m = modeFor(clientFormat, route);
     if (!m) continue;
     tried++;
-    const routeInfo = { provider_id: route.id, key_id: key.id, upstream_model: route.upstream_model };
+    const routeInfo = { provider_id: route.id, key_id: key.id, upstream_model: route.upstream_model, billing: route.billing, cost_in: route.cost_in, cost_out: route.cost_out };
     // tell the student which real model answered (the body's `model` too — aliases stay transparent)
     const realHeaders = {
       'x-abdalgani-model': model.id,

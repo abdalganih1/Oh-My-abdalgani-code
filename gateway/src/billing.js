@@ -24,6 +24,15 @@ export function computeCost(model, usage, providerCostUsd = null) {
   return Math.ceil(Math.round(cost * 1000) / 1000); // round away float noise, then never under-charge
 }
 
+/** What the request cost US upstream (µ$). Fixed-fee plans → 0 (their monthly fee is reported separately). */
+export function computeUpstreamCost(model, route, usage, providerCostUsd = null) {
+  if (!route || route.billing === 'subscription') return 0;
+  if (typeof providerCostUsd === 'number' && providerCostUsd >= 0) return Math.ceil(providerCostUsd * MICRO);
+  const p = Math.max(0, usage.prompt || 0), c = Math.max(0, usage.completion || 0);
+  const inRate = route.cost_in ?? model.price_in ?? 0, outRate = route.cost_out ?? model.price_out ?? 0;
+  return Math.ceil((p * inRate + c * outRate) / MICRO);
+}
+
 /** Units a subscription is charged: tokens for token wallets, micro-USD for USD wallets. */
 export function unitsFor(sub, usage, costMicro) {
   return sub.kind === 'tokens' ? (usage.prompt || 0) + (usage.completion || 0) : costMicro;
@@ -56,6 +65,7 @@ export async function loadSubscriptions(db, userId) {
 /** Record usage + charge wallet atomically (single D1 batch). */
 export async function settle(db, { user, keyId, model, routeInfo, endpoint, status, usage, providerCostUsd, latency, error, subscriptionId, requestedModel }) {
   const cost = status < 400 ? computeCost(model, usage, providerCostUsd) : 0;
+  const upstreamCost = status < 400 ? computeUpstreamCost(model, routeInfo, usage, providerCostUsd) : 0;
   let charged = 0;
   let subId = subscriptionId ?? null;
   const stmts = [];
@@ -68,11 +78,11 @@ export async function settle(db, { user, keyId, model, routeInfo, endpoint, stat
   }
   stmts.push(db.prepare(
     `INSERT INTO usage_logs (user_id, api_key_id, model_id, provider_id, provider_key_id, endpoint, status,
-       prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, error, requested_model, upstream_model)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, error, requested_model, upstream_model, upstream_cost)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(user.id, keyId ?? null, model.id, routeInfo?.provider_id ?? null, routeInfo?.key_id ?? null, endpoint, status,
     usage.prompt || 0, usage.completion || 0, usage.cached || 0, cost, subId, charged, latency ?? null,
-    error ? String(error).slice(0, 500) : null, requestedModel ? String(requestedModel).slice(0, 120) : null, routeInfo?.upstream_model ?? null));
+    error ? String(error).slice(0, 500) : null, requestedModel ? String(requestedModel).slice(0, 120) : null, routeInfo?.upstream_model ?? null, upstreamCost));
   await db.batch(stmts);
-  return { cost, charged };
+  return { cost, charged, upstreamCost };
 }

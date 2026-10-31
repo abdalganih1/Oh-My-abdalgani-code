@@ -1,4 +1,5 @@
 import { $, $$, esc, store, makeApi, toast, usd, usdPrecise, tokens, date, day, STATUS_BADGE, priceLabel, tabs, copy } from '/common.js';
+import { bars, heatmap, legend, fillSeries, css } from '/charts.js';
 
 const KEY = 'abd:adminToken';
 const api = makeApi(KEY, () => { store.del(KEY); showLogin(); });
@@ -24,23 +25,136 @@ async function boot() {
 }
 let booted = false;
 
-// ── overview ──
-async function loadOverview() {
-  const s = await api('GET', '/api/admin/stats');
-  setUnread(s.unread_events);
-  $('#stats').innerHTML = [
-    ['الطلاب', s.users, ''],
-    ['مفاتيح المزوّدين', `${s.provider_keys.enabled || 0} / ${s.provider_keys.n}`, 'مفعّل / الكل'],
-    ['طلبات 24 ساعة', s.day.req, `${s.day.errors || 0} خطأ · ${tokens(s.day.tokens)} توكن`],
-    ['إيراد محسوب 24 ساعة', usd(s.day.cost), ''],
-    ['طلبات 30 يوم', s.month.req, `${tokens(s.month.tokens)} توكن`],
-    ['إيراد محسوب 30 يوم', usd(s.month.cost), ''],
-  ].map(([l, v, sub]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join('');
-  $('#provStats').innerHTML = '<tr><th>المزوّد</th><th class="num">طلبات</th><th class="num">أخطاء</th><th class="num">الكلفة</th></tr>' +
-    s.providers.map((p) => `<tr><td>${esc(p.provider_id || '— (لم يصل)')}</td><td class="num">${p.req}</td><td class="num">${p.errors || 0}</td><td class="num">${usd(p.cost)}</td></tr>`).join('');
-  $('#topModels').innerHTML = '<tr><th>النموذج</th><th class="num">طلبات</th><th class="num">الكلفة</th></tr>' +
-    s.top_models.map((m) => `<tr><td class="mono ltr">${esc(m.model_id)}</td><td class="num">${m.req}</td><td class="num">${usd(m.cost)}</td></tr>`).join('');
+// ── reports ──
+const TZ = -new Date().getTimezoneOffset();
+const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+let R = null, rangeKey = store.get('abd:range') || '30', tsMetric = 'requests';
+const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(a / b < 0.1 ? 1 : 0)}%` : '—');
+const signed = (micro) => `${micro < 0 ? '−' : ''}${usd(Math.abs(micro))}`;
+const dateInput = (ts) => new Date((ts + TZ * 60) * 1000).toISOString().slice(0, 10);
+const fromInput = (v, end = false) => Math.floor(Date.parse(`${v}T00:00:00Z`) / 1000) - TZ * 60 + (end ? 86400 : 0);
+
+function rangeFor(key) {
+  const now = Math.floor(Date.now() / 1000);
+  const local = new Date(Date.now() + TZ * 60000);
+  const midnight = Math.floor(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) / 1000) - TZ * 60;
+  const monthStart = (y, m) => Math.floor(Date.UTC(y, m, 1) / 1000) - TZ * 60;
+  if (key === 'today') return { from: midnight, to: now + 1 };
+  if (key === 'month') return { from: monthStart(local.getUTCFullYear(), local.getUTCMonth()), to: now + 1 };
+  if (key === 'lastmonth') return { from: monthStart(local.getUTCFullYear(), local.getUTCMonth() - 1), to: monthStart(local.getUTCFullYear(), local.getUTCMonth()) };
+  if (key === 'custom') return { from: fromInput($('#rFrom').value), to: fromInput($('#rTo').value, true) };
+  return { from: midnight - (Number(key) - 1) * 86400, to: now + 1 };
 }
+
+async function loadOverview() {
+  const { from, to } = rangeFor(rangeKey);
+  $$('#range button').forEach((b) => b.classList.toggle('on', b.dataset.r === rangeKey));
+  R = await api('GET', `/api/admin/reports?from=${from}&to=${to}&tz=${TZ}`);
+  $('#rFrom').value = dateInput(from); $('#rTo').value = dateInput(to - 1);
+  $('#rangeLabel').textContent = `من ${day(from)} إلى ${day(to - 1)} — بتوقيتك (UTC${TZ >= 0 ? '+' : '−'}${Math.abs(TZ / 60)})`;
+  const t = R.totals, m = R.money;
+  const tile = (label, value, sub = '', cls = '') => `<div class="stat"><div class="label">${label}</div><div class="value ${cls}">${value}</div><div class="sub">${sub}</div></div>`;
+  $('#kpiUse').innerHTML = [
+    tile('الطلبات', t.requests.toLocaleString('en'), `${t.errors} فشل (${pct(t.errors, t.requests)})`),
+    tile('التوكنات الإجمالية', tokens(t.tokens), `دخل ${tokens(t.prompt_tokens)} · خرج ${tokens(t.completion_tokens)}${t.cached_tokens ? ` · كاش ${tokens(t.cached_tokens)}` : ''}`),
+    tile('طلاب نشطين', t.active_users, 'أرسلوا طلب واحد على الأقل'),
+    tile('متوسط زمن الرد', t.avg_latency ? `${(t.avg_latency / 1000).toFixed(1)} ث` : '—', 'للطلبات الناجحة'),
+  ].join('');
+  $('#kpiMoney').innerHTML = [
+    tile('أخذت من الطلاب', usd(m.revenue), `${m.subscriptions} اشتراك · ${m.coupons_redeemed} كوبون مفعّل`),
+    tile('دفعت للمزوّدين', usd(m.paid), `استخدام ${usd(m.upstream_usage)} · اشتراكات ${usd(m.fixed_fees)} · مصاريف ${usd(m.expenses)}`),
+    tile('صافي الربح', signed(m.profit), m.revenue ? `هامش ${pct(m.profit, m.revenue)}` : 'لا إيراد بالفترة', m.profit >= 0 ? 'kpi-good' : 'kpi-bad'),
+    tile('رصيد مستهلك من الطلاب', usd(m.consumed), `قيمة ما استخدموه من رصيد الدولار`),
+    tile('رصيد لسا بذمتك', usd(m.outstanding_usd), `${tokens(m.outstanding_tokens)} توكن غير مستهلكة (كل الاشتراكات الفعّالة)`),
+  ].join('');
+  drawSeries(); drawTops(); drawHeat(); drawMoney(); drawProviders();
+  setUnread((await api('GET', '/api/admin/stats')).unread_events);
+  loadExpenses();
+}
+
+const METRIC = {
+  requests: { title: 'الطلبات', fmt: (v, axis) => (axis ? tokens(v) : Number(v).toLocaleString('en')) },
+  tokens: { title: 'التوكنات', fmt: (v) => tokens(v) },
+  consumed: { title: 'المستهلك من رصيد الطلاب', fmt: (v, axis) => (axis ? usd(v, v < 1e6 ? 2 : 0) : usdPrecise(v)) },
+  upstream_cost: { title: 'كلفة المزوّدين علينا (استخدام)', fmt: (v, axis) => (axis ? usd(v, v < 1e6 ? 2 : 0) : usdPrecise(v)) },
+};
+function drawSeries() {
+  const rows = fillSeries(R.series, R.range.from, R.range.to, TZ, R.range.bucket);
+  const M = METRIC[tsMetric];
+  $$('#tsMetric button').forEach((b) => b.classList.toggle('on', b.dataset.m === tsMetric));
+  $('#tsTitle').textContent = `${M.title} ${R.range.bucket === 'hour' ? 'بالساعة' : 'باليوم'}`;
+  bars($('#tsChart'), { labels: rows.map((r) => (R.range.bucket === 'hour' ? r.t.slice(11) : r.t.slice(5))), series: [{ name: M.title, color: css('--series-1'), values: rows.map((r) => r[tsMetric] || 0) }], format: M.fmt });
+}
+function inbar(v, max) { return `<div class="inbar-wrap"><div class="inbar" style="width:${max ? Math.max(1, (v / max) * 100) : 0}%"></div></div>`; }
+function drawTops() {
+  const ms = $('#modelSort').value, us = $('#userSort').value;
+  const mv = (x) => (ms === 'tokens' ? x.prompt_tokens + x.completion_tokens : x[ms]);
+  const models = [...R.models].sort((a, b) => mv(b) - mv(a));
+  const mmax = Math.max(0, ...models.map(mv)), total = models.reduce((a, x) => a + mv(x), 0);
+  const fmtM = (v) => (ms === 'requests' ? v.toLocaleString('en') : ms === 'tokens' ? tokens(v) : usdPrecise(v));
+  $('#topModels').innerHTML = '<tr><th>النموذج</th><th style="width:30%"></th><th class="num">القيمة</th><th class="num">النسبة</th><th class="num">طلاب</th></tr>' + (models.map((x) =>
+    `<tr><td><strong>${esc(x.name || x.model_id)}</strong><div class="mono ltr small muted" style="text-align:start">${esc(x.model_id)}</div></td><td>${inbar(mv(x), mmax)}</td>
+     <td class="num">${fmtM(mv(x))}</td><td class="num">${pct(mv(x), total)}</td><td class="num">${x.users}</td></tr>`).join('') || '<tr><td class="muted">لا طلبات بالفترة</td></tr>');
+  const users = [...R.users].sort((a, b) => b[us] - a[us]);
+  const umax = Math.max(0, ...users.map((x) => x[us]));
+  const fmtU = (v) => (us === 'requests' ? v.toLocaleString('en') : us === 'tokens' ? tokens(v) : usdPrecise(v));
+  $('#topUsers').innerHTML = '<tr><th>الطالب</th><th style="width:30%"></th><th class="num">القيمة</th><th>نموذجه المفضّل</th><th>آخر طلب</th></tr>' + (users.map((x) =>
+    `<tr><td><strong>${esc(x.name || '#' + x.user_id)}</strong></td><td>${inbar(x[us], umax)}</td><td class="num">${fmtU(x[us])}</td>
+     <td class="mono ltr small">${esc(x.top_model || '')}</td><td class="small">${date(x.last_request)}</td></tr>`).join('') || '<tr><td class="muted">لا طلبات بالفترة</td></tr>');
+}
+function drawHeat() {
+  heatmap($('#heat'), { cells: R.heat, dayNames: DAYS, format: (v) => `${v.toLocaleString('en')} طلب` });
+  const top = [...R.heat].sort((a, b) => b.requests - a.requests)[0];
+  const byHour = Array.from({ length: 24 }, (_, h) => R.heat.filter((c) => c.hour === h).reduce((a, c) => a + c.requests, 0));
+  const peakHour = byHour.indexOf(Math.max(...byHour));
+  $('#peakText').textContent = top ? `أعلى ضغط: ${DAYS[top.dow]} الساعة ${String(top.hour).padStart(2, '0')}:00 · الساعة الأكثر عموماً: ${String(peakHour).padStart(2, '0')}:00` : '';
+}
+function drawMoney() {
+  const months = R.months;
+  const S2 = [{ name: 'أخذت من الطلاب', color: css('--series-1') }, { name: 'دفعت للمزوّدين', color: css('--series-2') }];
+  legend($('#moneyLegend'), S2);
+  bars($('#moneyChart'), { labels: months.map((x) => x.month), series: [{ ...S2[0], values: months.map((x) => x.revenue) }, { ...S2[1], values: months.map((x) => x.paid) }], format: (v, axis) => usd(v, axis ? 0 : 2), height: 200, tickEvery: 1 });
+  $('#moneyTable').innerHTML = '<tr><th>الشهر</th><th class="num">أخذت من الطلاب</th><th class="num">دفعت للمزوّدين</th><th class="num">الربح</th><th class="num">مستهلك من الأرصدة</th></tr>' +
+    (months.map((x) => `<tr><td>${x.month}</td><td class="num">${usd(x.revenue)}</td><td class="num">${usd(x.paid)}</td><td class="num ${x.profit >= 0 ? 'kpi-good' : 'kpi-bad'}">${signed(x.profit)}</td><td class="num">${usd(x.consumed)}</td></tr>`).join('') || '<tr><td class="muted">لا بيانات</td></tr>');
+  const m = R.money;
+  $('#paidTable').innerHTML = '<tr><th>البند</th><th class="num">المبلغ</th></tr>' +
+    R.providers.filter((p) => p.upstream_cost > 0).map((p) => `<tr><td>استخدام · ${esc(p.name || p.provider_id)}</td><td class="num">${usdPrecise(p.upstream_cost)}</td></tr>`).join('') +
+    m.fixed_plans.map((p) => `<tr><td>اشتراك ثابت · ${esc(p.name)} <span class="muted small">(${usd(p.monthly_fee)}/شهر، محسوب نسبياً)</span></td><td class="num">${usd(Math.round(p.monthly_fee * (R.range.to - R.range.from) / (30.4375 * 86400)))}</td></tr>`).join('') +
+    (m.expenses ? `<tr><td>مصاريف يدوية</td><td class="num">${usd(m.expenses)}</td></tr>` : '') +
+    `<tr><td><strong>المجموع</strong></td><td class="num"><strong>${usd(m.paid)}</strong></td></tr>`;
+}
+function drawProviders() {
+  $('#provReport').innerHTML = '<tr><th>المزوّد</th><th>الدفع</th><th class="num">طلبات</th><th class="num">فشل</th><th class="num">توكنات</th><th class="num">كلفتنا</th><th class="num">زمن الرد</th></tr>' +
+    (R.providers.map((p) => `<tr><td>${esc(p.name || p.provider_id || '— (لم يصل لمزوّد)')}</td><td class="small">${p.billing === 'subscription' ? 'اشتراك ثابت' : p.billing ? 'حسب الاستخدام' : ''}</td><td class="num">${p.requests}</td>
+      <td class="num">${p.errors} <span class="muted small">(${pct(p.errors, p.requests)})</span></td><td class="num">${tokens(p.tokens)}</td><td class="num">${usdPrecise(p.upstream_cost)}</td><td class="num">${p.avg_latency ? (p.avg_latency / 1000).toFixed(1) + ' ث' : '—'}</td></tr>`).join('') || '<tr><td class="muted">لا طلبات</td></tr>');
+}
+async function loadExpenses() {
+  if (!S.providers.length) S.providers = await api('GET', '/api/admin/providers');
+  const sel = $('#expProvider');
+  if (sel.options.length <= 1) sel.innerHTML = '<option value="">— عام —</option>' + S.providers.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  const list = await api('GET', '/api/admin/expenses');
+  $('#expenseTable').innerHTML = list.map((e) => `<tr><td class="small">${day(e.spent_at)}</td><td>${esc(e.provider_name || 'عام')}</td><td class="small muted">${esc(e.note || '')}</td><td class="num">${usd(e.amount)}</td><td><button class="small danger" data-delexp="${e.id}">✕</button></td></tr>`).join('') || '<tr><td class="muted small">لا مصاريف</td></tr>';
+}
+$('#range').addEventListener('click', guard(async (e) => { const r = e.target.dataset?.r; if (!r) return; rangeKey = r; store.set('abd:range', r); await loadOverview(); }));
+['#rFrom', '#rTo'].forEach((id) => $(id).addEventListener('change', guard(async () => { if ($('#rFrom').value && $('#rTo').value) { rangeKey = 'custom'; await loadOverview(); } })));
+$('#tsMetric').addEventListener('click', (e) => { const m = e.target.dataset?.m; if (m && R) { tsMetric = m; drawSeries(); } });
+$('#modelSort').addEventListener('change', () => R && drawTops());
+$('#userSort').addEventListener('change', () => R && drawTops());
+$('#csvBtn').addEventListener('click', guard(async () => {
+  const { from, to } = rangeFor(rangeKey);
+  const res = await fetch(`/api/admin/reports/export?from=${from}&to=${to}`, { headers: { authorization: `Bearer ${store.get(KEY)}` } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob());
+  a.download = (res.headers.get('content-disposition') || '').match(/filename="(.+)"/)?.[1] || 'usage.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}));
+$('#expenseForm').addEventListener('submit', guard(async (e) => {
+  e.preventDefault(); const d = formData(e.target);
+  await api('POST', '/api/admin/expenses', { amount: Math.round(+d.amount * M), provider_id: d.provider_id || null, note: d.note, spent_at: d.spent_at ? fromInput(d.spent_at) + 43200 : undefined });
+  e.target.reset(); toast('أُضيف'); await loadOverview();
+}));
+$('#expenseTable').addEventListener('click', guard(async (e) => { const id = e.target.dataset?.delexp; if (id && confirm('حذف المصروف؟')) { await api('DELETE', `/api/admin/expenses/${id}`); await loadOverview(); } }));
+let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (R && !$('[data-panel="overview"]').classList.contains('hidden')) { drawSeries(); drawMoney(); } }, 200); });
 
 // ── updates (lifecycle) ──
 function setUnread(n) { const b = $('#unreadBadge'); b.textContent = n || ''; b.classList.toggle('hidden', !n); }
@@ -98,7 +212,7 @@ async function loadProviders() {
         <button class="small" data-act="edit-provider" data-p="${esc(p.id)}">تعديل</button>
         <button class="small" data-act="toggle-provider" data-p="${esc(p.id)}">${p.enabled ? 'إيقاف' : 'تفعيل'}</button>
       </div>
-      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}${p.compat ? ` · compat: ${esc(p.compat)}` : ''}${p.auto ? ` · auto: ${esc(p.auto)}` : ''}</div>
+      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)} · ${p.billing === 'subscription' ? `اشتراك ثابت ${usd(p.monthly_fee)}/شهر` : 'حسب الاستخدام'}${p.compat ? ` · compat: ${esc(p.compat)}` : ''}${p.auto ? ` · auto: ${esc(p.auto)}` : ''}</div>
       <div class="small muted">${p.last_sync_at ? `آخر مزامنة للنماذج: ${date(p.last_sync_at)}` : 'لم تتم مزامنة النماذج بعد'}${p.sync_error ? ` · <span style="color:var(--bad)">${esc(p.sync_error)}</span>` : ''}${p.archived_reason ? ` · ${esc(p.archived_reason)}` : ''}${p.first_fail_at && !p.archived_at ? ` · <span style="color:var(--warn)">يفشل منذ ${date(p.first_fail_at)}</span>` : ''}</div>
       <div class="table-wrap"><table>
         <tr><th>الاسم</th><th>المفتاح</th><th class="num">الوزن</th><th class="num">استخدام</th><th>الحالة</th><th>آخر خطأ</th><th></th></tr>
@@ -159,6 +273,8 @@ $('#providerList').addEventListener('click', guard(async (e) => {
   } else if (act === 'edit-provider') {
     const f = $('#providerForm');
     for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers', 'compat', 'auto']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
+    f.elements.billing.value = prov.billing || 'usage';
+    f.elements.monthly_fee.value = prov.monthly_fee ? prov.monthly_fee / M : '';
     f.scrollIntoView({ behavior: 'smooth' });
   } else if (act === 'discover') {
     b.disabled = true;
@@ -195,7 +311,7 @@ $('#providerForm').addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const d = formData(e.target);
   const prev = S.providers.find((p) => p.id === d.id);
-  await api('POST', '/api/admin/providers', { ...d, enabled: prev ? !!prev.enabled : true });
+  await api('POST', '/api/admin/providers', { ...d, monthly_fee: Math.round((+d.monthly_fee || 0) * M), enabled: prev ? !!prev.enabled : true });
   e.target.reset(); toast('تم الحفظ'); await loadProviders();
 }));
 
@@ -245,6 +361,8 @@ function routeRow(r = {}) {
   div.className = 'row'; div.style.marginBottom = '6px';
   div.innerHTML = `<select name="rp">${S.providers.map((p) => `<option value="${esc(p.id)}" ${p.id === r.provider_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     <input name="rm" class="ltr" placeholder="upstream model id" value="${esc(r.upstream_model || '')}" style="flex:1;min-width:160px">
+    <input name="rci" type="number" step="any" min="0" placeholder="كلفتنا دخل $/1M" title="اختياري: كلفة المزوّد علينا لكل مليون توكن دخل (للمزوّدين حسب الاستخدام)" value="${r.cost_in != null ? r.cost_in / M : ''}" style="max-width:130px">
+    <input name="rco" type="number" step="any" min="0" placeholder="خرج $/1M" value="${r.cost_out != null ? r.cost_out / M : ''}" style="max-width:100px">
     <label class="small row"><input type="checkbox" name="re" ${r.enabled === 0 ? '' : 'checked'}> مفعّل</label>
     <button type="button" class="small" data-up>↑</button><button type="button" class="small danger" data-rm>✕</button>`;
   div.querySelector('[data-rm]').onclick = () => div.remove();
@@ -261,7 +379,7 @@ function openModel(m, isNew = false) {
   f.elements.id.readOnly = !isNew && !!m.id;
   const usdFields = ['price_in', 'price_out', 'price_cache_read', 'price_request'];
   for (const el of f.elements) {
-    if (!el.name || ['rp', 'rm', 're'].includes(el.name)) continue;
+    if (!el.name || ['rp', 'rm', 're', 'rci', 'rco'].includes(el.name)) continue;
     const v = m[el.name];
     if (el.type === 'checkbox') el.checked = !!v;
     else if (usdFields.includes(el.name)) el.value = v ? +(v / M).toFixed(6) : '';
@@ -283,6 +401,8 @@ $('#modelForm').addEventListener('submit', guard(async (e) => {
     routes: $$('#routeRows > div').map((row, i) => ({
       provider_id: row.querySelector('[name=rp]').value, upstream_model: row.querySelector('[name=rm]').value.trim(),
       enabled: row.querySelector('[name=re]').checked, priority: i,
+      cost_in: row.querySelector('[name=rci]').value === '' ? null : Math.round(+row.querySelector('[name=rci]').value * M),
+      cost_out: row.querySelector('[name=rco]').value === '' ? null : Math.round(+row.querySelector('[name=rco]').value * M),
     })).filter((r) => r.upstream_model),
   };
   await api('POST', '/api/admin/models', body);
@@ -334,6 +454,7 @@ async function openUser(id) {
       <label class="f">القيمة ($ أو مليون توكن)<input name="amount" type="number" step="0.01" required></label>
       <label class="f">الفئة<select name="group_id"><option value="">كل النماذج</option>${S.groups.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></label>
       <label class="f">أيام (0=دائم)<input name="valid_days" type="number" value="30"></label>
+      <label class="f">دفع الطالب ($)<input name="sale_price" type="number" step="0.01" min="0" value="0"></label>
       <button class="primary">منح</button>
     </form>
     <h3>الاشتراكات</h3>
@@ -361,7 +482,7 @@ async function openUser(id) {
   $('#grantForm').onsubmit = guard(async (e) => {
     e.preventDefault();
     const g = formData(e.target);
-    await api('POST', `/api/admin/users/${id}/subscriptions`, { ...g, amount: Math.round(+g.amount * M) });
+    await api('POST', `/api/admin/users/${id}/subscriptions`, { ...g, amount: Math.round(+g.amount * M), sale_price: Math.round((+g.sale_price || 0) * M) });
     toast('تم المنح'); await openUser(id); await loadUsers();
   });
   if (!$('#userDlg').open) $('#userDlg').showModal();
@@ -376,7 +497,7 @@ async function loadCoupons() {
     list.map((c) => {
       const st = c.disabled ? '<span class="badge">موقوف</span>' : c.used_count >= c.max_uses ? '<span class="badge accent">مستخدم</span>' : c.expires_at && c.expires_at < now ? '<span class="badge bad">منتهي</span>' : '<span class="badge ok">متاح</span>';
       return `<tr><td class="mono ltr">${esc(c.code)} <button class="small" data-copy-code="${esc(c.code)}">⧉</button></td>
-        <td>${c.kind === 'usd' ? usd(c.amount) : tokens(c.amount) + ' tok'}</td><td>${esc(groupName(c.group_id))}</td>
+        <td>${c.kind === 'usd' ? usd(c.amount) : tokens(c.amount) + ' tok'}<div class="small muted">بيع: ${usd(c.sale_price ?? (c.kind === 'usd' ? c.amount : 0))}</div></td><td>${esc(groupName(c.group_id))}</td>
         <td class="small">${c.valid_days ? c.valid_days + ' يوم' : 'دائم'}</td><td class="num">${c.used_count}/${c.max_uses}</td><td>${st}</td>
         <td class="small muted">${esc(c.note || '')}</td>
         <td class="row" style="flex-wrap:nowrap"><button class="small" data-cdis="${esc(c.code)}" data-v="${c.disabled}">${c.disabled ? 'تفعيل' : 'إيقاف'}</button><button class="small danger" data-cdel="${esc(c.code)}">حذف</button></td></tr>`;
@@ -385,7 +506,7 @@ async function loadCoupons() {
 $('#couponForm').addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const d = formData(e.target);
-  const r = await api('POST', '/api/admin/coupons', { ...d, amount: Math.round(+d.amount * M) });
+  const r = await api('POST', '/api/admin/coupons', { ...d, amount: Math.round(+d.amount * M), sale_price: d.sale_price === '' ? undefined : Math.round(+d.sale_price * M) });
   $('#newCoupons').classList.remove('hidden'); $('#newCoupons').textContent = r.codes.join('\n');
   copy(r.codes.join('\n'));
   await loadCoupons();
