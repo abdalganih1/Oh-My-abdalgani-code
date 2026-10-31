@@ -54,11 +54,11 @@ export async function adminReport(db, url) {
          FROM usage_logs l LEFT JOIN providers p ON p.id = l.provider_id WHERE ${WA('l')} GROUP BY l.provider_id ORDER BY requests DESC`, from, to),
     all("SELECT id, name, monthly_fee FROM providers WHERE billing = 'subscription' AND monthly_fee > 0 AND archived_at IS NULL"),
     one(`SELECT COALESCE(SUM(sale_price), 0) revenue, COUNT(*) subscriptions, COALESCE(SUM(source LIKE 'coupon:%'), 0) coupons_redeemed
-         FROM subscriptions WHERE ${W}`, from, to),
-    one(`SELECT COALESCE(SUM(CASE WHEN kind = 'usd' THEN total END), 0) usd, COALESCE(SUM(CASE WHEN kind = 'tokens' THEN total END), 0) tokens FROM subscriptions WHERE ${W}`, from, to),
+         FROM subscriptions WHERE ${W} AND source != 'playground'`, from, to),
+    one(`SELECT COALESCE(SUM(CASE WHEN kind = 'usd' THEN total END), 0) usd, COALESCE(SUM(CASE WHEN kind = 'tokens' THEN total END), 0) tokens FROM subscriptions WHERE ${W} AND source != 'playground'`, from, to),
     one('SELECT COALESCE(SUM(amount), 0) amount FROM expenses WHERE spent_at >= ? AND spent_at < ?', from, to),
     one(`SELECT COALESCE(SUM(CASE WHEN kind = 'usd' THEN total - used END), 0) usd, COALESCE(SUM(CASE WHEN kind = 'tokens' THEN total - used END), 0) tokens
-         FROM subscriptions WHERE disabled = 0 AND used < total AND (expires_at IS NULL OR expires_at > ?)`, now()),
+         FROM subscriptions WHERE disabled = 0 AND used < total AND source != 'playground' AND (expires_at IS NULL OR expires_at > ?)`, now()),
     monthly(db, from, to, shift),
   ]);
 

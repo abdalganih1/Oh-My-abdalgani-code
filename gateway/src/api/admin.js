@@ -145,21 +145,29 @@ export async function handleAdmin(request, env, ctx, path) {
       need(row, 'key not found');
       const secret = await decryptSecret(row.key_enc, env.ENCRYPTION_KEY);
       const started = Date.now();
-      let res;
-      // x-api-key providers (Anthropic, Zen) are checked on their native endpoint: Anthropic's
-      // /v1/models needs x-api-key + anthropic-version, which the OpenAI-style probe doesn't send
-      if (row.openai_base_url && !(row.auth_style === 'x-api-key' && row.anthropic_base_url)) {
-        res = await fetch(`${row.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(row, secret, 'openai') });
-      } else {
-        res = await fetch(`${row.anthropic_base_url.replace(/\/$/, '')}/v1/models`, { headers: upstreamHeaders(row, secret, 'anthropic') });
-      }
+      // Many /models lists are public (OpenRouter, NVIDIA, Nous), so listing proves nothing about the key.
+      // Send a real 1-token request to a model this provider serves for us: it checks auth AND balance/plan.
+      const native = !row.openai_base_url || (row.auth_style === 'x-api-key' && row.anthropic_base_url);
+      const route = await db.prepare('SELECT upstream_model FROM model_routes WHERE provider_id = ? AND enabled = 1 AND archived_at IS NULL ORDER BY priority, id LIMIT 1').bind(row.provider_id).first();
+      const model = route?.upstream_model || '__abd_auth_probe__';
+      const msg = { model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] };
+      const res = native
+        ? await fetch(`${row.anthropic_base_url.replace(/\/$/, '')}/v1/messages`, { method: 'POST', headers: upstreamHeaders(row, secret, 'anthropic'), body: JSON.stringify(msg) })
+        : await fetch(`${row.openai_base_url.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: upstreamHeaders(row, secret, 'openai'), body: JSON.stringify(msg) });
       const text = await res.text();
-      if (res.ok) {
+      const low = text.toLowerCase();
+      let verdict, ok;
+      if (res.ok) { ok = true; verdict = 'works'; }
+      else if (res.status === 401 || res.status === 403) { ok = false; verdict = 'bad_key'; }
+      else if (res.status === 402 || /insufficient|balance|credit|quota|recharge|resource package|payment|"1113"/.test(low)) { ok = false; verdict = 'no_balance'; }
+      else if (res.status === 429) { ok = true; verdict = 'rate_limited'; }
+      else if ([400, 404, 422].includes(res.status)) { ok = true; verdict = route ? 'key_ok_model_rejected' : 'key_ok'; }
+      else { ok = false; verdict = 'error'; }
+      if (ok) {
         await db.prepare('UPDATE provider_keys SET last_error = NULL, cooldown_until = 0, fail_count = 0 WHERE id = ?').bind(id).run();
         await restoreProvider(db, row.provider_id, 'key test passed');
-      }
-      else await db.prepare('UPDATE provider_keys SET last_error = ? WHERE id = ?').bind(`test ${res.status}: ${text.slice(0, 200)}`, id).run();
-      return json({ ok: res.ok, status: res.status, latency_ms: Date.now() - started, sample: text.slice(0, 300) });
+      } else await db.prepare('UPDATE provider_keys SET last_error = ? WHERE id = ?').bind(`test ${res.status}: ${text.slice(0, 200)}`, id).run();
+      return json({ ok, verdict, status: res.status, model: route ? model : null, latency_ms: Date.now() - started, sample: text.slice(0, 300) });
     }
   }
 
@@ -177,6 +185,23 @@ export async function handleAdmin(request, env, ctx, path) {
   }
 
   // ── models + routes ──
+  // ── playground: an internal account the admin chats through, on the real gateway path ──
+  if (a === 'playground' && b === 'key' && method === 'POST') {
+    let u = await db.prepare('SELECT id FROM users WHERE internal = 1 ORDER BY id LIMIT 1').first();
+    if (!u) {
+      u = await db.prepare("INSERT INTO users (name, note, internal, approved, daily_cap) VALUES ('🧪 Playground (المدير)', 'internal: admin playground', 1, 1, 50000000) RETURNING id").first();
+    }
+    // one live key at a time: every new playground session revokes the previous key
+    await db.prepare('UPDATE api_keys SET revoked = 1 WHERE user_id = ? AND revoked = 0').bind(u.id).run();
+    const key = await createUserKey(db, u.id, 'playground');
+    const t = now();
+    const bal = await db.prepare("SELECT COALESCE(SUM(total - used), 0) n FROM subscriptions WHERE user_id = ? AND kind = 'usd' AND disabled = 0 AND (expires_at IS NULL OR expires_at > ?)").bind(u.id, t).first();
+    if (bal.n < 5_000_000) {
+      await db.prepare("INSERT INTO subscriptions (user_id, kind, group_id, total, source, expires_at, sale_price) VALUES (?, 'usd', NULL, 20000000, 'playground', ?, 0)").bind(u.id, t + 365 * 86400).run();
+    }
+    return json({ api_key: key, user_id: u.id });
+  }
+
   // ── pricing: copy OpenRouter's public per-token prices onto our models ──
   if (a === 'pricing' && b === 'openrouter' && method === 'GET') {
     const res = await fetch('https://openrouter.ai/api/v1/models', { headers: { accept: 'application/json', 'user-agent': 'abdalgani-gateway' } });
@@ -405,7 +430,7 @@ export async function handleAdmin(request, env, ctx, path) {
            (SELECT COALESCE(SUM(total-used),0) FROM subscriptions s WHERE s.user_id=u.id AND s.kind='usd' AND s.disabled=0 AND (s.expires_at IS NULL OR s.expires_at > ?)) AS usd_left,
            (SELECT COALESCE(SUM(total-used),0) FROM subscriptions s WHERE s.user_id=u.id AND s.kind='tokens' AND s.disabled=0 AND (s.expires_at IS NULL OR s.expires_at > ?)) AS tokens_left,
            (SELECT MAX(created_at) FROM usage_logs l WHERE l.user_id = u.id) AS last_request
-         FROM users u ORDER BY u.id DESC`
+         FROM users u WHERE u.internal = 0 ORDER BY u.id DESC`
       ).bind(t, t).all();
       return json(results.map(({ password_hash, ...u }) => ({ ...u, has_password: !!password_hash })));
     }

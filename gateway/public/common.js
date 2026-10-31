@@ -57,10 +57,10 @@ export const STATUS_BADGE = {
 };
 
 export function priceLabel(m) {
-  if (m.pricing_mode === 'request') return m.price_request ? `${usdPrecise(m.price_request)} / طلب` : 'غير مسعّر';
+  if (m.pricing_mode === 'request') return m.price_request ? `${usdPrecise(m.price_request)} لكل طلب` : 'غير مسعّر';
   const base = m.pricing_mode === 'provider' ? 'حسب المزوّد' : '';
   if (!m.price_in && !m.price_out) return base || 'غير مسعّر';
-  return `${base ? base + ' · ' : ''}${usdPrecise(m.price_in)} دخل · ${usdPrecise(m.price_out)} خرج /1M`;
+  return `${base ? base + ' · ' : ''}${usdPrecise(m.price_in)} دخل · ${usdPrecise(m.price_out)} خرج — لكل مليون توكن`;
 }
 
 export function tabs(root, onChange) {

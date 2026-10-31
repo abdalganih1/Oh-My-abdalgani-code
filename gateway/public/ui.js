@@ -158,3 +158,24 @@ export function countUp(el, to, fmt, ms = 700) {
   };
   requestAnimationFrame(step);
 }
+
+// ── responsive tables: on phones `table.stack` rows become cards; every cell gets its column
+// name as data-label (CSS shows it above the value). Re-labels whenever a table re-renders.
+function labelTable(t) {
+  const head = t.rows[0]; if (!head || !head.querySelector('th')) return;
+  const names = [...head.cells].map((c) => c.textContent.trim());
+  for (let r = 1; r < t.rows.length; r++) {
+    let col = 0;
+    for (const td of t.rows[r].cells) {
+      if (td.colSpan > 1) { td.classList.add('span'); col += td.colSpan; continue; }
+      const n = names[col++] || '';
+      if (td.dataset.label !== n) td.dataset.label = n;
+    }
+  }
+}
+let labelQueued = false;
+function labelAll() { labelQueued = false; $$('table.stack').forEach(labelTable); }
+new MutationObserver((muts) => {
+  if (labelQueued || !muts.some((m) => m.target.closest?.('table.stack') || [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.('table.stack') || n.querySelector?.('table.stack'))))) return;
+  labelQueued = true; requestAnimationFrame(labelAll);
+}).observe(document.documentElement, { childList: true, subtree: true });

@@ -22,6 +22,7 @@ globalThis.fetch = async (url, init = {}) => {
   const auth = init.headers?.authorization || init.headers?.['x-api-key'];
   upstreamCalls.push({ url, body, auth });
   if (auth?.includes('ratelimited')) return new Response('{"error":"rate"}', { status: 429 });
+  if (body?.model === 'no-balance-upstream') return Response.json({ error: { code: '1113', message: 'Insufficient balance or no resource package. Please recharge.' } }, { status: 429 });
   if (url === 'https://openrouter.ai/api/v1/models' && !auth) {
     return Response.json({ data: [
       { id: 'z-ai/glm-5.3', name: 'GLM 5.3', pricing: { prompt: '0.0000000699', completion: '0.0000014', input_cache_read: '0.0000000689' } },
@@ -537,4 +538,50 @@ test('providers: any custom provider URL, but only over https', async () => {
   const p = (await admin('GET', '/providers')).data.find((x) => x.id === 'weird');
   assert.equal(p.openai_base_url, 'https://weird.example.com/v1', 'trailing slash trimmed');
   assert.equal((await admin('DELETE', '/providers/weird')).status, 200);
+});
+
+test('key test sends a real 1-token request (public /models lists prove nothing)', async () => {
+  const zai = (await admin('GET', '/providers')).data.find((p) => p.id === 'zai');
+  const k = zai.keys.find((x) => x.key_hint === '1234'); // the healthy mock key
+  const before = upstreamCalls.length;
+  const r = (await admin('POST', `/keys/${k.id}/test`)).data;
+  assert.equal(r.ok, true); assert.equal(r.verdict, 'works');
+  const call = upstreamCalls.slice(before).find((c) => c.url.endsWith('/chat/completions'));
+  assert.ok(call && call.body.max_tokens === 1 && call.body.model, 'real chat probe with 1 token');
+});
+
+test('fallback: z.ai out of balance (429/1113) → next route answers, for every API format', async () => {
+  assert.equal((await admin('POST', '/models', { id: 'fb-model', name: 'FB', status: 'active', pricing_mode: 'token', price_in: 1000, price_out: 1000,
+    routes: [{ provider_id: 'zai', upstream_model: 'no-balance-upstream' }, { provider_id: 'openrouter', upstream_model: 'z-ai/fb' }] })).status, 200);
+  for (const [path, extra] of [['/v1/chat/completions', {}], ['/v1/responses', { input: 'hi' }], ['/v1/messages', { max_tokens: 10 }]]) {
+    await admin('PATCH', '/keys/1', { reset: true }); await admin('PATCH', '/keys/2', { reset: true });
+    const body = path === '/v1/responses' ? { model: 'fb-model', ...extra } : { model: 'fb-model', messages: [{ role: 'user', content: 'x' }], ...extra };
+    const r = await call('POST', path, { token: userKey, body });
+    assert.equal(r.status, 200, `${path} should fall back to openrouter: ${JSON.stringify(r.data).slice(0, 200)}`);
+  }
+});
+
+test('playground: internal account, hidden from students list, can pin one route', async () => {
+  const k1 = (await admin('POST', '/playground/key')).data.api_key;
+  const k2 = (await admin('POST', '/playground/key')).data.api_key;
+  assert.equal((await call('GET', '/v1/models', { token: k1 })).status, 401, 'old playground key revoked');
+  const users = (await admin('GET', '/users')).data;
+  assert.ok(!users.some((u) => u.internal), 'internal account hidden from the student list');
+  const fb = (await admin('GET', '/models')).data.find((m) => m.id === 'fb-model');
+  const orRoute = fb.routes.find((r) => r.provider_id === 'openrouter');
+  await admin('PATCH', '/keys/1', { reset: true }); await admin('PATCH', '/keys/2', { reset: true });
+  const before = upstreamCalls.length;
+  const r = await worker.fetch(new Request('https://api.abdalgani.com/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${k2}`, 'x-abd-route': String(orRoute.id) },
+    body: JSON.stringify({ model: 'fb-model', messages: [{ role: 'user', content: 'x' }] }),
+  }), env, { waitUntil: () => {} });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('x-abdalgani-upstream'), 'openrouter/z-ai/fb');
+  assert.ok(upstreamCalls.slice(before).every((c) => c.url.includes('openrouter')), 'z.ai route skipped when pinned');
+  // students can't pin
+  const s = await worker.fetch(new Request('https://api.abdalgani.com/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${userKey}`, 'x-abd-route': String(orRoute.id) },
+    body: JSON.stringify({ model: 'fb-model', messages: [{ role: 'user', content: 'pin please' }] }),
+  }), env, { waitUntil: () => {} });
+  assert.equal(s.status, 200);
 });

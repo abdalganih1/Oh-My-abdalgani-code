@@ -135,7 +135,7 @@
           </div>
           <div class="card" id="realCard">
             <div class="card-head"><h2><i data-i="cpu"></i>النماذج الحقيقية ورا أسمائك</h2></div>
-            <div class="table-wrap"><table id="realTable"></table></div>
+            <div class="table-wrap"><table id="realTable" class="stack"></table></div>
             <p class="muted small">كل رد من البوابة فيه كمان الترويسة <code>x-abdalgani-model</code> وحقل <code>model</code> بالنموذج الحقيقي.</p>
           </div>
         </div>
@@ -148,13 +148,13 @@
 
         <div class="card">
           <div class="card-head"><h2><i data-i="chart"></i>وين راح رصيدك؟</h2></div>
-          <div class="table-wrap"><table id="byModel"></table></div>
+          <div class="table-wrap"><table id="byModel" class="stack"></table></div>
           <div class="small muted" id="avgLine" style="margin-top:10px"></div>
         </div>
 
         <div class="card hidden" id="newsCard"><div class="card-head"><h2><i data-i="sparkles"></i>ما الجديد</h2></div><div id="news"></div></div>
 
-        <div class="card"><div class="card-head"><h2><i data-i="wallet"></i>اشتراكاتي</h2></div><div class="table-wrap"><table id="subsTable"></table></div></div>
+        <div class="card"><div class="card-head"><h2><i data-i="wallet"></i>اشتراكاتي</h2></div><div class="table-wrap"><table id="subsTable" class="stack"></table></div></div>
 
         <details class="explain">
           <summary>شو يعني "توكن"؟ وليش بعض الطلبات أغلى من غيرها؟</summary>
@@ -186,7 +186,7 @@
         <div class="callout" style="margin-bottom:18px"><i data-i="sparkles"></i><div>أدواتك مضبوطة على أسماء ثابتة مثل <code>abd-main</code> و<code>abd-fast</code>. غيّر هون لأي نموذج مسموح إلك، وبيشتغل <b>فوراً</b> بكل الأدوات بدون إعادة تثبيت. ولتحديث الأسماء الظاهرة داخل أدواتك (اختياري) شغّل <code>abdalgani-setup --sync</code>.</div></div>
         <div class="card">
           <div class="card-head"><h2><i data-i="shuffle"></i>أسمائي الثابتة</h2></div>
-          <div class="table-wrap"><table id="aliasTable"></table></div>
+          <div class="table-wrap"><table id="aliasTable" class="stack"></table></div>
           <h3>اسم مخصص جديد</h3>
           <form id="aliasForm" class="row"><input id="aliasName" class="ltr" placeholder="my-model" required><select id="aliasModel" style="flex:1;min-width:200px"></select><button class="primary">حفظ</button></form>
         </div>
@@ -213,13 +213,13 @@
       </div>
 
       <!-- ── usage ── -->
-      <div data-panel="usage"><div class="card"><div class="card-head"><h2><i data-i="list"></i>آخر الطلبات</h2></div><div class="table-wrap"><table id="usageTable"></table></div></div></div>
+      <div data-panel="usage"><div class="card"><div class="card-head"><h2><i data-i="list"></i>آخر الطلبات</h2></div><div class="table-wrap"><table id="usageTable" class="stack"></table></div></div></div>
 
       <!-- ── keys ── -->
       <div data-panel="keys">
         <div class="card">
           <div class="card-head"><h2><i data-i="key"></i>مفاتيحي</h2></div>
-          <div class="table-wrap"><table id="keysTable"></table></div>
+          <div class="table-wrap"><table id="keysTable" class="stack"></table></div>
           <form id="keyForm" class="row" style="margin-top:14px"><input id="keyName" placeholder="اسم الجهاز (laptop)" style="flex:1;min-width:180px"><button class="primary"><i data-i="key" data-s="16"></i>مفتاح جديد</button></form>
           <div id="newKey" class="secret hidden"></div>
         </div>
@@ -227,7 +227,7 @@
           <div class="card">
             <div class="card-head"><h2><i data-i="monitor"></i>أجهزتي</h2></div>
             <p class="small muted" style="margin-top:-6px">الأجهزة اللي استخدمت مفتاحك عبر أدوات abdalgani-setup. إذا شفت جهاز ما بتعرفه، بلّغ المدرّس فوراً وغيّر مفتاحك.</p>
-            <div class="table-wrap"><table id="devTable"></table></div>
+            <div class="table-wrap"><table id="devTable" class="stack"></table></div>
           </div>
           <div class="card" id="pwCard">
             <div class="card-head"><h2><i data-i="lock"></i>كلمة السر</h2></div>

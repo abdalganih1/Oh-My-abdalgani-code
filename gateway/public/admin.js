@@ -8,6 +8,7 @@ addAction('افحص الإساءة الآن', () => { goTab('security'); setTime
 addAction('ولّد كوبونات', () => { goTab('coupons'); $('#couponForm [name="amount"]')?.focus(); });
 addAction('أضف نموذج جديد', () => { goTab('models'); setTimeout(() => $('#newModel')?.click(), 50); });
 addAction('افحص تحديثات المزوّدين', () => { goTab('updates'); setTimeout(() => $('#runNow')?.click(), 50); });
+addAction('افتح الـ Playground', () => goTab('playground'));
 addAction('صدّر تقرير CSV', () => { goTab('overview'); $('#csvBtn')?.click(); });
 
 const KEY = 'abd:adminToken';
@@ -279,7 +280,7 @@ function renderProviders() {
         </div>
         <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}</div>
         <div class="small muted">${p.billing === 'subscription' ? `اشتراك ثابت ${usd(p.monthly_fee)}/شهر` : 'حسب الاستخدام'} · ${p.last_sync_at ? `آخر مزامنة للنماذج: ${date(p.last_sync_at)}` : 'لم تتم مزامنة النماذج بعد'}${p.sync_error ? ` · <span style="color:var(--bad)">${esc(p.sync_error)}</span>` : ''}${p.archived_reason ? ` · ${esc(p.archived_reason)}` : ''}${p.first_fail_at && !p.archived_at ? ` · <span style="color:var(--warn)">يفشل منذ ${date(p.first_fail_at)}</span>` : ''}</div>
-        <div class="table-wrap" style="margin-top:10px"><table>
+        <div class="table-wrap" style="margin-top:10px"><table class="stack">
           <tr><th>الاسم</th><th>المفتاح</th><th class="num">الوزن</th><th class="num">استخدام</th><th>الحالة</th><th>آخر خطأ</th><th></th></tr>
           ${p.keys.map((k) => `<tr>
             <td>${esc(k.label)}</td><td class="mono ltr">••••${esc(k.key_hint)}</td><td class="num">${k.weight}</td><td class="num">${k.used_count}</td>
@@ -375,7 +376,15 @@ $('#providerList').addEventListener('click', guard(async (e) => {
   if (act === 'test-key') {
     b.disabled = true; b.textContent = '...';
     const r = await api('POST', `/api/admin/keys/${k}/test`);
-    toast(r.ok ? `✅ يعمل (${r.latency_ms}ms)` : `❌ ${r.status}: ${r.sample}`, !r.ok);
+    const V = {
+      works: `✅ المفتاح شغّال — طلب حقيقي على ${r.model || 'النموذج'} نجح (${r.latency_ms}ms)`,
+      rate_limited: '🟡 المفتاح صحيح بس عليه حد طلبات هلق (429) — جرّب بعد شوي',
+      key_ok: '✅ المفتاح مقبول (ما في نموذج مربوط بهالمزوّد لنجرّب طلب كامل)',
+      key_ok_model_rejected: `🟡 المفتاح مقبول، بس المزوّد رفض النموذج ${r.model} — راجع اسم النموذج بالمسار`,
+      bad_key: '❌ المفتاح غلط أو ملغي (401/403)',
+      no_balance: '❌ المفتاح صحيح بس ما في رصيد أو اشتراك فعّال عند المزوّد',
+    };
+    toast(`${V[r.verdict] || (r.ok ? '✅ يعمل' : `❌ ${r.status}`)}${r.ok ? '' : ` — ${String(r.sample || '').slice(0, 140)}`}`, !r.ok);
     await loadProviders();
   } else if (act === 'rotate-key') {
     const key = prompt('المفتاح الجديد (سيستبدل القديم بنفس الإعدادات):'); if (!key) return;
@@ -402,6 +411,7 @@ $('#providerList').addEventListener('click', guard(async (e) => {
   } else if (act === 'discover') {
     b.disabled = true;
     const list = await api('POST', `/api/admin/providers/${p}/discover`).finally(() => { b.disabled = false; });
+    S.models = await api('GET', '/api/admin/models'); // fresh, so "already added" and route-merging are right
     showDiscover(p, list);
   }
 }));
@@ -510,6 +520,14 @@ $('#modelCancel').addEventListener('click', () => $('#modelDlg').close());
 
 function openModel(m, isNew = false) {
   const f = $('#modelForm');
+  // importing a model that already exists must ADD its route as a fallback, never wipe the others
+  const ex = isNew && m.id ? S.models.find((x) => x.id === m.id) : null;
+  if (ex) {
+    const extra = (m.routes || []).filter((r) => !ex.routes.some((o) => o.provider_id === r.provider_id && o.upstream_model === r.upstream_model));
+    m = { ...ex, routes: [...ex.routes, ...extra] }; isNew = false;
+    toast(extra.length ? `${ex.id} موجود — انضاف المسار الجديد كاحتياط تحت المسارات الحالية. راجع وحفظ.` : `${ex.id} موجود وفيه هالمسار أصلاً`);
+  }
+  f.dataset.isNew = isNew ? '1' : '';
   f.reset();
   $('#modelDlgTitle').textContent = isNew ? 'نموذج جديد' : `تعديل ${m.id}`;
   f.elements.id.readOnly = !isNew && !!m.id;
@@ -530,6 +548,11 @@ function openModel(m, isNew = false) {
 $('#modelForm').addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const f = e.target, d = formData(f);
+  if (f.dataset.isNew) {
+    const fresh = await api('GET', '/api/admin/models');
+    const ex = fresh.find((x) => x.id === d.id);
+    if (ex && !confirm(`في نموذج اسمه ${d.id} أصلاً، وعنده ${ex.routes.length} مسار. الحفظ رح يستبدل إعداداته ومساراته. متأكد؟`)) return;
+  }
   const body = {
     ...d, reasoning: f.elements.reasoning.checked, vision: f.elements.vision.checked,
     price_in: Math.round((+d.price_in || 0) * M), price_out: Math.round((+d.price_out || 0) * M),
@@ -733,6 +756,44 @@ $('#liveTable').addEventListener('click', (e) => {
     `كلفة على الطالب ${usdPrecise(r.cost)} · علينا ${usdPrecise(r.upstream_cost)}`, `IP ${r.ip || '—'} · جهاز ${r.device_id || '—'}`, r.error ? `خطأ: ${r.error}` : ''].filter(Boolean).join('\n'));
 });
 
+// ── security: rules, blocklist, devices, IPs (restored — lost in an earlier refactor) ──
+let SEC = null;
+async function loadSecurity() {
+  SEC = await api('GET', '/api/admin/security');
+  const f = $('#secForm');
+  for (const [k, v] of Object.entries(SEC.settings)) if (f.elements[k]) f.elements[k].value = v;
+  const up = SEC.unpriced_models;
+  $('#unpricedCard').classList.toggle('hidden', !up.length);
+  $('#unpricedList').textContent = up.map((m) => m.id).join(', ');
+  $('#blockTable').innerHTML = '<tr><th>النوع</th><th>القيمة</th><th>السبب</th><th>ينتهي</th><th></th></tr>' + (SEC.blocks.map((b) =>
+    `<tr><td>${b.kind === 'ip' ? 'IP' : 'جهاز'}${b.auto ? ' <span class="badge warn">تلقائي</span>' : ''}</td><td class="mono ltr small">${esc(b.value)}</td><td class="small">${esc(b.reason || '')}</td>
+     <td class="small">${b.expires_at ? date(b.expires_at) : 'دائم'}</td><td><button class="small" data-unblock="${b.id}">فك الحظر</button></td></tr>`).join('') || '<tr><td class="muted">لا يوجد</td></tr>');
+  const ST = { active: '<span class="badge ok">مسموح</span>', pending: '<span class="badge warn">بانتظارك</span>', blocked: '<span class="badge bad">محظور</span>' };
+  $('#deviceTable').innerHTML = '<tr><th>الطالب</th><th>الجهاز</th><th>الحالة</th><th>آخر IP</th><th>آخر استخدام</th><th class="num">طلبات</th><th></th></tr>' + (SEC.devices.map((d) =>
+    `<tr><td>${esc(d.user_name || d.user_id)}</td><td>${esc(d.name || '—')}<div class="mono ltr small muted" style="text-align:start">${esc(d.device_id.slice(0, 12))}…</div></td><td>${ST[d.status] || esc(d.status)}</td>
+     <td class="mono ltr small">${esc(d.last_ip || '')}</td><td class="small">${date(d.last_seen)}</td><td class="num">${d.requests}</td>
+     <td class="row" style="flex-wrap:nowrap">${d.status !== 'active' ? `<button class="small primary" data-dev="${d.id}" data-st="active">سماح</button>` : ''}
+       ${d.status !== 'blocked' ? `<button class="small danger" data-dev="${d.id}" data-st="blocked">حظر</button>` : ''}
+       <button class="small" data-devdel="${d.id}" title="حذف من القائمة (يحرر مكان للطالب)">✕</button>
+       ${d.last_ip ? `<button class="small danger" data-blockip="${esc(d.last_ip)}" title="حظر هذا العنوان">IP⛔</button>` : ''}</td></tr>`).join('') || '<tr><td class="muted">لا أجهزة بعد — بتظهر لما الطلاب يستخدموا الأدوات المثبتة عبر abdalgani-setup</td></tr>');
+  $('#ipTable').innerHTML = '<tr><th>العنوان</th><th class="num">طلبات</th><th class="num">طلاب</th><th class="num">أخطاء</th><th></th></tr>' + (SEC.top_ips.map((x) =>
+    `<tr><td class="mono ltr small">${esc(x.ip)}</td><td class="num">${x.requests}</td><td class="num">${x.users}${x.users > 1 ? ' ⚠️' : ''}</td><td class="num">${x.errors}</td>
+     <td><button class="small danger" data-blockip="${esc(x.ip)}">حظر</button></td></tr>`).join('') || '<tr><td class="muted">لا بيانات</td></tr>');
+  $('#secEvents').innerHTML = SEC.events.map((e) => `<tr><td class="small" style="white-space:nowrap">${date(e.created_at)}</td><td>${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">لا أحداث</td></tr>';
+}
+$('#secForm').addEventListener('submit', guard(async (e) => { e.preventDefault(); await api('PUT', '/api/admin/security', formData(e.target)); toast('تم الحفظ'); await loadSecurity(); }));
+$('#blockForm').addEventListener('submit', guard(async (e) => { e.preventDefault(); await api('POST', '/api/admin/blocks', formData(e.target)); e.target.reset(); toast('تم الحظر'); await loadSecurity(); }));
+document.querySelector('[data-panel="security"]').addEventListener('click', guard(async (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const { unblock, dev, st, devdel, blockip } = b.dataset;
+  if (unblock) await api('DELETE', `/api/admin/blocks/${unblock}`);
+  else if (dev) await api('PATCH', `/api/admin/devices/${dev}`, { status: st });
+  else if (devdel) { if (!confirm('حذف الجهاز من القائمة؟ (إذا رجع بيتسجّل من جديد حسب الحد)')) return; await api('DELETE', `/api/admin/devices/${devdel}`); }
+  else if (blockip) { const reason = prompt(`حظر ${blockip}؟ السبب:`, 'abuse'); if (reason === null) return; await api('POST', '/api/admin/blocks', { kind: 'ip', value: blockip, reason }); }
+  else return;
+  toast('تم'); await loadSecurity();
+}));
+
 // ── abuse alerts ──
 const SEV = { high: '<span class="badge bad">عالي</span>', warn: '<span class="badge warn">تحذير</span>', info: '<span class="badge">معلومة</span>' };
 async function loadAlerts() {
@@ -762,7 +823,7 @@ $('#alertTable').addEventListener('click', guard(async (e) => {
   toast('تم'); await loadAlerts();
 }));
 
-const LOADERS = { security: async () => { await loadSecurity(); await loadAlerts(); }, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
+const LOADERS = { playground: () => import('/playground.js').then((m) => m.load()), security: async () => { await loadSecurity(); await loadAlerts(); }, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
 
 if (store.get(KEY)) boot().catch(() => showLogin()); else showLogin();
 

@@ -65,6 +65,8 @@ function modeFor(clientFormat, route) {
   return route.openai_base_url ? { mode: 'native', format: 'openai' } : null;
 }
 
+const UPSTREAM_FIRST_BYTE_S = 60, UPSTREAM_TOTAL_S = 100;
+
 export async function handleCompletion(request, env, ctx, clientFormat, sec = {}) {
   const started = Date.now();
   const { user, keyId } = await authUser(request, env, ctx);
@@ -95,7 +97,10 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
   }
   if (!sub) throw new HttpError(402, 'Your remaining balance is too low for this request. Start a new (shorter) conversation or redeem a coupon.', 'insufficient_quota');
 
-  const routes = await loadRoutes(env.DB, model.id);
+  let routes = await loadRoutes(env.DB, model.id);
+  // admin playground can pin one route (to test a specific provider); ignored for students
+  const pin = user.internal ? Number(request.headers.get('x-abd-route') || 0) : 0;
+  if (pin) routes = routes.filter((r) => r.route_id === pin);
   if (!routes.length) throw new HttpError(503, `Model "${model.id}" has no active route`, 'service_unavailable');
 
   const endpoint = { anthropic: '/v1/messages', responses: '/v1/responses' }[clientFormat] || '/v1/chat/completions';
@@ -120,21 +125,28 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
       ...(requestedName !== model.id ? { 'x-abdalgani-alias': String(requestedName) } : {}),
     };
     let upstream;
+    // a provider that hangs (NVIDIA queues can sit >2 min) must not hold the student: give up and fail over
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), (body.stream ? UPSTREAM_FIRST_BYTE_S : UPSTREAM_TOTAL_S) * 1000);
     try {
       upstream = await fetch(upstreamUrl(route, m.format), {
         method: 'POST',
         headers: upstreamHeaders(route, secret, m.format, request.headers),
         body: JSON.stringify(buildUpstreamBody(clientFormat, m, body, route, model)),
+        signal: ac.signal,
       });
+      if (body.stream) clearTimeout(timer); // headers arrived; the stream itself may run long
     } catch (e) {
-      lastStatus = 502; lastError = `network error: ${e.message}`;
+      clearTimeout(timer);
+      const timedOut = ac.signal.aborted;
+      lastStatus = timedOut ? 504 : 502; lastError = timedOut ? `timeout: no response from ${route.id} within ${body.stream ? UPSTREAM_FIRST_BYTE_S : UPSTREAM_TOTAL_S}s` : `network error: ${e.message}`;
       ctx.waitUntil(markKeyFailure(env.DB, key.id, 0, lastError));
       ctx.waitUntil(recordFail(env.DB, route.id, route.route_id, 0, lastError));
       continue;
     }
 
     if (!upstream.ok) {
-      const text = await upstream.text();
+      const text = await upstream.text().finally(() => clearTimeout(timer));
       lastStatus = upstream.status; lastError = text.slice(0, 1000);
       if (countsAsFailure(upstream.status)) ctx.waitUntil(recordFail(env.DB, route.id, route.route_id, upstream.status, text));
       if (isRetryable(upstream.status)) {
@@ -152,7 +164,7 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
     const isStream = !!body.stream && ctype.includes('text/event-stream');
 
     if (!isStream) {
-      const data = await upstream.json();
+      const data = await upstream.json().finally(() => clearTimeout(timer));
       let usage, out;
       if (m.format === 'anthropic') { usage = usageFromAnthropic(data.usage); out = { ...data, model: model.id }; }
       else {
@@ -213,10 +225,18 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
     });
   }
 
-  if (!tried) lastError = `No route of "${model.id}" supports the ${clientFormat} API, or no provider key is configured`;
+  let why = 'not configured';
+  if (!tried) {
+    const usable = routes.filter((r) => modeFor(clientFormat, r));
+    const ids = [...new Set(usable.map((r) => r.id))];
+    const keys = ids.length ? await env.DB.prepare(`SELECT COUNT(*) n FROM provider_keys WHERE enabled = 1 AND provider_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).first() : { n: 0 };
+    if (keys.n) why = 'keys cooling down';
+    lastError = !usable.length ? `No route of "${model.id}" supports the ${clientFormat} API${pin ? ' (pinned route)' : ''}`
+      : keys.n ? `All provider keys for "${model.id}" are cooling down after recent errors` : `No enabled provider key for "${model.id}" (${ids.join(', ')})`;
+  }
   ctx.waitUntil(finish(null, lastStatus >= 400 ? lastStatus : 502, null, lastError));
   // the full upstream error stays in the admin's usage log; students get no provider details
-  return apiError(lastStatus >= 400 ? lastStatus : 502, `The model "${model.id}" is temporarily unavailable (upstream ${tried ? lastStatus : 'not configured'}). Try again shortly or pick another model.`, 'upstream_error');
+  return apiError(lastStatus >= 400 ? lastStatus : 502, `The model "${model.id}" is temporarily unavailable (upstream ${tried ? lastStatus : why}). Try again shortly or pick another model.`, 'upstream_error');
 }
 
 /** Models the caller can actually use right now + their stable aliases. */

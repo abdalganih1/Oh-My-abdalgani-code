@@ -110,6 +110,7 @@ export async function afterAuth(request, env, ctx, { user, keyId, ip, cfg }) {
   const paused = await blocked(db, 'user', String(user.id));
   if (paused) throw new HttpError(429, `Your keys are paused until ${new Date(paused.expires_at * 1000).toISOString().slice(11, 16)} UTC: ${paused.reason.replace(/^auto: /, '')}. Check your tool isn't stuck in a loop.`, 'loop_guard');
   const dev = deviceFrom(request);
+  if (user.internal) return { device: dev }; // admin playground: no device binding
   if (dev && await blocked(db, 'device', dev.id)) throw new HttpError(403, 'This device is blocked. Contact the administrator.', 'permission_error');
   if (cfg.device_policy === 'off') return { device: dev };
   if (!dev) {

@@ -295,7 +295,7 @@ async function renderUsage() {
       return `<tr><td class="small">${date(r.created_at)}</td><td class="mono ltr small">${alias}<strong>${esc(r.model_id)}</strong>${r.upstream_model && r.upstream_model !== r.model_id ? `<div class="muted">${esc(r.upstream_model)}</div>` : ''}</td><td class="num">${tokens(r.prompt_tokens)}</td>
         <td class="num">${tokens(r.completion_tokens)}</td><td class="num">${usdPrecise(r.cost)}</td><td class="num">${charged}</td>
         <td>${r.status < 400 ? '<span class="badge ok">' + r.status + '</span>' : '<span class="badge bad">' + r.status + '</span>'}</td></tr>`;
-    }).join('');
+    }).join('') + (rows.length ? '' : `<tr><td colspan="7"><div class="empty">${icon('list', 40)}<div>ما في طلبات بعد. أول ما تستخدم أداة مربوطة بمفتاحك، كل طلب رح يظهر هون مع كلفته.</div></div></td></tr>`);
 }
 
 async function renderDevices() {

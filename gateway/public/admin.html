@@ -30,6 +30,7 @@
       <button data-tab="overview" data-sub="الاستخدام والمال والذروة لأي فترة"><i data-i="chart"></i><span class="lbl">التقارير</span></button>
       <button data-tab="usage" data-sub="كل طلب لحظة بلحظة — بيتحدّث كل 5 ثواني"><i data-i="activity"></i><span class="lbl">السجل المباشر</span></button>
       <button data-tab="security" data-sub="تنبيهات الإساءة، الحظر، الأجهزة وقواعد الحماية"><i data-i="shield"></i><span class="lbl">الأمان</span><span id="secBadge" class="badge bad hidden"></span></button>
+      <button data-tab="playground" data-sub="دردش مع أي نموذج واختبره عبر طريق البوابة الحقيقي"><i data-i="sparkles"></i><span class="lbl">Playground</span></button>
       <button data-tab="updates" data-sub="نماذج جديدة، أرشفة تلقائية وأحداث المزوّدين"><i data-i="bell"></i><span class="lbl">التحديثات</span><span id="unreadBadge" class="badge new hidden"></span></button>
       <div class="nav-label">الإعداد</div>
       <button data-tab="providers" data-sub="المزوّدون ومفاتيحهم المشفّرة وطريقة الدفع"><i data-i="plug"></i><span class="lbl">المزوّدون والمفاتيح</span></button>
@@ -86,12 +87,12 @@
         <div class="card">
           <div class="row"><h2 style="margin:0"><i data-i="cpu"></i>أكثر النماذج استخداماً</h2><span class="spacer"></span>
             <select id="modelSort"><option value="requests">حسب الطلبات</option><option value="tokens">حسب التوكنات</option><option value="consumed">حسب المستهلك</option><option value="upstream_cost">حسب كلفتنا</option></select></div>
-          <div class="table-wrap"><table id="topModels"></table></div>
+          <div class="table-wrap"><table id="topModels" class="stack"></table></div>
         </div>
         <div class="card">
           <div class="row"><h2 style="margin:0"><i data-i="users"></i>أكثر الطلاب طلباً</h2><span class="spacer"></span>
             <select id="userSort"><option value="requests">حسب الطلبات</option><option value="tokens">حسب التوكنات</option><option value="consumed">حسب المستهلك</option></select></div>
-          <div class="table-wrap"><table id="topUsers"></table></div>
+          <div class="table-wrap"><table id="topUsers" class="stack"></table></div>
         </div>
       </div>
 
@@ -105,13 +106,13 @@
         <h2><i data-i="wallet"></i>الإيراد مقابل المدفوع — شهرياً</h2>
         <div id="moneyLegend"></div>
         <div id="moneyChart"></div>
-        <div class="table-wrap" style="margin-top:10px"><table id="moneyTable"></table></div>
+        <div class="table-wrap" style="margin-top:10px"><table id="moneyTable" class="stack"></table></div>
       </div>
 
       <div class="two">
         <div class="card">
           <h2><i data-i="list"></i>تفصيل المدفوع للمزوّدين</h2>
-          <div class="table-wrap"><table id="paidTable"></table></div>
+          <div class="table-wrap"><table id="paidTable" class="stack"></table></div>
           <p class="small muted">الاشتراكات الشهرية الثابتة (مثل z.ai coding plan) تُضبط من تبويب المزوّدين ← "طريقة الدفع". تكاليف الاستخدام تُحسب من الكلفة الحقيقية اللي بيرجعها المزوّد (OpenRouter) أو من سعر المسار.</p>
         </div>
         <div class="card">
@@ -123,11 +124,11 @@
             <label class="f">ملاحظة<input name="note" placeholder="شحن رصيد OpenRouter"></label>
             <button class="primary">إضافة</button>
           </form>
-          <div class="table-wrap" style="margin-top:10px;max-height:240px;overflow:auto"><table id="expenseTable"></table></div>
+          <div class="table-wrap" style="margin-top:10px;max-height:240px;overflow:auto"><table id="expenseTable" class="stack"></table></div>
         </div>
       </div>
 
-      <div class="card"><h2><i data-i="plug"></i>المزوّدون خلال الفترة</h2><div class="table-wrap"><table id="provReport"></table></div></div>
+      <div class="card"><h2><i data-i="plug"></i>المزوّدون خلال الفترة</h2><div class="table-wrap"><table id="provReport" class="stack"></table></div></div>
     </div>
 
     <div data-panel="security">
@@ -136,7 +137,7 @@
           <label class="row small"><input type="checkbox" id="alertsAll"> عرض المحلولة</label>
           <button id="scanNow" class="primary"><i data-i="search" data-s="16"></i>افحص الآن</button></div>
         <p class="small muted">فحص تلقائي كل 30 دقيقة: يوم استخدام ثقيل، قفزة مفاجئة، مفتاح من شبكات كثيرة، شبكة عليها حسابات كثيرة، أخطاء كثيرة (سكربت عم يجرّب)، أداة عالقة بحلقة، تسجيلات بالجملة. نفس التنبيه ما بيتكرر بنفس اليوم.</p>
-        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="alertTable"></table></div>
+        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="alertTable" class="stack"></table></div>
       </div>
       <div class="card danger-card hidden" id="unpricedCard">
         <h2>⚠️ نماذج بسعر صفر</h2>
@@ -190,17 +191,58 @@
           <select name="minutes"><option value="0">دائم</option><option value="60">ساعة</option><option value="1440">يوم</option><option value="10080">أسبوع</option></select>
           <button class="primary">حظر</button>
         </form>
-        <div class="table-wrap" style="margin-top:10px"><table id="blockTable"></table></div>
+        <div class="table-wrap" style="margin-top:10px"><table id="blockTable" class="stack"></table></div>
       </div>
 
       <div class="card">
         <h2><i data-i="monitor"></i>أجهزة الطلاب</h2>
-        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="deviceTable"></table></div>
+        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="deviceTable" class="stack"></table></div>
       </div>
 
       <div class="two">
-        <div class="card"><h2><i data-i="globe"></i>أكثر العناوين نشاطاً (24 ساعة)</h2><div class="table-wrap"><table id="ipTable"></table></div></div>
-        <div class="card"><h2><i data-i="bell"></i>أحداث الأمان</h2><div class="table-wrap" style="max-height:360px;overflow:auto"><table id="secEvents"></table></div></div>
+        <div class="card"><h2><i data-i="globe"></i>أكثر العناوين نشاطاً (24 ساعة)</h2><div class="table-wrap"><table id="ipTable" class="stack"></table></div></div>
+        <div class="card"><h2><i data-i="bell"></i>أحداث الأمان</h2><div class="table-wrap" style="max-height:360px;overflow:auto"><table id="secEvents" class="stack"></table></div></div>
+      </div>
+    </div>
+
+    <div data-panel="playground">
+      <div class="pg">
+        <div class="card pg-side">
+          <label class="f">النموذج<select id="pgModel"></select></label>
+          <div id="pgModelInfo" class="row" style="gap:4px;margin:6px 0 10px"></div>
+          <label class="f">المزوّد<select id="pgRoute"></select></label>
+          <div class="f" style="margin-top:12px"><span class="small muted">صيغة الطلب</span>
+            <div class="seg big" id="pgFormat"><button data-f="openai" class="on">OpenAI</button><button data-f="anthropic">Anthropic</button><button data-f="responses">Codex</button></div></div>
+          <div class="pg-opts">
+            <label class="row small" style="justify-content:space-between">بث مباشر (stream)<span class="switch"><input type="checkbox" id="pgStream" checked><i></i></span></label>
+            <label class="row small" style="justify-content:space-between">أداة تجريبية (get_weather)<span class="switch"><input type="checkbox" id="pgTools"><i></i></span></label>
+          </div>
+          <div class="form" style="grid-template-columns:1fr 1fr;margin-top:10px">
+            <label class="f">أقصى توكنات<input id="pgMax" type="number" min="1" value="1024"></label>
+            <label class="f">Temperature<input id="pgTemp" type="number" step="0.1" min="0" max="2" placeholder="افتراضي"></label>
+          </div>
+          <label class="f" style="margin-top:10px">مستوى التفكير<select id="pgEffort"><option value="">افتراضي</option><option value="none">none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
+          <label class="f" style="margin-top:10px">تعليمات النظام (system)<textarea id="pgSystem" rows="3" placeholder="مثلاً: جاوب بالعربي وباختصار"></textarea></label>
+          <div class="row" style="margin-top:14px">
+            <button class="primary" id="pgSuite" style="flex:1"><i data-i="check" data-s="16"></i>اختبار شامل</button>
+            <button class="ghost small" id="pgImg" title="ابعت صورة حمرا صغيرة واسأله عن لونها">🖼️ صورة</button>
+            <button class="ghost small" id="pgClear">مسح</button>
+          </div>
+          <p class="small muted" id="pgSpend" style="margin:10px 0 0"></p>
+        </div>
+        <div class="card pg-chat">
+          <div id="pgMsgs" class="pg-msgs" aria-live="polite"></div>
+          <form id="pgForm" class="pg-input">
+            <textarea id="pgInput" rows="1" placeholder="اكتب رسالة… (Enter للإرسال، Shift+Enter لسطر جديد)"></textarea>
+            <button class="primary" id="pgSend" aria-label="إرسال"><i data-i="arrow" data-s="18"></i></button>
+            <button type="button" class="danger hidden" id="pgStop">⏹ إيقاف</button>
+          </form>
+        </div>
+      </div>
+      <div class="card hidden" id="pgSuiteCard">
+        <div class="card-head"><h2 style="margin:0" id="pgSuiteHead"></h2><span class="spacer"></span><span class="small muted" id="pgSuiteCost"></span></div>
+        <p class="small muted" style="margin-top:-6px">كل اختبار طلب حقيقي عبر البوابة بنفس طريق الطالب. "غير مدعوم" = ميزة اختيارية ما بيدعمها النموذج أو المزوّد.</p>
+        <div class="table-wrap"><table id="pgSuiteTable" class="stack"></table></div>
       </div>
     </div>
 
@@ -209,11 +251,11 @@
         <div class="row"><h2 style="margin:0"><i data-i="bell"></i>تحديثات المزوّدين</h2><span class="spacer"></span>
           <button id="runNow" class="primary"><i data-i="activity" data-s="16"></i>افحص الآن</button><button id="markRead">تعليم الكل كمقروء</button></div>
         <p class="muted small">كل 30 دقيقة البوابة بتسحب قائمة نماذج كل مزوّد: الجديد بينشر تلقائياً (حسب سياسة المزوّد) كـ <b>جديد</b> لمدة الأيام المحددة، والمحذوف عند المزوّد بيتأرشف، وأي مزوّد/نموذج ما رد بنجاح طول المدة المحددة (مع إنو إجتو طلبات) بيتأرشف. للتنبيهات على Discord/Slack/Telegram: <code class="ltr">wrangler secret put NOTIFY_WEBHOOK</code></p>
-        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="eventTable"></table></div>
+        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="eventTable" class="stack"></table></div>
       </div>
       <div class="card">
         <h2><i data-i="sparkles"></i>نماذج جديدة عند المزوّدين بانتظار قرارك</h2>
-        <div class="table-wrap"><table id="pendingTable"></table></div>
+        <div class="table-wrap"><table id="pendingTable" class="stack"></table></div>
       </div>
       <div class="card">
         <h2><i data-i="sliders"></i>إعدادات الأرشفة</h2>
@@ -243,7 +285,7 @@
       <div class="card">
         <div class="row"><h2 style="margin:0"><i data-i="cpu"></i>النماذج</h2><span class="spacer"></span><button id="orPrices">💲 أسعار OpenRouter</button><button class="primary" id="newModel">+ نموذج جديد</button></div>
         <p class="muted small">الأسعار بالدولار. وضع التسعير: <b>token</b> = جدولك لكل مليون توكن · <b>request</b> = سعر ثابت لكل طلب · <b>provider</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك. النسبة الإضافية تنضاف فوق.</p>
-        <div class="table-wrap"><table id="modelTable"></table></div>
+        <div class="table-wrap"><table id="modelTable" class="stack"></table></div>
       </div>
     </div>
 
@@ -258,7 +300,7 @@
         </form>
         <div id="userSecret" class="secret hidden" style="margin-top:10px"></div>
       </div>
-      <div class="card"><div class="row"><h2 style="margin:0"><i data-i="users"></i>الطلاب</h2><span class="spacer"></span><label class="search"><i data-i="search" data-s="16"></i><input id="userSearch" type="search" placeholder="بحث… (/)"></label></div><div class="table-wrap"><table id="userTable"></table></div></div>
+      <div class="card"><div class="row"><h2 style="margin:0"><i data-i="users"></i>الطلاب</h2><span class="spacer"></span><label class="search"><i data-i="search" data-s="16"></i><input id="userSearch" type="search" placeholder="بحث… (/)"></label></div><div class="table-wrap"><table id="userTable" class="stack"></table></div></div>
     </div>
 
     <div data-panel="coupons">
@@ -278,7 +320,7 @@
         </form>
         <pre id="newCoupons" class="hidden"></pre>
       </div>
-      <div class="card"><h2><i data-i="list"></i>الكوبونات</h2><div class="table-wrap"><table id="couponTable"></table></div></div>
+      <div class="card"><h2><i data-i="list"></i>الكوبونات</h2><div class="table-wrap"><table id="couponTable" class="stack"></table></div></div>
     </div>
 
     <div data-panel="usage">
@@ -293,7 +335,7 @@
           <button id="liveToggle" class="primary">⏸ إيقاف</button>
         </div>
         <p class="small muted" style="margin:8px 0 0">بيتحدّث كل 5 ثواني (بيجيب الجديد بس). بيتوقف لحاله إذا خبّيت التبويب أو ما لمست الصفحة 10 دقائق — كرمال ما يستهلك موارد عالفاضي.</p>
-        <div class="table-wrap" style="margin-top:10px;max-height:70vh;overflow:auto"><table id="liveTable"></table></div>
+        <div class="table-wrap" style="margin-top:10px;max-height:70vh;overflow:auto"><table id="liveTable" class="stack"></table></div>
       </div>
     </div>
 
@@ -301,7 +343,7 @@
       <div class="card">
         <h2><i data-i="layers"></i>الفئات (Model groups)</h2>
         <p class="muted small">الكوبون أو الاشتراك ممكن ينحصر بفئة. نموذج بلا فئة يغطيه فقط اشتراك "كل النماذج".</p>
-        <table id="groupTable"></table>
+        <table id="groupTable" class="stack"></table>
         <form id="groupForm" class="form" style="margin-top:10px">
           <label class="f">المعرّف<input name="id" class="ltr" required></label>
           <label class="f">الاسم<input name="name"></label>
@@ -380,7 +422,7 @@
     <span class="spacer"></span><span class="small muted" id="orSummary"></span>
   </div>
   <datalist id="orIds"></datalist>
-  <div class="table-wrap" style="max-height:58vh;overflow:auto"><table id="orTable"></table></div>
+  <div class="table-wrap" style="max-height:58vh;overflow:auto"><table id="orTable" class="stack"></table></div>
   <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" class="dlg-close">إلغاء</button><button class="primary" id="orApply">طبّق على المحدد</button></div>
 </dialog>
 
