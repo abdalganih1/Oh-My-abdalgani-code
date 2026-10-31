@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Activity, AlertTriangle, Clock, Coins, Cpu, Globe, Hash, Monitor, Pause, Play, Radio, Trash2, User, Zap } from 'lucide-react';
 import {
-  Badge, Button, Card, CopyButton, DataTable, Empty, Input, Select, Sheet, Sparkline, Switch, Tip, cn,
+  Badge, Button, Card, CopyButton, DataTable, Empty, Input, Select, Sheet, Switch, Tip, cn,
 } from '../../ui/index.js';
 import { useAsync, useDebounced, useVisible } from '../../lib/hooks.js';
 import { date, int, ms, time, tokens, usdPrecise } from '../../lib/format.js';
@@ -168,7 +168,7 @@ export default function Live() {
         <Mini icon={Coins} label="كلفة على الطلاب" value={usdPrecise(stats.cost)} sub={`${tokens(stats.tok)} توكن`} />
         <div className="glass col-span-2 flex min-w-0 flex-col justify-between rounded-2xl p-4 lg:col-span-1">
           <div className="flex items-center gap-2 text-[12px] font-medium text-muted"><Activity size={14} className="text-accent" />طلبات/دقيقة · آخر 30 د</div>
-          <Sparkline values={stats.perMin} width={240} height={34} className="mt-2 w-full max-w-full" />
+          <PerMinute values={stats.perMin} />
         </div>
       </div>
 
@@ -180,6 +180,19 @@ export default function Live() {
       </Card>
 
       <Details row={open} onClose={() => setOpen(null)} />
+    </div>
+  );
+}
+
+function PerMinute({ values }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="mt-2 flex h-9 items-end gap-[2px] ltr" role="img" aria-label="طلبات بالدقيقة">
+      {values.map((v, i) => (
+        <Tip key={i} content={`${v} طلب · قبل ${29 - i} د`}>
+          <span className={cn('min-w-0 flex-1 rounded-t-[3px] transition-[height] duration-500', v ? 'grad-bg' : 'bg-sunken')} style={{ height: `${v ? Math.max(12, (v / max) * 100) : 8}%` }} />
+        </Tip>
+      ))}
     </div>
   );
 }

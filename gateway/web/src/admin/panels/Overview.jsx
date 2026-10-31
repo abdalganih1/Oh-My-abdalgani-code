@@ -121,7 +121,7 @@ export default function Overview() {
             <Card className="relative" title={R ? `${METRIC[metric].title} ${R.range.bucket === 'hour' ? 'بالساعة' : 'باليوم'}` : 'النشاط عبر الوقت'} icon={Activity}
               subtitle={R ? `المجموع: ${METRIC[metric].fmt(series.reduce((a, r) => a + (r[metric] || 0), 0))}` : null}
 >
-              <Segmented size="sm" value={metric} onChange={setMetric} options={Object.entries(METRIC).map(([v, m]) => ({ value: v, label: m.short, icon: m.icon }))} className="mb-3 sm:absolute sm:end-6 sm:top-5 sm:mb-0" />
+              <Segmented size="sm" value={metric} onChange={setMetric} options={Object.entries(METRIC).map(([v, m]) => ({ value: v, label: m.short, icon: m.icon }))} className="mb-3 lg:absolute lg:end-6 lg:top-5 lg:mb-0" />
               {!R ? <Skeleton className="h-[240px]" /> : series.length && series.some((r) => r[metric]) ? (
                 <BarChart labels={series.map((r) => (R.range.bucket === 'hour' ? r.t.slice(11) : r.t.slice(5)))}
                   series={[{ name: METRIC[metric].title, color: 'var(--series-1)', values: series.map((r) => r[metric] || 0) }]} format={METRIC[metric].fmt} height={250} />

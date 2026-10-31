@@ -123,7 +123,7 @@ function ArViz() {
   return (
     <div className="rounded-xl border border-white/10 bg-[#0b0e1d] px-3 py-2 font-mono text-[11.5px] text-[#dfe3f5]" aria-hidden>
       <div className="ltr text-start"><span className="text-[#7ee0f5]">&gt; </span>/ar</div>
-      <div className="mt-0.5 text-[#c8b8ff]" dir="rtl">أهلاً! شو بدك نبرمج اليوم؟</div>
+      <div className="mt-0.5 font-sans text-[12.5px] text-[#c8b8ff]" dir="rtl">أهلاً! شو بدك نبرمج اليوم؟</div>
     </div>
   );
 }
@@ -326,17 +326,17 @@ export default function Landing({ onAuthed }) {
             </motion.p>
           </section>
 
-          <section className="min-w-0 lg:col-start-1 lg:row-start-2">
-            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.3, ease: [0.16, 1, 0.3, 1] }} className="max-w-[680px]">
-              <Terminal reduce={reduce} rx={live ? rx : 0} ry={live ? ry : 0} />
-            </motion.div>
-          </section>
-
           {/* auth */}
           <motion.aside initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', bounce: 0.2, duration: 0.8, delay: 0.15 }}
             className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-center">
             <AuthCard onAuthed={onAuthed} />
           </motion.aside>
+
+          <section className="min-w-0 lg:col-start-1 lg:row-start-2">
+            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.3, ease: [0.16, 1, 0.3, 1] }} className="max-w-[680px]">
+              <Terminal reduce={reduce} rx={live ? rx : 0} ry={live ? ry : 0} />
+            </motion.div>
+          </section>
 
           {/* bento */}
           <section className="grid min-w-0 gap-4 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-4" aria-label="المزايا">
