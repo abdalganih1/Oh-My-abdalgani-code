@@ -1,6 +1,7 @@
 // The data plane: /v1/chat/completions, /v1/messages, /v1/models.
 import { authUser } from './auth.js';
-import { pickSubscription, loadSubscriptions, settle, isSubUsable } from './billing.js';
+import { orderedSubscriptions, loadSubscriptions, settle, isSubUsable, estimateReservation, reserve } from './billing.js';
+import { afterAuth, checkSpendCaps, scrub, noteSpend } from './security.js';
 import {
   resolveModel, loadRoutes, attempts, isRetryable, markKeyFailure, markKeySuccess,
   upstreamHeaders, upstreamUrl, getGlobalAliases, applyCompat,
@@ -63,19 +64,30 @@ function modeFor(clientFormat, route) {
   return route.openai_base_url ? { mode: 'native', format: 'openai' } : null;
 }
 
-export async function handleCompletion(request, env, ctx, clientFormat) {
+export async function handleCompletion(request, env, ctx, clientFormat, sec = {}) {
   const started = Date.now();
   const { user, keyId } = await authUser(request, env, ctx);
+  const cfg = sec.cfg || {};
+  const { device } = await afterAuth(request, env, ctx, { user, keyId, ip: sec.ip, cfg });
+  await checkSpendCaps(env, user, cfg);
   const body = await readJson(request);
   const model = await resolveModel(env.DB, user.id, body.model);
   const requestedName = body.model;
 
-  const sub = pickSubscription(await loadSubscriptions(env.DB, user.id), model);
-  if (!sub) {
+  const candidates = orderedSubscriptions(await loadSubscriptions(env.DB, user.id), model);
+  if (!candidates.length) {
     throw new HttpError(402,
       `No active subscription covers model "${model.id}"${model.group_id ? ` (group: ${model.group_id})` : ''}. ` +
       'Ask your administrator for a coupon and redeem it in the dashboard.', 'insufficient_quota');
   }
+  // hold the estimated cost first: no request can spend more than the wallet really has,
+  // and parallel requests can't spend the same balance twice
+  let sub = null, reserved = 0;
+  for (const c of candidates) {
+    const held = await reserve(env.DB, c, estimateReservation(model, body, c, cfg.min_reserve_output_tokens || 1024));
+    if (held !== null) { sub = c; reserved = held; break; }
+  }
+  if (!sub) throw new HttpError(402, 'Your remaining balance is too low for this request. Start a new (shorter) conversation or redeem a coupon.', 'insufficient_quota');
 
   const routes = await loadRoutes(env.DB, model.id);
   if (!routes.length) throw new HttpError(503, `Model "${model.id}" has no active route`, 'service_unavailable');
@@ -85,7 +97,8 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
   const finish = (routeInfo, status, usage, error) => settle(env.DB, {
     user, keyId, model, routeInfo, endpoint, status, usage: usage || ZERO, requestedModel: requestedName,
     providerCostUsd: usage?.providerCost ?? null, latency: Date.now() - started, error, subscriptionId: sub.id,
-  });
+    reserved, ip: sec.ip || null, deviceId: device?.id || null,
+  }).then((r) => { noteSpend(r.upstreamCost); return r; });
 
   let lastStatus = 503, lastError = 'No provider key available for this model';
   let tried = 0;
@@ -124,7 +137,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
       }
       // client error (400/404/422): don't burn other keys, relay it
       ctx.waitUntil(finish(routeInfo, upstream.status, null, text));
-      return new Response(text, { status: upstream.status, headers: { 'content-type': upstream.headers.get('content-type') || 'application/json', ...realHeaders } });
+      return new Response(scrub(text), { status: upstream.status, headers: { 'content-type': upstream.headers.get('content-type') || 'application/json', ...realHeaders } });
     }
 
     ctx.waitUntil(markKeySuccess(env.DB, key.id));
@@ -196,12 +209,14 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
 
   if (!tried) lastError = `No route of "${model.id}" supports the ${clientFormat} API, or no provider key is configured`;
   ctx.waitUntil(finish(null, lastStatus >= 400 ? lastStatus : 502, null, lastError));
-  return apiError(lastStatus >= 400 ? lastStatus : 502, `All upstream providers failed for "${model.id}": ${lastError}`, 'upstream_error');
+  // the full upstream error stays in the admin's usage log; students get no provider details
+  return apiError(lastStatus >= 400 ? lastStatus : 502, `The model "${model.id}" is temporarily unavailable (upstream ${tried ? lastStatus : 'not configured'}). Try again shortly or pick another model.`, 'upstream_error');
 }
 
 /** Models the caller can actually use right now + their stable aliases. */
-export async function handleModels(request, env, ctx) {
-  const { user } = await authUser(request, env, ctx);
+export async function handleModels(request, env, ctx, sec = {}) {
+  const { user, keyId } = await authUser(request, env, ctx);
+  await afterAuth(request, env, ctx, { user, keyId, ip: sec.ip, cfg: sec.cfg || {} });
   const { results: models } = await env.DB.prepare("SELECT * FROM models WHERE status NOT IN ('hidden','archived') ORDER BY sort, id").all();
   const subs = await loadSubscriptions(env.DB, user.id);
   const usable = models.filter((m) => subs.some((s) => isSubUsable(s, m)));

@@ -528,6 +528,49 @@ async function loadUsage() {
       <td title="${esc(r.error || '')}">${r.status < 400 ? `<span class="badge ok">${r.status}</span>` : `<span class="badge bad">${r.status}</span>`}</td></tr>`).join('');
 }
 
-const LOADERS = { updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
+// ── security ──
+let SEC = null;
+async function loadSecurity() {
+  SEC = await api('GET', '/api/admin/security');
+  const f = $('#secForm');
+  for (const [k, v] of Object.entries(SEC.settings)) if (f.elements[k]) f.elements[k].value = v;
+  const up = SEC.unpriced_models;
+  $('#unpricedCard').classList.toggle('hidden', !up.length);
+  $('#unpricedList').textContent = up.map((m) => m.id).join(', ');
+  const pend = SEC.devices.filter((d) => d.status === 'pending').length;
+  $('#secBadge').textContent = pend || ''; $('#secBadge').classList.toggle('hidden', !pend);
+  $('#blockTable').innerHTML = '<tr><th>النوع</th><th>القيمة</th><th>السبب</th><th>ينتهي</th><th></th></tr>' + (SEC.blocks.map((b) =>
+    `<tr><td>${b.kind === 'ip' ? 'IP' : 'جهاز'}${b.auto ? ' <span class="badge warn">تلقائي</span>' : ''}</td><td class="mono ltr small">${esc(b.value)}</td><td class="small">${esc(b.reason || '')}</td>
+     <td class="small">${b.expires_at ? date(b.expires_at) : 'دائم'}</td><td><button class="small" data-unblock="${b.id}">فك الحظر</button></td></tr>`).join('') || '<tr><td class="muted">لا يوجد</td></tr>');
+  const ST = { active: '<span class="badge ok">مسموح</span>', pending: '<span class="badge warn">بانتظارك</span>', blocked: '<span class="badge bad">محظور</span>' };
+  $('#deviceTable').innerHTML = '<tr><th>الطالب</th><th>الجهاز</th><th>الحالة</th><th>آخر IP</th><th>آخر استخدام</th><th class="num">طلبات</th><th></th></tr>' + (SEC.devices.map((d) =>
+    `<tr><td>${esc(d.user_name || d.user_id)}</td><td>${esc(d.name || '—')}<div class="mono ltr small muted" style="text-align:start">${esc(d.device_id.slice(0, 12))}…</div></td><td>${ST[d.status] || esc(d.status)}</td>
+     <td class="mono ltr small">${esc(d.last_ip || '')}</td><td class="small">${date(d.last_seen)}</td><td class="num">${d.requests}</td>
+     <td class="row" style="flex-wrap:nowrap">${d.status !== 'active' ? `<button class="small primary" data-dev="${d.id}" data-st="active">سماح</button>` : ''}
+       ${d.status !== 'blocked' ? `<button class="small danger" data-dev="${d.id}" data-st="blocked">حظر</button>` : ''}
+       <button class="small" data-devdel="${d.id}" title="حذف من القائمة (يحرر مكان للطالب)">✕</button>
+       ${d.last_ip ? `<button class="small danger" data-blockip="${esc(d.last_ip)}" title="حظر هذا العنوان">IP⛔</button>` : ''}</td></tr>`).join('') || '<tr><td class="muted">لا أجهزة بعد — بتظهر لما الطلاب يستخدموا الأدوات المثبتة عبر abdalgani-setup</td></tr>');
+  $('#ipTable').innerHTML = '<tr><th>العنوان</th><th class="num">طلبات</th><th class="num">طلاب</th><th class="num">أخطاء</th><th></th></tr>' + (SEC.top_ips.map((x) =>
+    `<tr><td class="mono ltr small">${esc(x.ip)}</td><td class="num">${x.requests}</td><td class="num">${x.users}${x.users > 1 ? ' ⚠️' : ''}</td><td class="num">${x.errors}</td>
+     <td><button class="small danger" data-blockip="${esc(x.ip)}">حظر</button></td></tr>`).join('') || '<tr><td class="muted">لا بيانات</td></tr>');
+  $('#secEvents').innerHTML = SEC.events.map((e) => `<tr><td class="small" style="white-space:nowrap">${date(e.created_at)}</td><td>${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">لا أحداث</td></tr>';
+}
+$('#secForm').addEventListener('submit', guard(async (e) => { e.preventDefault(); await api('PUT', '/api/admin/security', formData(e.target)); toast('تم الحفظ'); await loadSecurity(); }));
+$('#blockForm').addEventListener('submit', guard(async (e) => { e.preventDefault(); await api('POST', '/api/admin/blocks', formData(e.target)); e.target.reset(); toast('تم الحظر'); await loadSecurity(); }));
+document.querySelector('[data-panel="security"]').addEventListener('click', guard(async (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const { unblock, dev, st, devdel, blockip } = b.dataset;
+  if (unblock) await api('DELETE', `/api/admin/blocks/${unblock}`);
+  else if (dev) await api('PATCH', `/api/admin/devices/${dev}`, { status: st });
+  else if (devdel) { if (!confirm('حذف الجهاز من القائمة؟ (إذا رجع بيتسجّل من جديد حسب الحد)')) return; await api('DELETE', `/api/admin/devices/${devdel}`); }
+  else if (blockip) { const reason = prompt(`حظر ${blockip}؟ السبب:`, 'abuse'); if (reason === null) return; await api('POST', '/api/admin/blocks', { kind: 'ip', value: blockip, reason }); }
+  else return;
+  toast('تم'); await loadSecurity();
+}));
+
+const LOADERS = { security: loadSecurity, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
 
 if (store.get(KEY)) boot().catch(() => showLogin()); else showLogin();
+
+// dialogs: close buttons (no inline handlers — the CSP forbids them)
+document.addEventListener('click', (e) => { if (e.target.closest('.dlg-close')) e.target.closest('dialog')?.close(); });

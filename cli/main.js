@@ -2,7 +2,7 @@
 import chalk from 'chalk';
 import { select, input, checkbox, search, confirm } from '@inquirer/prompts';
 import { createHash } from 'node:crypto';
-import { BASE_URL, API_URL, ALIASES, setLang, getLang, tr, log, savedKey, saveKey, which, run, loadState, saveState, rememberTool, setQuiet } from './core.js';
+import { BASE_URL, API_URL, ALIASES, setLang, getLang, tr, log, savedKey, saveKey, which, run, loadState, saveState, rememberTool, setQuiet, deviceHeaders } from './core.js';
 import { setupArabicDisplay } from './arabic.js';
 import { setAutoSync } from './schedule.js';
 import { fetchCatalog, describeAccount, printStatus } from './gateway.js';
@@ -140,7 +140,7 @@ async function sync(key, catalog, { onlyIfChanged = false } = {}) {
       model = ALIASES.main;
     }
     log.info(chalk.bold(`\n━━ ${TOOLS[t].label} ━━`));
-    TOOLS[t].configure({ apiKey: key, models: catalog.models, model, effort: o.effort || '', arabic: !!o.arabic, opencodeMajor: t === 'OpenCode' ? (opencodeMajor() || 2) : 2 });
+    TOOLS[t].configure({ apiKey: key, models: catalog.models, model, effort: o.effort || '', arabic: !!o.arabic, headers: deviceHeaders(), opencodeMajor: t === 'OpenCode' ? (opencodeMajor() || 2) : 2 });
   }
   saveState({ catalogHash: hash, lastSync: Math.floor(Date.now() / 1000) });
   printMapping(catalog.models);
@@ -211,7 +211,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (interactive) autoSync = await confirm({ message: tr('🔄 تحديث تلقائي لقائمة النماذج بأدواتك (نماذج جديدة/مؤرشفة) كل 6 ساعات؟', '🔄 Auto-update the model lists in your tools (new/archived models) every 6 hours?'), default: true });
 
-  const base = { apiKey: key, models: catalog.models, model, effort, arabic };
+  const base = { apiKey: key, models: catalog.models, model, effort, arabic, headers: deviceHeaders() };
   for (const tool of tools) {
     try { await configure(tool, base, cli, interactive); }
     catch (e) { log.err(`❌ ${tool}: ${e.message}`); }

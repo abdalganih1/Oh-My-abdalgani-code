@@ -210,7 +210,15 @@ async function renderUsage() {
     }).join('');
 }
 
+async function renderDevices() {
+  const list = await api('GET', '/api/me/devices');
+  const ST = { active: '<span class="badge ok">مسموح</span>', pending: '<span class="badge warn">بانتظار موافقة المدرّس</span>', blocked: '<span class="badge bad">محظور</span>' };
+  $('#devTable').innerHTML = '<tr><th>الجهاز</th><th>الحالة</th><th>آخر استخدام</th><th>آخر عنوان</th></tr>' + (list.map((d) =>
+    `<tr><td>${esc(d.name || '—')}</td><td>${ST[d.status] || ''}</td><td class="small">${date(d.last_seen)}</td><td class="mono ltr small">${esc(d.last_ip || '')}</td></tr>`).join('') || '<tr><td class="muted">لا أجهزة مسجّلة بعد</td></tr>');
+}
+
 function renderKeys() {
+  renderDevices().catch(() => {});
   $('#keysTable').innerHTML = `<tr><th>الاسم</th><th>البادئة</th><th>آخر استخدام</th><th></th></tr>` + me.keys.map((k) =>
     `<tr><td>${esc(k.name)}</td><td class="mono ltr">${esc(k.prefix)}…</td><td class="small">${date(k.last_used_at)}</td>
      <td>${k.id === me.current_key_id ? '<span class="badge accent">الحالي</span>' : `<button class="small danger" data-revoke="${k.id}">إلغاء</button>`}</td></tr>`).join('');

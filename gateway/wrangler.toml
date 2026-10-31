@@ -21,6 +21,18 @@ database_name = "abdalgani-gateway"
 database_id = "217025e3-9e35-491c-81e9-4e4354567ca8"
 migrations_dir = "migrations"
 
+# Rate limits enforced at Cloudflare's edge (counters are per location, approximate by design).
+# Per network/IP: covers key guessing and floods. Per key: one student can't hammer the gateway.
+[[ratelimits]]
+name = "RL_IP"
+namespace_id = "41001"
+simple = { limit = 240, period = 60 }
+
+[[ratelimits]]
+name = "RL_USER"
+namespace_id = "41002"
+simple = { limit = 90, period = 60 }
+
 # Every 30 min: discover new provider models, archive dead ones (≥6h failing), expire "new" after 7 days.
 [triggers]
 crons = ["*/30 * * * *"]

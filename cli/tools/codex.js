@@ -4,14 +4,14 @@ import path from 'node:path';
 import TOML from '@iarna/toml';
 import { HOME, API_URL, PROVIDER_ID, KEY_ENV, writeText, persistEnv, log, tr } from '../core.js';
 
-export function buildCodexConfig(cfg, { model, effort }) {
+export function buildCodexConfig(cfg, { model, effort, headers }) {
   const out = { ...cfg };
   out.model = model;
   out.model_provider = PROVIDER_ID;
   if (effort && effort !== 'none') out.model_reasoning_effort = effort === 'xhigh' ? 'high' : effort;
   out.model_providers = {
     ...(out.model_providers || {}),
-    [PROVIDER_ID]: { name: 'abdalgani', base_url: API_URL, env_key: KEY_ENV, wire_api: 'responses' },
+    [PROVIDER_ID]: { name: 'abdalgani', base_url: API_URL, env_key: KEY_ENV, wire_api: 'responses', ...(headers ? { http_headers: headers } : {}) },
   };
   return out;
 }

@@ -14,7 +14,7 @@ export const hermesHome = () => process.env.HERMES_HOME
 // Hermes sends reasoning_effort on every request; the gateway maps it per upstream.
 const HERMES_EFFORTS = { none: 'none', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'xhigh' };
 
-export function buildHermesConfig(cfg, { models, model, effort }) {
+export function buildHermesConfig(cfg, { models, model, effort, headers }) {
   const out = { ...cfg };
   const catalog = {};
   for (const m of models) catalog[m.id] = { context_length: m.context, ...(m.vision ? { supports_vision: true } : {}) };
@@ -28,6 +28,7 @@ export function buildHermesConfig(cfg, { models, model, effort }) {
       transport: 'chat_completions',
       default_model: model,
       discover_models: false,
+      ...(headers ? { extra_headers: headers } : {}),
       models: catalog,
     },
   };

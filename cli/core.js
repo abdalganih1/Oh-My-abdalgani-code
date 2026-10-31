@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import chalk from 'chalk';
 
 export const isWin = os.platform() === 'win32';
@@ -87,6 +88,22 @@ export function saveState(patch) {
   try { fs.chmodSync(G_CONFIG, 0o600); } catch { /* windows */ }
 }
 export const saveKey = (apiKey) => saveState({ apiKey });
+
+/**
+ * This machine's gateway identity: a random ID created once per install (stored in
+ * ~/.abdalgani-code.json) + a readable name. No hardware identifiers are read or sent —
+ * the student sees the same name in their dashboard ("my devices").
+ */
+export function deviceHeaders() {
+  const s = loadState();
+  let id = s.deviceId;
+  if (!id || !/^[A-Za-z0-9_-]{16,80}$/.test(id)) {
+    id = crypto.randomUUID().replace(/-/g, '');
+    saveState({ deviceId: id });
+  }
+  const name = `${os.hostname()} (${process.platform})`.replace(/[^\p{L}\p{N} ._()@-]/gu, '').slice(0, 80);
+  return { 'X-Abd-Device': id, 'X-Abd-Device-Name': name };
+}
 /** Remember how each tool was configured so `--sync` can refresh it later. */
 export function rememberTool(tool, opts) {
   const s = loadState();

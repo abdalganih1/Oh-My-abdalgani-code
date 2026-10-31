@@ -7,6 +7,7 @@ import {
 import { upstreamHeaders } from '../routing.js';
 import { runMaintenance, restoreProvider, restoreModel, normalizeUpstreamModel } from '../lifecycle.js';
 import { adminReport, exportCsv } from '../reports.js';
+import { getSecurity, resetSecurityCache } from '../security.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._:/-]{0,80}$/i;
 const need = (cond, msg) => { if (!cond) throw new HttpError(400, msg); };
@@ -213,6 +214,62 @@ export async function handleAdmin(request, env, ctx, path) {
       return json({ ok: true });
     }
     if (method === 'DELETE' && b) { await db.prepare('DELETE FROM expenses WHERE id = ?').bind(toInt(b)).run(); return json({ ok: true }); }
+  }
+
+  // ── security: settings, blocklist, devices ──
+  if (a === 'security') {
+    if (method === 'GET') {
+      const [cfg, blocks, devices, events, unpriced] = await Promise.all([
+        getSecurity(db, true),
+        db.prepare('SELECT * FROM blocks WHERE expires_at IS NULL OR expires_at > ? ORDER BY created_at DESC').bind(now()).all(),
+        db.prepare(`SELECT d.*, u.name AS user_name,
+            (SELECT COUNT(*) FROM usage_logs l WHERE l.device_id = d.device_id AND l.user_id = d.user_id) AS requests
+          FROM devices d LEFT JOIN users u ON u.id = d.user_id ORDER BY d.status = 'pending' DESC, d.last_seen DESC LIMIT 500`).all(),
+        db.prepare("SELECT * FROM events WHERE kind IN ('security_block','device_new','device_rejected') ORDER BY id DESC LIMIT 100").all(),
+        db.prepare(`SELECT id, name, pricing_mode FROM models WHERE status IN ('new','active','legacy')
+            AND ((pricing_mode = 'request' AND price_request = 0) OR (pricing_mode != 'request' AND price_in = 0 AND price_out = 0))
+            AND COALESCE(description, '') NOT LIKE 'مجاني%'`).all(),
+      ]);
+      const topIps = await db.prepare(`SELECT ip, COUNT(*) requests, COUNT(DISTINCT user_id) users, SUM(status >= 400) errors, MAX(created_at) last
+          FROM usage_logs WHERE created_at > ? AND ip IS NOT NULL GROUP BY ip ORDER BY requests DESC LIMIT 20`).bind(now() - 86400).all();
+      return json({ settings: cfg, blocks: blocks.results, devices: devices.results, events: events.results, unpriced_models: unpriced.results, top_ips: topIps.results });
+    }
+    if (method === 'PUT') {
+      const body = await readJson(request);
+      need(['off', 'track', 'enforce'].includes(body.device_policy), 'device_policy must be off|track|enforce');
+      const clean = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, k === 'device_policy' ? v : Number(v)]));
+      await db.prepare("INSERT INTO settings (key, value) VALUES ('security', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(JSON.stringify(clean)).run();
+      resetSecurityCache();
+      return json({ ok: true });
+    }
+  }
+  if (a === 'blocks') {
+    if (method === 'POST') {
+      const body = await readJson(request);
+      need(['ip', 'device'].includes(body.kind), 'kind must be ip|device');
+      need(typeof body.value === 'string' && body.value.trim().length >= 3 && body.value.length <= 100, 'value is required');
+      const mins = toInt(body.minutes, 0);
+      await db.prepare(`INSERT INTO blocks (kind, value, reason, auto, expires_at) VALUES (?,?,?,0,?)
+          ON CONFLICT(kind, value) DO UPDATE SET reason = excluded.reason, auto = 0, expires_at = excluded.expires_at`)
+        .bind(body.kind, body.value.trim(), body.reason || 'admin', mins > 0 ? now() + mins * 60 : null).run();
+      if (body.kind === 'device') await db.prepare("UPDATE devices SET status = 'blocked' WHERE device_id = ?").bind(body.value.trim()).run();
+      return json({ ok: true });
+    }
+    if (method === 'DELETE' && b) {
+      const row = await db.prepare('SELECT * FROM blocks WHERE id = ?').bind(toInt(b)).first();
+      await db.prepare('DELETE FROM blocks WHERE id = ?').bind(toInt(b)).run();
+      if (row?.kind === 'device') await db.prepare("UPDATE devices SET status = 'active' WHERE device_id = ? AND status = 'blocked'").bind(row.value).run();
+      return json({ ok: true });
+    }
+  }
+  if (a === 'devices' && b) {
+    if (method === 'PATCH') {
+      const body = await readJson(request);
+      need(['active', 'pending', 'blocked'].includes(body.status), 'status must be active|pending|blocked');
+      await db.prepare('UPDATE devices SET status = ? WHERE id = ?').bind(body.status, toInt(b)).run();
+      return json({ ok: true });
+    }
+    if (method === 'DELETE') { await db.prepare('DELETE FROM devices WHERE id = ?').bind(toInt(b)).run(); return json({ ok: true }); }
   }
 
   // ── lifecycle: update feed, upstream catalogs, run-now ──

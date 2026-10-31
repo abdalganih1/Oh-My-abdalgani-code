@@ -8,6 +8,7 @@ import { handleAdmin } from './api/admin.js';
 import { handleMe } from './api/user.js';
 import { apiError, HttpError, json } from './util.js';
 import { runMaintenance } from './lifecycle.js';
+import { preflight, authFailure, clientIp, cleanupSecurity } from './security.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -20,6 +21,7 @@ const CORS = {
 function withCors(res) {
   const h = new Headers(res.headers);
   for (const [k, v] of Object.entries(CORS)) h.set(k, v);
+  h.set('x-content-type-options', 'nosniff');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
 
@@ -31,28 +33,39 @@ export async function route(request, env, ctx) {
   const m = request.method;
 
   if (m === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (p === '/health') return json({ ok: true, service: 'abdalgani-gateway' });
+  const api = p.startsWith('/v1/') || p.startsWith('/api/') || p === '/chat/completions' || p === '/messages' || p === '/responses' || p === '/models';
+  if (!api) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
+
+  // blocklist, size limit and per-IP rate limit before touching any credential
+  const sec = await preflight(request, env);
+  try {
+    return await dispatch(request, env, ctx, p, m, sec);
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 401) ctx.waitUntil(authFailure(env, sec.ip, p.startsWith('/api/admin') ? 'admin' : 'key'));
+    throw e;
+  }
+}
+
+async function dispatch(request, env, ctx, p, m, sec) {
 
   if (p === '/v1/chat/completions' || p === '/chat/completions') {
     if (m !== 'POST') throw new HttpError(405, 'Use POST');
-    return handleCompletion(request, env, ctx, 'openai');
+    return handleCompletion(request, env, ctx, 'openai', sec);
   }
   if (p === '/v1/messages' || p === '/messages') {
     if (m !== 'POST') throw new HttpError(405, 'Use POST');
-    return handleCompletion(request, env, ctx, 'anthropic');
+    return handleCompletion(request, env, ctx, 'anthropic', sec);
   }
   if (p === '/v1/responses' || p === '/responses') {
     if (m !== 'POST') throw new HttpError(405, 'Use POST');
-    return handleCompletion(request, env, ctx, 'responses');
+    return handleCompletion(request, env, ctx, 'responses', sec);
   }
   if (p === '/v1/messages/count_tokens') return handleCountTokens(request, env, ctx);
-  if ((p === '/v1/models' || p === '/models') && m === 'GET') return handleModels(request, env, ctx);
-  if (p === '/health') return json({ ok: true, service: 'abdalgani-gateway' });
+  if ((p === '/v1/models' || p === '/models') && m === 'GET') return handleModels(request, env, ctx, sec);
   if (p.startsWith('/api/admin')) return handleAdmin(request, env, ctx, p);
-  if (p.startsWith('/api/me')) return handleMe(request, env, ctx, p);
-  if (p.startsWith('/v1/') || p.startsWith('/api/')) throw new HttpError(404, `Unknown endpoint ${m} ${p}`, 'not_found_error');
-
-  if (env.ASSETS) return env.ASSETS.fetch(request);
-  return new Response('Not found', { status: 404 });
+  if (p.startsWith('/api/me')) return handleMe(request, env, ctx, p, sec);
+  throw new HttpError(404, `Unknown endpoint ${m} ${p}`, 'not_found_error');
 }
 
 export default {
@@ -69,5 +82,6 @@ export default {
   // Cron Trigger (wrangler.toml [triggers]) — discovery, health archiving, "new" expiry, alerts.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runMaintenance(env).then((s) => console.log('maintenance', JSON.stringify(s))).catch((e) => console.error('maintenance failed', e)));
+    ctx.waitUntil(cleanupSecurity(env.DB).catch(() => {}));
   },
 };

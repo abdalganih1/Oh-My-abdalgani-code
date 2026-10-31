@@ -312,3 +312,92 @@ test('reports: admin totals/top lists/heatmap/money + student report + CSV', asy
   assert.match(csv, /^time_utc,user,requested_model/);
   assert.ok(csv.split('\n').length > 5);
 });
+
+// ── security ──
+async function callFrom(ip, method, p, { token, body, headers = {} } = {}) {
+  return call(method, p, { token, body, headers: { 'cf-connecting-ip': ip, ...headers } });
+}
+async function setSecurity(patch) {
+  const cur = (await admin('GET', '/security')).data.settings;
+  return admin('PUT', '/security', { ...cur, ...patch });
+}
+
+test('security: repeated bad keys auto-block the IP; admin can unblock', async () => {
+  await setSecurity({ auth_fail_limit: 5 });
+  for (let i = 0; i < 5; i++) await callFrom('203.0.113.9', 'GET', '/v1/models', { token: `sk-abd-guess${i}` });
+  const r = await callFrom('203.0.113.9', 'GET', '/v1/models', { token: userKey });
+  assert.equal(r.status, 403, 'even a valid key is refused from a blocked network');
+  assert.equal((await callFrom('198.51.100.7', 'GET', '/v1/models', { token: userKey })).status, 200, 'other networks unaffected');
+  const sec = (await admin('GET', '/security')).data;
+  const blk = sec.blocks.find((b) => b.value === '203.0.113.9');
+  assert.ok(blk && blk.auto === 1 && blk.expires_at);
+  assert.ok(sec.events.some((e) => e.kind === 'security_block'));
+  await admin('DELETE', `/blocks/${blk.id}`);
+  assert.equal((await callFrom('203.0.113.9', 'GET', '/v1/models', { token: userKey })).status, 200);
+});
+
+test('security: wrong admin token attempts and coupon guessing also count', async () => {
+  await setSecurity({ auth_fail_limit: 3 });
+  for (let i = 0; i < 3; i++) await callFrom('203.0.113.20', 'GET', '/api/admin/stats', { token: 'nope' });
+  assert.equal((await callFrom('203.0.113.20', 'GET', '/api/admin/stats', { token: 'admin-secret' })).status, 403);
+  for (let i = 0; i < 3; i++) await callFrom('203.0.113.21', 'POST', '/api/me/redeem', { token: userKey, body: { code: `ABD-FAKE-${i}` } });
+  assert.equal((await callFrom('203.0.113.21', 'GET', '/api/me', { token: userKey })).status, 403);
+  await setSecurity({ auth_fail_limit: 10 });
+});
+
+test('security: device binding (track → enforce, limit, approve, block)', async () => {
+  const dev = (id) => ({ 'x-abd-device': id.padEnd(24, 'x'), 'x-abd-device-name': `laptop-${id}` });
+  const ask = (h) => call('GET', '/v1/models', { token: userKey, headers: h });
+  assert.equal((await ask({})).status, 200, 'track mode: header optional');
+  await setSecurity({ device_policy: 'enforce', max_devices: 2 });
+  assert.equal((await ask({})).status, 403, 'enforce: no device header → refused');
+  assert.equal((await ask(dev('aaa'))).status, 200);
+  assert.equal((await ask(dev('bbb'))).status, 200);
+  assert.equal((await ask(dev('ccc'))).status, 403, 'third device needs approval');
+  const sec = (await admin('GET', '/security')).data;
+  const pending = sec.devices.find((d) => d.status === 'pending');
+  assert.equal(pending.name, 'laptop-ccc');
+  await admin('PATCH', `/devices/${pending.id}`, { status: 'active' });
+  assert.equal((await ask(dev('ccc'))).status, 200);
+  await admin('POST', '/blocks', { kind: 'device', value: 'aaa'.padEnd(24, 'x'), reason: 'shared key' });
+  assert.equal((await ask(dev('aaa'))).status, 403, 'blocked device refused');
+  const mine = (await call('GET', '/api/me/devices', { token: userKey })).data;
+  assert.equal(mine.length, 3);
+  assert.equal((await ask({ 'x-abd-device': 'bad id!' })).status, 400);
+  await setSecurity({ device_policy: 'track' });
+});
+
+test('security: reservation stops over-spending and parallel double-spend', async () => {
+  const u = await admin('POST', '/users', { name: 'tiny-balance' });
+  const k = u.data.api_key;
+  // $0.015 on a $0.01/request model → exactly one request fits, even when 3 fire at once
+  await admin('POST', `/users/${u.data.id}/subscriptions`, { kind: 'usd', amount: 15_000, valid_days: 1 });
+  const fire = () => call('POST', '/v1/chat/completions', { token: k, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
+  const results = await Promise.all([fire(), fire(), fire()]);
+  assert.equal(results.filter((r) => r.status === 200).length, 1);
+  assert.ok(results.some((r) => r.status === 402));
+  const subs = (await admin('GET', `/users/${u.data.id}`)).data.subscriptions;
+  assert.equal(subs[0].used, 10_000, 'reservation replaced by the real charge, nothing leaked');
+  // a failed upstream call refunds the hold
+  assert.ok(subs[0].used <= subs[0].total);
+});
+
+test('security: daily caps (dollars and tokens) and global budget kill switch', async () => {
+  await setSecurity({ user_daily_tokens: 1000 });
+  const r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(r.status, 429);
+  assert.match(r.data.error.message, /Daily token limit/);
+  await setSecurity({ user_daily_tokens: 0, global_daily_upstream_usd: 0.000001 });
+  const g = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(g.status, 503);
+  await setSecurity({ global_daily_upstream_usd: 0, user_daily_usd: 0 });
+});
+
+test('security: upstream details never reach students; oversized bodies refused', async () => {
+  const r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'gpt-x', messages: [{ role: 'user', content: 'x' }] } });
+  assert.ok(!JSON.stringify(r.data).includes('sk-'), 'no key fragments');
+  const big = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [] }, headers: { 'content-length': String(50 * 1024 * 1024) } });
+  assert.equal(big.status, 413);
+  const sec = (await admin('GET', '/security')).data;
+  assert.ok(Array.isArray(sec.unpriced_models));
+});

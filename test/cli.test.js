@@ -95,3 +95,13 @@ test('OpenCode Arabic: /ar + /en commands per schema, default-Arabic instruction
   assert.deepEqual(Object.keys(v1.command), Object.keys(ARABIC_COMMANDS));
   assert.equal(v1.instructions, undefined);
 });
+
+test('device identity header reaches every tool that supports custom headers', () => {
+  const headers = { 'X-Abd-Device': 'a'.repeat(32), 'X-Abd-Device-Name': 'lab-pc (win32)' };
+  const c = { ...ctx, headers };
+  assert.deepEqual(buildOpenCodeV2({}, c).providers.abdalgani.headers, headers);
+  assert.deepEqual(buildOpenCodeV1({}, c).provider.abdalgani.options.headers, headers);
+  assert.equal(buildClaudeSettings({}, c).env.ANTHROPIC_CUSTOM_HEADERS, `X-Abd-Device: ${'a'.repeat(32)}\nX-Abd-Device-Name: lab-pc (win32)`);
+  assert.deepEqual(buildHermesConfig({}, c).providers.abdalgani.extra_headers, headers);
+  assert.deepEqual(buildCodexConfig({}, c).model_providers.abdalgani.http_headers, headers);
+});

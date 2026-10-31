@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { HOME, BASE_URL, ALIASES, readJson, writeJson, log, tr } from '../core.js';
 
-export function buildClaudeSettings(settings, { apiKey, model, models = [], tiers = {} }) {
+export function buildClaudeSettings(settings, { apiKey, model, models = [], tiers = {}, headers }) {
   const env = { ...(settings.env || {}) };
   delete env.DISABLE_PROMPT_CACHING; // cache_control is passed through — saves real money on Anthropic routes
   Object.assign(env, {
@@ -17,6 +17,8 @@ export function buildClaudeSettings(settings, { apiKey, model, models = [], tier
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
   });
+  // device identity for the gateway (ANTHROPIC_CUSTOM_HEADERS = newline-separated "Name: value")
+  if (headers) env.ANTHROPIC_CUSTOM_HEADERS = Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\n');
   // Gateway aliases aren't Claude IDs, so Claude Code can't know their window: declare the
   // smallest one in use (it compacts at that size). Valid range is 100k–1M.
   const used = [env.ANTHROPIC_MODEL, env.ANTHROPIC_DEFAULT_OPUS_MODEL, env.ANTHROPIC_DEFAULT_SONNET_MODEL, env.ANTHROPIC_DEFAULT_HAIKU_MODEL];

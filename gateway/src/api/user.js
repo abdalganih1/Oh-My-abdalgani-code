@@ -5,10 +5,11 @@ import { isSubUsable, loadSubscriptions } from '../billing.js';
 import { getGlobalAliases } from '../routing.js';
 import { json, readJson, HttpError, now, toInt, sha256Hex, newApiKey } from '../util.js';
 import { userReport } from '../reports.js';
+import { authFailure } from '../security.js';
 
 const ALIAS_RE = /^[a-z0-9][a-z0-9._-]{0,40}$/;
 
-export async function handleMe(request, env, ctx, path) {
+export async function handleMe(request, env, ctx, path, sec = {}) {
   const { user, keyId } = await authUser(request, env, ctx);
   const db = env.DB;
   const method = request.method;
@@ -82,7 +83,10 @@ export async function handleMe(request, env, ctx, path) {
     if (!c0) throw new HttpError(400, 'Coupon code is required');
     const t = now();
     const cpn = await db.prepare('SELECT * FROM coupons WHERE code = ?').bind(c0).first();
-    if (!cpn || cpn.disabled) throw new HttpError(404, 'Invalid coupon code');
+    if (!cpn || cpn.disabled) {
+      ctx.waitUntil(authFailure(env, sec.ip, 'coupon')); // guessing codes counts like guessing keys
+      throw new HttpError(404, 'Invalid coupon code');
+    }
     if (cpn.expires_at && cpn.expires_at <= t) throw new HttpError(410, 'This coupon has expired');
     if (cpn.used_count >= cpn.max_uses) throw new HttpError(409, 'This coupon has already been used');
     const dup = await db.prepare('SELECT 1 FROM coupon_redemptions WHERE coupon_code = ? AND user_id = ?').bind(c0, user.id).first();
@@ -124,6 +128,11 @@ export async function handleMe(request, env, ctx, path) {
       await db.prepare('DELETE FROM user_aliases WHERE user_id = ? AND alias = ?').bind(user.id, b).run();
       return json({ ok: true });
     }
+  }
+
+  if (a === 'devices' && method === 'GET') {
+    const { results } = await db.prepare('SELECT id, name, status, first_seen, last_seen, last_ip FROM devices WHERE user_id = ? ORDER BY last_seen DESC').bind(user.id).all();
+    return json(results);
   }
 
   if (a === 'report' && method === 'GET') return json(await userReport(db, user, new URL(request.url)));

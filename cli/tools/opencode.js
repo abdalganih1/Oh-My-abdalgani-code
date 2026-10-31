@@ -30,7 +30,7 @@ function writeArabicFile(dir, enabled) {
 const EFFORTS = ['low', 'medium', 'high'];
 
 /** OpenCode V2 — `providers` map, settings/headers/body split, model variants, provider/model#variant. */
-export function buildOpenCodeV2(config, { apiKey, models, model, effort }) {
+export function buildOpenCodeV2(config, { apiKey, models, model, effort, headers }) {
   const out = { $schema: 'https://opencode.ai/config.json', ...config };
   // a stale V1 entry for our provider would shadow / confuse the V2 one
   if (out.provider?.[PROVIDER_ID]) {
@@ -51,6 +51,7 @@ export function buildOpenCodeV2(config, { apiKey, models, model, effort }) {
       name: 'abdalgani',
       package: '@opencode/ai/providers/openai-compatible',
       settings: { baseURL: API_URL, apiKey },
+      ...(headers ? { headers } : {}),
       models: entries,
     },
   };
@@ -60,7 +61,7 @@ export function buildOpenCodeV2(config, { apiKey, models, model, effort }) {
 }
 
 /** OpenCode V1 / Kilo / EH Code — `provider` map with @ai-sdk/openai-compatible. */
-export function buildOpenCodeV1(config, { apiKey, models, model, effort, smallModel }) {
+export function buildOpenCodeV1(config, { apiKey, models, model, effort, smallModel, headers }) {
   const out = { $schema: 'https://opencode.ai/config.json', ...config };
   const entries = {};
   for (const m of models) {
@@ -69,7 +70,7 @@ export function buildOpenCodeV1(config, { apiKey, models, model, effort, smallMo
   }
   out.provider = {
     ...(out.provider || {}),
-    [PROVIDER_ID]: { name: 'abdalgani', npm: '@ai-sdk/openai-compatible', options: { baseURL: API_URL, apiKey }, models: entries },
+    [PROVIDER_ID]: { name: 'abdalgani', npm: '@ai-sdk/openai-compatible', options: { baseURL: API_URL, apiKey, ...(headers ? { headers } : {}) }, models: entries },
   };
   out.model = `${PROVIDER_ID}/${model}`;
   if (smallModel) out.small_model = `${PROVIDER_ID}/${smallModel}`;

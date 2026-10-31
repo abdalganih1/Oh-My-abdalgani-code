@@ -14,7 +14,7 @@ export function configurePi(ctx) {
   // so pi needs no compat flags.
   const entry = {
     baseUrl: API_URL, apiKey: ctx.apiKey, api: 'openai-completions',
-    headers: { 'X-Abdalgani-Client': 'pi' },
+    headers: { 'X-Abdalgani-Client': 'pi', ...(ctx.headers || {}) },
     models: ctx.models.map((m) => ({
       id: m.id, name: m.name, reasoning: m.reasoning, input: m.vision ? ['text', 'image'] : ['text'],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: m.context, maxTokens: m.output,
@@ -29,6 +29,7 @@ export function configurePi(ctx) {
 }
 
 export function configureQwen(ctx) {
+  warnNoDeviceHeader();
   const file = path.join(HOME, '.qwen', 'settings.json');
   const cfg = readJson(file, {});
   cfg.modelProviders = cfg.modelProviders || {};
@@ -46,6 +47,7 @@ function loadYaml(file) {
 }
 
 export function configureGoose(ctx) {
+  warnNoDeviceHeader();
   const file = path.join(HOME, '.config', 'goose', 'config.yaml');
   const cfg = loadYaml(file);
   Object.assign(cfg, { GOOSE_PROVIDER: 'openai', GOOSE_MODEL: ctx.model, OPENAI_HOST: API_URL.replace(/\/v1$/, ''), OPENAI_BASE_PATH: 'v1/chat/completions' });
@@ -56,6 +58,7 @@ export function configureGoose(ctx) {
 }
 
 export function configureAider(ctx) {
+  warnNoDeviceHeader();
   const file = path.join(HOME, '.aider.conf.yml');
   const cfg = loadYaml(file);
   Object.assign(cfg, { 'openai-api-key': ctx.apiKey, 'openai-api-base': API_URL, model: `openai/${ctx.model}`, 'weak-model': 'openai/abd-fast' });
@@ -63,6 +66,7 @@ export function configureAider(ctx) {
 }
 
 export function configureOpenClaw(ctx) {
+  warnNoDeviceHeader();
   const dir = path.join(HOME, '.openclaw');
   const file = path.join(dir, 'openclaw.json');
   const cfg = readJson(file, {});
@@ -89,6 +93,7 @@ export function configureOpenClaw(ctx) {
 }
 
 export function configureKimi(ctx) {
+  warnNoDeviceHeader();
   const file = path.join(HOME, '.kimi', 'config.json');
   const cfg = readJson(file, { default_model: '', models: {}, providers: {}, loop_control: { max_steps_per_run: 100, max_retries_per_step: 3 }, services: {} });
   cfg.providers = { ...(cfg.providers || {}), [PROVIDER_ID]: { type: 'openai_legacy', base_url: API_URL, api_key: ctx.apiKey } };
@@ -99,3 +104,8 @@ export function configureKimi(ctx) {
 }
 
 export { KEY_ENV };
+
+function warnNoDeviceHeader() {
+  log.dim(`   ${tr('ملاحظة: هالأداة ما بتقدر تبعت هوية الجهاز — إذا فعّل المدير "إلزام الأجهزة" ما رح تشتغل؛ استخدم OpenCode أو Hermes أو pi أو Claude Code أو Codex.',
+    'Note: this tool cannot send the device identity — if the admin enforces devices it will stop working; prefer OpenCode, Hermes, pi, Claude Code or Codex.')}`);
+}

@@ -1,5 +1,5 @@
 // Talks to the abdalgani gateway: validates the key and lists the student's models.
-import { API_URL, BASE_URL, ALIASES, tr, log } from './core.js';
+import { API_URL, BASE_URL, ALIASES, tr, log, deviceHeaders } from './core.js';
 
 const FALLBACK = [
   { id: ALIASES.main, name: 'abd-main (default)', context: 200000, output: 32768, reasoning: true, alias: true },
@@ -11,7 +11,7 @@ const FALLBACK = [
  * @returns {Promise<{ok:boolean, models:Array<{id,name,context,output,reasoning,alias}>, account?:object, reason?:string}>}
  */
 export async function fetchCatalog(apiKey) {
-  const headers = { authorization: `Bearer ${apiKey}` };
+  const headers = { authorization: `Bearer ${apiKey}`, ...deviceHeaders() };
   try {
     const [mRes, meRes] = await Promise.all([
       fetch(`${API_URL}/models`, { headers, signal: AbortSignal.timeout(15000) }),
@@ -20,6 +20,10 @@ export async function fetchCatalog(apiKey) {
     if (mRes.status === 401 || mRes.status === 403) {
       const body = await mRes.json().catch(() => ({}));
       return { ok: false, models: FALLBACK, reason: body?.error?.message || `HTTP ${mRes.status}` };
+    }
+    if (mRes.status === 403) {
+      const body = await mRes.json().catch(() => ({}));
+      return { ok: false, models: FALLBACK, reason: body?.error?.message || 'HTTP 403' };
     }
     if (!mRes.ok) throw new Error(`HTTP ${mRes.status}`);
     const data = (await mRes.json()).data || [];
@@ -60,7 +64,7 @@ export function describeAccount(account) {
 
 /** Print alias → real model table (what the student is really using). */
 export async function printStatus(apiKey) {
-  const res = await fetch(`${BASE_URL}/api/me`, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15000) });
+  const res = await fetch(`${BASE_URL}/api/me`, { headers: { authorization: `Bearer ${apiKey}`, ...deviceHeaders() }, signal: AbortSignal.timeout(15000) });
   const me = await res.json().catch(() => ({}));
   if (!res.ok) { log.err(`❌ ${me?.error?.message || res.status}`); return false; }
   describeAccount(me);
@@ -73,6 +77,8 @@ export async function printStatus(apiKey) {
     const left = s.kind === 'usd' ? `$${(s.remaining / 1e6).toFixed(2)}` : `${(s.remaining / 1e6).toFixed(2)}M tok`;
     log.dim(`   ${tr('اشتراك', 'subscription')} #${s.id}: ${left} · ${s.group_id || tr('كل النماذج', 'all models')}${s.expires_at ? ` · ${tr('ينتهي', 'expires')} ${new Date(s.expires_at * 1000).toISOString().slice(0, 10)}` : ''}`);
   }
+  const dev = deviceHeaders();
+  log.dim(`   ${tr('هذا الجهاز', 'This device')}: ${dev['X-Abd-Device-Name']} · ${dev['X-Abd-Device']}`);
   log.dim(`\n   ${tr('بدّل النماذج من', 'Switch models at')} ${BASE_URL}`);
   return true;
 }
