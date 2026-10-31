@@ -60,12 +60,15 @@ export async function runDetectors(env, cfg, t = now()) {
   const since = t - 86400, out = [];
   const users = new Map((await db.prepare('SELECT id, name FROM users').all()).results.map((u) => [u.id, u.name]));
   const nm = (id) => users.get(id) || `#${id}`;
+  // Only real students count: the admin playground (internal user, hit from many networks by
+  // design) and logs of deleted test accounts would otherwise raise false shared-IP/many-IP alerts.
   const q = (sql, ...a) => db.prepare(sql).bind(...a).all().then((r) => r.results);
+  const REAL = 'user_id IN (SELECT id FROM users WHERE internal = 0)';
 
   // 1. heavy day + spike vs the student's own 7-day average
   const vol = await q(`SELECT user_id, COUNT(*) req, COALESCE(SUM(prompt_tokens + completion_tokens), 0) tok, COALESCE(SUM(cost), 0) cost
-      FROM usage_logs WHERE created_at > ? GROUP BY user_id`, since);
-  const base = new Map((await q(`SELECT user_id, COUNT(*) / 7.0 avg FROM usage_logs WHERE created_at > ? AND created_at <= ? GROUP BY user_id`, t - 8 * 86400, since)).map((r) => [r.user_id, r.avg]));
+      FROM usage_logs WHERE created_at > ? AND ${REAL} GROUP BY user_id`, since);
+  const base = new Map((await q(`SELECT user_id, COUNT(*) / 7.0 avg FROM usage_logs WHERE created_at > ? AND created_at <= ? AND ${REAL} GROUP BY user_id`, t - 8 * 86400, since)).map((r) => [r.user_id, r.avg]));
   for (const v of vol) {
     if (cfg.alert_daily_requests > 0 && v.req >= cfg.alert_daily_requests) {
       if (await raiseAlert(db, { rule: 'heavy_day', user_id: v.user_id, message: `الطالب ${nm(v.user_id)} أرسل ${v.req} طلب خلال 24 ساعة (${(v.tok / 1e6).toFixed(1)}M توكن، $${(v.cost / 1e6).toFixed(2)})`, data: v }, t)) out.push('heavy_day');
@@ -77,24 +80,24 @@ export async function runDetectors(env, cfg, t = now()) {
   }
 
   // 2. one student's key from many networks (shared / leaked key)
-  for (const r of await q(`SELECT user_id, COUNT(DISTINCT ip) ips, GROUP_CONCAT(DISTINCT ip) list FROM usage_logs WHERE created_at > ? AND ip IS NOT NULL GROUP BY user_id HAVING ips >= ?`, since, cfg.alert_ips_per_user || 4)) {
+  for (const r of await q(`SELECT user_id, COUNT(DISTINCT ip) ips, GROUP_CONCAT(DISTINCT ip) list FROM usage_logs WHERE created_at > ? AND ip IS NOT NULL AND ${REAL} GROUP BY user_id HAVING ips >= ?`, since, cfg.alert_ips_per_user || 4)) {
     if (await raiseAlert(db, { rule: 'many_ips', user_id: r.user_id, severity: 'high', message: `مفتاح ${nm(r.user_id)} استُخدم من ${r.ips} شبكات مختلفة خلال 24 ساعة — ممكن يكون مشارك أو مسرّب`, data: { ips: String(r.list).split(',').slice(0, 20) } }, t)) out.push('many_ips');
   }
 
   // 3. one network driving many accounts (account farming)
-  for (const r of await q(`SELECT ip, COUNT(DISTINCT user_id) users FROM usage_logs WHERE created_at > ? AND ip IS NOT NULL GROUP BY ip HAVING users >= ?`, since, cfg.alert_users_per_ip || 4)) {
+  for (const r of await q(`SELECT ip, COUNT(DISTINCT user_id) users FROM usage_logs WHERE created_at > ? AND ip IS NOT NULL AND ${REAL} GROUP BY ip HAVING users >= ?`, since, cfg.alert_users_per_ip || 4)) {
     if (await raiseAlert(db, { rule: 'shared_ip', ip: r.ip, severity: 'info', message: `${r.users} حسابات مختلفة من نفس الشبكة ${r.ip} (ممكن مختبر جامعة… أو حسابات وهمية)`, data: r }, t)) out.push('shared_ip');
   }
 
   // 4. mostly-failing traffic (probing models / limits) — last hour
-  for (const r of await q(`SELECT user_id, COUNT(*) req, SUM(status >= 400) err FROM usage_logs WHERE created_at > ? GROUP BY user_id HAVING req >= 50`, t - 3600)) {
+  for (const r of await q(`SELECT user_id, COUNT(*) req, SUM(status >= 400) err FROM usage_logs WHERE created_at > ? AND ${REAL} GROUP BY user_id HAVING req >= 50`, t - 3600)) {
     if (r.err / r.req >= (cfg.alert_error_rate || 0.5)) {
       if (await raiseAlert(db, { rule: 'errors', user_id: r.user_id, message: `${nm(r.user_id)}: ${r.err} من ${r.req} طلب فشلت خلال ساعة — ممكن سكربت عم يجرّب`, data: r }, t)) out.push('errors');
     }
   }
 
   // 5. sustained repetition the in-memory guard may have missed (spread across isolates)
-  for (const r of await q(`SELECT user_id, model_id, prompt_tokens, completion_tokens, COUNT(*) n FROM usage_logs WHERE created_at > ?
+  for (const r of await q(`SELECT user_id, model_id, prompt_tokens, completion_tokens, COUNT(*) n FROM usage_logs WHERE created_at > ? AND ${REAL}
       GROUP BY user_id, model_id, prompt_tokens, completion_tokens HAVING n >= ?`, t - 1800, Math.max(30, (cfg.loop_guard_repeats || 25) * 2))) {
     if (await raiseAlert(db, { rule: 'repeat_pattern', user_id: r.user_id, message: `${nm(r.user_id)}: ${r.n} طلب بنفس الحجم بالضبط على ${r.model_id} خلال 30 دقيقة — غالباً أداة عالقة`, data: r }, t)) out.push('repeat_pattern');
   }

@@ -29,6 +29,7 @@
       <div class="nav-label">المراقبة</div>
       <button data-tab="overview" data-sub="الاستخدام والمال والذروة لأي فترة"><i data-i="chart"></i><span class="lbl">التقارير</span></button>
       <button data-tab="usage" data-sub="كل طلب لحظة بلحظة — بيتحدّث كل 5 ثواني"><i data-i="activity"></i><span class="lbl">السجل المباشر</span></button>
+      <button data-tab="logs" data-sub="كل الطلبات السابقة بالتاريخ — فلترة، تفاصيل وتصدير"><i data-i="list"></i><span class="lbl">تاريخ الطلبات</span></button>
       <button data-tab="security" data-sub="تنبيهات الإساءة، الحظر، الأجهزة وقواعد الحماية"><i data-i="shield"></i><span class="lbl">الأمان</span><span id="secBadge" class="badge bad hidden"></span></button>
       <button data-tab="playground" data-sub="دردش مع أي نموذج واختبره عبر طريق البوابة الحقيقي"><i data-i="sparkles"></i><span class="lbl">Playground</span></button>
       <button data-tab="updates" data-sub="نماذج جديدة، أرشفة تلقائية وأحداث المزوّدين"><i data-i="bell"></i><span class="lbl">التحديثات</span><span id="unreadBadge" class="badge new hidden"></span></button>
@@ -328,6 +329,32 @@
       <div class="card"><h2><i data-i="list"></i>الكوبونات</h2><div class="table-wrap"><table id="couponTable" class="stack"></table></div></div>
     </div>
 
+    <div data-panel="logs">
+      <div class="card">
+        <div class="row" style="gap:10px">
+          <div class="seg" id="lgRange">
+            <button data-r="1h">ساعة</button><button data-r="24h">24 ساعة</button><button data-r="7d">7 أيام</button><button data-r="30d">30 يوم</button><button data-r="90d">90 يوم</button>
+          </div>
+          <label class="row small muted">من <input type="date" id="lgFrom"></label>
+          <label class="row small muted">إلى <input type="date" id="lgTo"></label>
+        </div>
+        <div class="lg-filters">
+          <select id="lgUser" aria-label="الطالب"><option value="">كل الطلاب</option></select>
+          <input id="lgModel" class="ltr" list="lgModels" placeholder="model" aria-label="النموذج"><datalist id="lgModels"></datalist>
+          <select id="lgProvider" aria-label="المزوّد"><option value="">كل المزوّدين</option></select>
+          <select id="lgEndpoint" aria-label="الصيغة"><option value="">كل الصيغ</option><option value="/v1/chat/completions">OpenAI chat</option><option value="/v1/messages">Anthropic messages</option><option value="/v1/responses">Codex responses</option></select>
+          <select id="lgStatus" aria-label="الحالة"><option value="">كل الحالات</option><option value="ok">ناجحة</option><option value="err">فاشلة</option><option value="429">429 حد/رصيد</option><option value="402">402 رصيد الطالب</option><option value="502">502 المزوّد</option><option value="504">504 مهلة</option></select>
+          <input id="lgQ" class="ltr" placeholder="IP · جهاز · نص الخطأ" aria-label="بحث">
+          <button id="lgReset" class="ghost small">مسح الفلاتر</button>
+          <button id="lgCsv" class="small">⬇ CSV للمعروض</button>
+        </div>
+      </div>
+      <div class="grid" id="lgSum" style="margin:14px 0"></div>
+      <div class="card">
+        <div class="table-wrap"><table id="lgTable" class="stack lg-table"></table></div>
+        <div class="row" style="margin-top:12px;justify-content:center"><span id="lgCount" class="small muted"></span><button id="lgMore" class="hidden">تحميل المزيد</button></div>
+      </div>
+    </div>
     <div data-panel="usage">
       <div class="card">
         <div class="row">
@@ -434,6 +461,7 @@
   <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" class="dlg-close">إلغاء</button><button class="primary" id="orApply">طبّق على المحدد</button></div>
 </dialog>
 
+<dialog id="lgDlg"><div id="lgDlgBody"></div><div class="row" style="margin-top:12px"><button type="button" id="lgDlgUser" class="ghost small">كل طلبات هالطالب</button><span class="spacer"></span><button type="button" class="dlg-close">إغلاق</button></div></dialog>
 <dialog id="userDlg"><div id="userDlgBody"></div><div class="row" style="margin-top:12px"><span class="spacer"></span><button type="button" class="dlg-close">إغلاق</button></div></dialog>
 <dialog id="discoverDlg"><div id="discoverBody"></div><div class="row" style="margin-top:12px"><span class="spacer"></span><button type="button" class="dlg-close">إغلاق</button></div></dialog>
 

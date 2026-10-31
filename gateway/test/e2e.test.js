@@ -606,3 +606,44 @@ test('route order: provider priority first (plan before OpenRouter), per-model c
   assert.equal((await admin('POST', '/models', { ...m, custom_order: true, routes: [{ provider_id: 'openrouter', upstream_model: 'z-ai/order' }, { provider_id: 'zai', upstream_model: 'order-zai' }] })).status, 200);
   assert.equal(await via(), 'openrouter/z-ai/order');
 });
+
+test('request history: date range + filters, cursor pages, range totals', async () => {
+  const t = Math.floor(Date.now() / 1000);
+  const all = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&limit=200`)).data;
+  assert.ok(all.rows.length > 5 && all.summary.n >= all.rows.length);
+  assert.ok(all.rows.every((r, i) => i === 0 || r.id < all.rows[i - 1].id), 'newest first');
+  // pages walk the same set without overlap
+  const p1 = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&limit=3`)).data;
+  assert.equal(p1.rows.length, 3); assert.ok(p1.next);
+  const p2 = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&limit=3&before=${p1.next}`)).data;
+  assert.equal(p2.summary, null, 'totals only on the first page');
+  assert.ok(p2.rows.every((r) => r.id < p1.rows.at(-1).id));
+  // filters
+  const errs = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&status=err&limit=200`)).data;
+  assert.ok(errs.rows.every((r) => r.status >= 400) && errs.summary.err === errs.summary.n);
+  const oks = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&status=ok&limit=200`)).data;
+  assert.ok(oks.rows.length && oks.rows.every((r) => r.status < 400) && oks.summary.err === 0);
+  assert.equal(oks.summary.n + errs.summary.n, all.summary.n);
+  const zai = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&provider=zai`)).data;
+  assert.ok(zai.rows.length && zai.rows.every((r) => r.provider_id === 'zai'));
+  const ip = (await admin('GET', `/logs?from=${t - 3600}&to=${t + 60}&q=198.51.100.2`)).data;
+  assert.ok(ip.rows.length && ip.rows.every((r) => r.ip === '198.51.100.2'));
+  const old = (await admin('GET', `/logs?from=${t - 90 * 86400}&to=${t - 30 * 86400}`)).data;
+  assert.equal(old.rows.length, 0); assert.equal(old.summary.n, 0);
+  assert.equal((await admin('GET', `/logs?from=${t}&to=${t - 10}`)).status, 400);
+});
+
+test('detectors ignore the admin playground account (many networks by design)', async () => {
+  await setSecurity({ alert_ips_per_user: 2, alert_users_per_ip: 2 });
+  const pk = (await admin('POST', '/playground/key')).data.api_key;
+  for (const ip of ['203.0.113.7', '203.0.113.8', '203.0.113.9']) {
+    await callFrom(ip, 'POST', '/v1/chat/completions', { token: pk, body: { model: 'glm-5.2', messages: [{ role: 'user', content: `pg ${ip}` }] } });
+  }
+  const seen = (await admin('GET', '/logs?q=203.0.113.8')).data;
+  assert.ok(seen.rows.length, 'playground traffic really logged from those networks');
+  await admin('POST', '/alerts/scan');
+  const alerts = (await admin('GET', '/alerts?all=1')).data;
+  assert.ok(!alerts.some((a) => a.rule === 'many_ips' && a.user_name && a.user_name.includes('Playground')), 'no many-IP alert for the playground');
+  assert.ok(!alerts.some((a) => a.rule === 'shared_ip' && a.ip.startsWith('203.0.113.')), 'no shared-IP alert from playground networks');
+  await setSecurity({ alert_ips_per_user: 4, alert_users_per_ip: 4 });
+});

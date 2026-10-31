@@ -382,6 +382,37 @@ export async function handleAdmin(request, env, ctx, path) {
     return json({ rows: after ? results : results.reverse(), server_time: now() });
   }
 
+  // ── request history (date range + filters, cursor-paginated by id; uses idx_usage_time) ──
+  if (a === 'logs' && method === 'GET') {
+    const sp = new URL(request.url).searchParams;
+    const t = now();
+    const to = toInt(sp.get('to'), t), from = toInt(sp.get('from'), to - 86400);
+    need(from <= to, 'from must be before to');
+    const limit = Math.min(200, Math.max(1, toInt(sp.get('limit'), 100)));
+    const where = ['l.created_at >= ?', 'l.created_at <= ?']; const args = [from, to];
+    if (sp.get('user_id')) { where.push('l.user_id = ?'); args.push(toInt(sp.get('user_id'))); }
+    if (sp.get('model')) { where.push('(l.model_id = ? OR l.requested_model = ?)'); args.push(sp.get('model'), sp.get('model')); }
+    if (sp.get('provider')) { where.push('l.provider_id = ?'); args.push(sp.get('provider')); }
+    if (sp.get('endpoint')) { where.push('l.endpoint = ?'); args.push(sp.get('endpoint')); }
+    const st = sp.get('status');
+    if (st === 'ok') where.push('l.status < 400');
+    else if (st === 'err') where.push('l.status >= 400');
+    else if (/^\d{3}$/.test(st || '')) { where.push('l.status = ?'); args.push(toInt(st)); }
+    const q = (sp.get('q') || '').trim().slice(0, 100);
+    if (q) { where.push("(l.ip = ? OR l.device_id = ? OR l.upstream_model LIKE ? ESCAPE '\\' OR l.error LIKE ? ESCAPE '\\')"); const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`; args.push(q, q, like, like); }
+    const base = where.join(' AND ');
+    const before = toInt(sp.get('before'), 0);
+    const { results: rows } = await db.prepare(`SELECT l.id, l.created_at, l.user_id, u.name AS user_name, l.requested_model, l.model_id, l.provider_id, l.upstream_model,
+        l.endpoint, l.status, l.prompt_tokens, l.completion_tokens, l.cached_tokens, l.cache_write_tokens, l.cost, l.upstream_cost, l.charged, l.latency_ms, l.ip, l.device_id, l.error
+      FROM usage_logs l LEFT JOIN users u ON u.id = l.user_id WHERE ${base}${before ? ' AND l.id < ?' : ''} ORDER BY l.id DESC LIMIT ?`).bind(...args, ...(before ? [before] : []), limit + 1).all();
+    const more = rows.length > limit; if (more) rows.pop();
+    // totals for the whole filtered range — only on the first page (later pages reuse them)
+    const summary = before ? null : await db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(l.status >= 400), 0) err, COALESCE(SUM(l.prompt_tokens), 0) pin, COALESCE(SUM(l.completion_tokens), 0) pout,
+        COALESCE(SUM(l.cached_tokens), 0) cached, COALESCE(SUM(l.cost), 0) cost, COALESCE(SUM(l.upstream_cost), 0) upstream, COALESCE(AVG(CASE WHEN l.status < 400 THEN l.latency_ms END), 0) avg_ms,
+        COUNT(DISTINCT l.user_id) users FROM usage_logs l WHERE ${base}`).bind(...args).first();
+    return json({ rows, next: more ? rows.at(-1).id : null, summary, from, to });
+  }
+
   // ── abuse alerts ──
   if (a === 'alerts') {
     if (method === 'GET') {

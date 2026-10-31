@@ -861,7 +861,7 @@ $('#alertTable').addEventListener('click', guard(async (e) => {
   toast('تم'); await loadAlerts();
 }));
 
-const LOADERS = { playground: () => import('/playground.js').then((m) => m.load()), security: async () => { await loadSecurity(); await loadAlerts(); }, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
+const LOADERS = { playground: () => import('/playground.js').then((m) => m.load()), logs: () => import('/logs.js').then((m) => m.load()), security: async () => { await loadSecurity(); await loadAlerts(); }, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
 
 if (store.get(KEY)) boot().catch(() => showLogin()); else showLogin();
 
