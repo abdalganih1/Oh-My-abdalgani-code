@@ -22,6 +22,13 @@ globalThis.fetch = async (url, init = {}) => {
   const auth = init.headers?.authorization || init.headers?.['x-api-key'];
   upstreamCalls.push({ url, body, auth });
   if (auth?.includes('ratelimited')) return new Response('{"error":"rate"}', { status: 429 });
+  if (url === 'https://openrouter.ai/api/v1/models' && !auth) {
+    return Response.json({ data: [
+      { id: 'z-ai/glm-5.3', name: 'GLM 5.3', pricing: { prompt: '0.0000000699', completion: '0.0000014', input_cache_read: '0.0000000689' } },
+      { id: 'z-ai/glm-5.3:batch', name: 'GLM 5.3 batch', pricing: { prompt: '0.00000045', completion: '0.000002' } },
+      { id: 'openrouter/auto', name: 'Auto', pricing: { prompt: '-1', completion: '-1' } },
+    ] });
+  }
   if (url.endsWith('/models')) return Response.json({ data: [{ id: 'up-model', context_length: 1000, pricing: { prompt: '0.000003', completion: '0.000015' } }] });
   if (url.endsWith('/chat/completions')) {
     if (body.stream) {
@@ -92,6 +99,9 @@ test('admin creates user + provider keys + prices', async () => {
   const models = (await admin('GET', '/models')).data;
   const g = models.find((m) => m.id === 'glm-5.2');
   assert.equal((await admin('POST', '/models', { ...g, price_request: 10_000 })).status, 200);
+  // the default alias target (glm-5.3) billed the same way so spend-based tests stay deterministic
+  const g53 = models.find((m) => m.id === 'glm-5.3');
+  assert.equal((await admin('POST', '/models', { ...g53, pricing_mode: 'request', price_request: 10_000 })).status, 200);
   // a premium OpenAI model billed per token, and an OpenRouter model billed by provider cost
   assert.equal((await admin('POST', '/models', {
     id: 'gpt-x', name: 'GPT X', group_id: 'premium', pricing_mode: 'token', price_in: 2_000_000, price_out: 8_000_000, status: 'new',
@@ -193,9 +203,9 @@ test('/v1/messages translated to OpenAI for a provider without an Anthropic endp
 });
 
 test('per-user alias switching (abd-main → another model)', async () => {
-  // default global alias abd-main → glm-5.2
+  // default global alias abd-main → glm-5.3
   let r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'abd-main', messages: [{ role: 'user', content: 'x' }] } });
-  assert.equal(upstreamCalls.at(-1).body.model, 'glm-5.2');
+  assert.equal(upstreamCalls.at(-1).body.model, 'glm-5.3');
   // not allowed to map to a model outside subscriptions
   assert.equal((await call('PUT', '/api/me/aliases', { token: userKey, body: { alias: 'abd-main', model_id: 'or-model' } })).status, 402);
   assert.equal((await call('PUT', '/api/me/aliases', { token: userKey, body: { alias: 'abd-main', model_id: 'glm-4.7' } })).status, 200);
@@ -506,4 +516,25 @@ test('live log: first page = newest rows, then only rows after the cursor', asyn
   assert.equal(next.length, 1);
   assert.equal(next[0].user_name, 'Student 1');
   assert.ok('ip' in next[0] && 'latency_ms' in next[0]);
+});
+
+test('pricing: copy OpenRouter list prices onto matching models', async () => {
+  const r = await admin('GET', '/pricing/openrouter');
+  assert.equal(r.status, 200);
+  assert.ok(!r.data.catalog.some((c) => c.id === 'openrouter/auto'), 'variable-price routers are skipped');
+  const g = r.data.models.find((m) => m.id === 'glm-5.3');
+  assert.equal(g.match.id, 'z-ai/glm-5.3', 'matched by name, not the :batch variant');
+  assert.deepEqual([g.match.price_in, g.match.price_out, g.match.price_cache_read], [69_900, 1_400_000, 68_900]);
+  assert.equal((await admin('POST', '/pricing/apply', { items: [{ id: 'glm-5.3', price_in: g.match.price_in, price_out: g.match.price_out, price_cache_read: g.match.price_cache_read }], markup_pct: 10 })).status, 200);
+  const m = (await admin('GET', '/models')).data.find((x) => x.id === 'glm-5.3');
+  assert.deepEqual([m.pricing_mode, m.price_in, m.price_out, m.markup_pct], ['token', 69_900, 1_400_000, 10]);
+});
+
+test('providers: any custom provider URL, but only over https', async () => {
+  assert.equal((await admin('POST', '/providers', { id: 'weird', name: 'Weird', openai_base_url: 'http://weird.example.com/v1' })).status, 400);
+  assert.equal((await admin('POST', '/providers', { id: 'weird', name: 'Weird', openai_base_url: 'https://user:pw@weird.example.com/v1' })).status, 400);
+  assert.equal((await admin('POST', '/providers', { id: 'weird', name: 'Weird', openai_base_url: 'https://weird.example.com/v1/' })).status, 200);
+  const p = (await admin('GET', '/providers')).data.find((x) => x.id === 'weird');
+  assert.equal(p.openai_base_url, 'https://weird.example.com/v1', 'trailing slash trimmed');
+  assert.equal((await admin('DELETE', '/providers/weird')).status, 200);
 });

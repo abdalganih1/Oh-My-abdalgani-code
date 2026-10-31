@@ -1,6 +1,6 @@
 import { $, $$, esc, store, makeApi, toast, usd, usdPrecise, tokens, date, day, STATUS_BADGE, priceLabel, tabs, copy } from '/common.js';
 import { bars, heatmap, legend, fillSeries, css } from '/charts.js';
-import { initShell, addAction } from '/ui.js';
+import { initShell, addAction, icon } from '/ui.js';
 
 initShell();
 const goTab = (t) => $(`aside [data-tab="${t}"]`)?.click();
@@ -212,42 +212,154 @@ $('#lifecycleForm').addEventListener('submit', guard(async (e) => {
 }));
 
 // ── providers & keys ──
+// Well-known OpenAI-compatible endpoints. "custom" = any URL the admin pastes.
+const PRESETS = [
+  { id: 'custom', name: 'مزوّد مخصص — أي رابط', openai: '' },
+  { id: 'openrouter', name: 'OpenRouter', openai: 'https://openrouter.ai/api/v1' },
+  { id: 'openai', name: 'OpenAI', openai: 'https://api.openai.com/v1' },
+  { id: 'anthropic', name: 'Anthropic', openai: '', anthropic: 'https://api.anthropic.com', auth: 'x-api-key' },
+  { id: 'zai', name: 'Z.AI Coding Plan', openai: 'https://api.z.ai/api/coding/paas/v4', anthropic: 'https://api.z.ai/api/anthropic', billing: 'subscription' },
+  { id: 'deepseek', name: 'DeepSeek', openai: 'https://api.deepseek.com/v1', anthropic: 'https://api.deepseek.com/anthropic' },
+  { id: 'moonshot', name: 'Moonshot (Kimi)', openai: 'https://api.moonshot.ai/v1', anthropic: 'https://api.moonshot.ai/anthropic' },
+  { id: 'minimax', name: 'MiniMax', openai: 'https://api.minimax.io/v1', anthropic: 'https://api.minimax.io/anthropic' },
+  { id: 'qwen', name: 'Qwen (DashScope International)', openai: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' },
+  { id: 'gemini', name: 'Google Gemini (OpenAI-compatible)', openai: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+  { id: 'xai', name: 'xAI (Grok)', openai: 'https://api.x.ai/v1' },
+  { id: 'mistral', name: 'Mistral', openai: 'https://api.mistral.ai/v1' },
+  { id: 'groq', name: 'Groq', openai: 'https://api.groq.com/openai/v1' },
+  { id: 'cerebras', name: 'Cerebras', openai: 'https://api.cerebras.ai/v1' },
+  { id: 'together', name: 'Together AI', openai: 'https://api.together.xyz/v1' },
+  { id: 'fireworks', name: 'Fireworks AI', openai: 'https://api.fireworks.ai/inference/v1' },
+  { id: 'deepinfra', name: 'DeepInfra', openai: 'https://api.deepinfra.com/v1/openai' },
+  { id: 'huggingface', name: 'Hugging Face Router', openai: 'https://router.huggingface.co/v1' },
+  { id: 'nvidia', name: 'NVIDIA NIM', openai: 'https://integrate.api.nvidia.com/v1' },
+  { id: 'nous', name: 'Nous Portal', openai: 'https://inference-api.nousresearch.com/v1' },
+  { id: 'opencode-zen', name: 'OpenCode Zen', openai: 'https://opencode.ai/zen/v1' },
+];
+const PV = { q: '', f: '', open: new Set(JSON.parse(store.get('abd:provOpen') || '[]')) };
+const saveOpen = () => store.set('abd:provOpen', JSON.stringify([...PV.open]));
+const provState = (p) => (p.archived_at ? 'archived' : !p.enabled ? 'off' : 'on');
+
 async function loadProviders() {
   S.providers = await api('GET', '/api/admin/providers');
-  $('#providerList').innerHTML = S.providers.map((p) => `
-    <div class="card">
-      <div class="row"><h2 style="margin:0">${esc(p.name)} <span class="muted mono small ltr">${esc(p.id)}</span></h2>
-        ${p.archived_at ? `<span class="badge bad" title="${esc(p.archived_reason || '')}">مؤرشف</span>` : p.enabled ? '<span class="badge ok">مفعّل</span>' : '<span class="badge bad">موقوف</span>'}
-        <span class="spacer"></span>
-        ${p.archived_at ? `<button class="small primary" data-act="restore-provider" data-p="${esc(p.id)}">♻️ استعادة</button>` : `<button class="small" data-act="archive-provider" data-p="${esc(p.id)}">📦 أرشفة</button>`}
-        <button class="small" data-act="discover" data-p="${esc(p.id)}">📥 استعراض نماذج المزوّد</button>
-        <button class="small" data-act="edit-provider" data-p="${esc(p.id)}">تعديل</button>
-        <button class="small" data-act="toggle-provider" data-p="${esc(p.id)}">${p.enabled ? 'إيقاف' : 'تفعيل'}</button>
-      </div>
-      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)} · ${p.billing === 'subscription' ? `اشتراك ثابت ${usd(p.monthly_fee)}/شهر` : 'حسب الاستخدام'}${p.compat ? ` · compat: ${esc(p.compat)}` : ''}${p.auto ? ` · auto: ${esc(p.auto)}` : ''}</div>
-      <div class="small muted">${p.last_sync_at ? `آخر مزامنة للنماذج: ${date(p.last_sync_at)}` : 'لم تتم مزامنة النماذج بعد'}${p.sync_error ? ` · <span style="color:var(--bad)">${esc(p.sync_error)}</span>` : ''}${p.archived_reason ? ` · ${esc(p.archived_reason)}` : ''}${p.first_fail_at && !p.archived_at ? ` · <span style="color:var(--warn)">يفشل منذ ${date(p.first_fail_at)}</span>` : ''}</div>
-      <div class="table-wrap"><table>
-        <tr><th>الاسم</th><th>المفتاح</th><th class="num">الوزن</th><th class="num">استخدام</th><th>الحالة</th><th>آخر خطأ</th><th></th></tr>
-        ${p.keys.map((k) => `<tr>
-          <td>${esc(k.label)}</td><td class="mono ltr">••••${esc(k.key_hint)}</td><td class="num">${k.weight}</td><td class="num">${k.used_count}</td>
-          <td>${!k.enabled ? '<span class="badge">موقوف</span>' : k.cooling ? `<span class="badge warn">تبريد حتى ${new Date(k.cooldown_until * 1000).toLocaleTimeString()}</span>` : '<span class="badge ok">جاهز</span>'}</td>
-          <td class="small muted err-cell">${esc(k.last_error || '')}</td>
-          <td class="row" style="flex-wrap:nowrap">
-            <button class="small" data-act="test-key" data-k="${k.id}">اختبار</button>
-            <button class="small" data-act="rotate-key" data-k="${k.id}">تبديل</button>
-            <button class="small" data-act="toggle-key" data-k="${k.id}" data-en="${k.enabled}">${k.enabled ? 'إيقاف' : 'تفعيل'}</button>
-            ${k.cooling || k.last_error ? `<button class="small" data-act="reset-key" data-k="${k.id}">تصفير</button>` : ''}
-            <button class="small danger" data-act="del-key" data-k="${k.id}">حذف</button>
-          </td></tr>`).join('') || '<tr><td colspan="7" class="muted">لا مفاتيح — أضف واحد تحت</td></tr>'}
-      </table></div>
-      <form class="row" data-addkey="${esc(p.id)}" style="margin-top:10px">
-        <input name="label" placeholder="اسم (حساب 1)" style="max-width:160px">
-        <input name="key" type="password" class="ltr" placeholder="API key" required style="flex:1;min-width:200px">
-        <input name="weight" type="number" value="1" min="1" style="max-width:80px" title="الوزن">
-        <button class="primary">➕ إضافة مفتاح</button>
-      </form>
-    </div>`).join('');
+  renderProviders();
 }
+function renderProviders() {
+  const q = PV.q.toLowerCase();
+  const list = S.providers.filter((p) => {
+    if (q && ![p.id, p.name, p.openai_base_url, p.anthropic_base_url].some((v) => (v || '').toLowerCase().includes(q))) return false;
+    if (PV.f === 'nokey') return !p.keys.length;
+    return !PV.f || provState(p) === PV.f;
+  });
+  const n = (f) => S.providers.filter((p) => (f === 'nokey' ? !p.keys.length : provState(p) === f)).length;
+  $('#provCount').textContent = `${S.providers.length} مزوّد · ${n('on')} مفعّل · ${n('off')} موقوف · ${n('archived')} مؤرشف · ${n('nokey')} بلا مفاتيح${list.length !== S.providers.length ? ` — عم يظهر ${list.length}` : ''}`;
+  $('#providerList').innerHTML = list.map((p) => {
+    const st = provState(p);
+    const ready = p.keys.filter((k) => k.enabled && !k.cooling).length;
+    const badge = st === 'archived' ? `<span class="badge bad" title="${esc(p.archived_reason || '')}">مؤرشف</span>` : st === 'off' ? '<span class="badge">موقوف</span>'
+      : !p.keys.length ? '<span class="badge warn">بلا مفتاح</span>' : p.first_fail_at ? '<span class="badge warn">عم يفشل</span>' : '<span class="badge ok">شغّال</span>';
+    return `
+    <details class="card prov ${st}" data-pid="${esc(p.id)}" ${PV.open.has(p.id) || q ? 'open' : ''}>
+      <summary>
+        <span class="prov-logo">${esc((p.name || p.id).trim().charAt(0).toUpperCase())}</span>
+        <span class="prov-name"><b>${esc(p.name)}</b><span class="mono ltr small muted">${esc(p.id)}</span></span>
+        ${badge}
+        <span class="badge accent">${p.keys.length ? `${ready}/${p.keys.length} مفتاح` : '0 مفتاح'}</span>
+        <span class="prov-url small muted ltr">${esc((p.openai_base_url || p.anthropic_base_url || '').replace(/^https:\/\//, ''))}</span>
+        <label class="switch" title="${p.enabled ? 'إيقاف المزوّد' : 'تفعيل المزوّد'}"><input type="checkbox" data-act="toggle-provider" data-p="${esc(p.id)}" ${p.enabled ? 'checked' : ''} ${p.archived_at ? 'disabled' : ''}><i></i></label>
+        <span class="chev">${icon('arrow', 16)}</span>
+      </summary>
+      <div class="prov-body">
+        <div class="row" style="margin-bottom:10px">
+          <button class="small" data-act="discover" data-p="${esc(p.id)}">📥 استعراض نماذج المزوّد</button>
+          <button class="small" data-act="edit-provider" data-p="${esc(p.id)}">تعديل</button>
+          ${p.archived_at ? `<button class="small primary" data-act="restore-provider" data-p="${esc(p.id)}">♻️ استعادة</button>` : `<button class="small" data-act="archive-provider" data-p="${esc(p.id)}">📦 أرشفة</button>`}
+          <span class="spacer"></span>
+          <button class="small danger" data-act="delete-provider" data-p="${esc(p.id)}">حذف نهائي</button>
+        </div>
+        <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}</div>
+        <div class="small muted">${p.billing === 'subscription' ? `اشتراك ثابت ${usd(p.monthly_fee)}/شهر` : 'حسب الاستخدام'} · ${p.last_sync_at ? `آخر مزامنة للنماذج: ${date(p.last_sync_at)}` : 'لم تتم مزامنة النماذج بعد'}${p.sync_error ? ` · <span style="color:var(--bad)">${esc(p.sync_error)}</span>` : ''}${p.archived_reason ? ` · ${esc(p.archived_reason)}` : ''}${p.first_fail_at && !p.archived_at ? ` · <span style="color:var(--warn)">يفشل منذ ${date(p.first_fail_at)}</span>` : ''}</div>
+        <div class="table-wrap" style="margin-top:10px"><table>
+          <tr><th>الاسم</th><th>المفتاح</th><th class="num">الوزن</th><th class="num">استخدام</th><th>الحالة</th><th>آخر خطأ</th><th></th></tr>
+          ${p.keys.map((k) => `<tr>
+            <td>${esc(k.label)}</td><td class="mono ltr">••••${esc(k.key_hint)}</td><td class="num">${k.weight}</td><td class="num">${k.used_count}</td>
+            <td>${!k.enabled ? '<span class="badge">موقوف</span>' : k.cooling ? `<span class="badge warn">تبريد حتى ${new Date(k.cooldown_until * 1000).toLocaleTimeString()}</span>` : '<span class="badge ok">جاهز</span>'}</td>
+            <td class="small muted err-cell">${esc(k.last_error || '')}</td>
+            <td class="row" style="flex-wrap:nowrap">
+              <button class="small" data-act="test-key" data-k="${k.id}">اختبار</button>
+              <button class="small" data-act="rotate-key" data-k="${k.id}">تبديل</button>
+              <button class="small" data-act="toggle-key" data-k="${k.id}" data-en="${k.enabled}">${k.enabled ? 'إيقاف' : 'تفعيل'}</button>
+              ${k.cooling || k.last_error ? `<button class="small" data-act="reset-key" data-k="${k.id}">تصفير</button>` : ''}
+              <button class="small danger" data-act="del-key" data-k="${k.id}">حذف</button>
+            </td></tr>`).join('') || '<tr><td colspan="7" class="muted">لا مفاتيح — أضف واحد تحت</td></tr>'}
+        </table></div>
+        <form class="row" data-addkey="${esc(p.id)}" style="margin-top:10px" autocomplete="off">
+          <input name="label" placeholder="اسم (حساب 1)" style="max-width:160px" autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+          <input name="key" type="text" class="ltr secret-input" placeholder="API key" required style="flex:1;min-width:200px" autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+          <input name="weight" type="number" value="1" min="1" style="max-width:80px" title="الوزن">
+          <button class="primary">+ إضافة مفتاح</button>
+        </form>
+      </div>
+    </details>`;
+  }).join('') || `<div class="card empty">${icon('plug', 40)}<div>${S.providers.length ? 'ما في مزوّد بهالبحث' : 'ما في مزوّدين بعد'}</div><button class="primary" style="margin-top:12px" data-act="new-provider">+ مزوّد جديد</button></div>`;
+}
+$('#provSearch').addEventListener('input', (e) => { PV.q = e.target.value.trim(); renderProviders(); });
+$('#provFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-f]'); if (!b) return;
+  PV.f = b.dataset.f; $$('#provFilter button').forEach((x) => x.classList.toggle('on', x === b)); renderProviders();
+});
+$('#provExpand').addEventListener('click', () => { S.providers.forEach((p) => PV.open.add(p.id)); saveOpen(); $$('#providerList details').forEach((d) => { d.open = true; }); });
+$('#provCollapse').addEventListener('click', () => { PV.open.clear(); saveOpen(); $$('#providerList details').forEach((d) => { d.open = false; }); });
+$('#providerList').addEventListener('toggle', (e) => {
+  const id = e.target.dataset?.pid; if (!id || PV.q) return;
+  if (e.target.open) PV.open.add(id); else PV.open.delete(id); saveOpen();
+}, true);
+// the on/off switch lives inside <summary>: don't let it fold the card
+$('#providerList').addEventListener('click', (e) => { if (e.target.closest('.switch')) e.stopPropagation(); }, true);
+$('#providerList').addEventListener('change', guard(async (e) => {
+  const t = e.target; if (t.dataset?.act !== 'toggle-provider') return;
+  const prov = S.providers.find((x) => x.id === t.dataset.p);
+  await api('POST', '/api/admin/providers', { ...prov, enabled: t.checked });
+  toast(t.checked ? `${prov.name}: مفعّل` : `${prov.name}: موقوف — ما رح يوصله ولا طلب`);
+  await loadProviders();
+}));
+
+const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+function openProviderDialog(prov) {
+  const f = $('#providerForm'); f.reset();
+  const sel = $('#provPreset');
+  if (!sel.options.length) sel.innerHTML = PRESETS.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.openai || x.anthropic ? ` — ${esc((x.openai || x.anthropic).replace(/^https:\/\//, ''))}` : ''}</option>`).join('');
+  f.dataset.editing = prov ? prov.id : '';
+  $('#provDlgTitle').lastChild.textContent = prov ? `تعديل ${prov.name}` : 'مزوّد جديد';
+  $('#presetWrap').classList.toggle('hidden', !!prov);
+  f.elements.id.readOnly = !!prov;
+  if (prov) {
+    for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers', 'compat', 'auto']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
+    f.elements.billing.value = prov.billing || 'usage';
+    f.elements.monthly_fee.value = prov.monthly_fee ? prov.monthly_fee / M : '';
+  } else { sel.value = 'custom'; }
+  $('#provDlg').showModal();
+  (prov ? f.elements.name : sel).focus();
+}
+$('#provPreset').addEventListener('change', (e) => {
+  const x = PRESETS.find((p) => p.id === e.target.value), f = $('#providerForm');
+  if (!x || x.id === 'custom') { f.elements.name.value = ''; f.elements.id.value = ''; f.elements.openai_base_url.value = ''; f.elements.anthropic_base_url.value = ''; f.elements.name.focus(); return; }
+  let id = x.id; for (let i = 2; S.providers.some((p) => p.id === id); i++) id = `${x.id}-${i}`; // a second account of the same provider
+  f.elements.name.value = id === x.id ? x.name : `${x.name} ${id.split('-').pop()}`;
+  f.elements.id.value = id;
+  f.elements.openai_base_url.value = x.openai || '';
+  f.elements.anthropic_base_url.value = x.anthropic || '';
+  f.elements.auth_style.value = x.auth || 'bearer';
+  f.elements.billing.value = x.billing || 'usage';
+  f.elements.key.focus();
+});
+$('#providerForm').elements.name.addEventListener('input', (e) => {
+  const f = $('#providerForm'); if (f.dataset.editing || f.elements.id.dataset.touched) return;
+  f.elements.id.value = slug(e.target.value);
+});
+$('#providerForm').elements.id.addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
+$('#provNew').addEventListener('click', () => { delete $('#providerForm').elements.id.dataset.touched; openProviderDialog(null); });
+addAction('أضف مزوّد جديد', () => { goTab('providers'); setTimeout(() => $('#provNew').click(), 50); });
 
 $('#providerList').addEventListener('submit', guard(async (e) => {
   const pid = e.target.dataset.addkey; if (!pid) return;
@@ -280,14 +392,13 @@ $('#providerList').addEventListener('click', guard(async (e) => {
   } else if (act === 'archive-provider') {
     if (!confirm('أرشفة المزوّد؟ مساراته رح تتوقف (والنماذج اللي ما إلها غيره رح تتأرشف بالفحص الجاي).')) return;
     await api('POST', `/api/admin/providers/${p}/archive`); await loadProviders();
-  } else if (act === 'toggle-provider') {
-    await api('POST', '/api/admin/providers', { ...prov, enabled: !prov.enabled }); await loadProviders();
   } else if (act === 'edit-provider') {
-    const f = $('#providerForm');
-    for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers', 'compat', 'auto']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
-    f.elements.billing.value = prov.billing || 'usage';
-    f.elements.monthly_fee.value = prov.monthly_fee ? prov.monthly_fee / M : '';
-    f.scrollIntoView({ behavior: 'smooth' });
+    openProviderDialog(prov);
+  } else if (act === 'new-provider') {
+    openProviderDialog(null);
+  } else if (act === 'delete-provider') {
+    if (prompt(`حذف ${prov.name} نهائياً مع مفاتيحه ومساراته؟ النماذج اللي ما إلها مزوّد غيره رح توقف.\nللتأكيد اكتب معرّفه: ${prov.id}`) !== prov.id) return;
+    await api('DELETE', `/api/admin/providers/${encodeURIComponent(p)}`); PV.open.delete(p); saveOpen(); toast('انحذف'); await loadProviders();
   } else if (act === 'discover') {
     b.disabled = true;
     const list = await api('POST', `/api/admin/providers/${p}/discover`).finally(() => { b.disabled = false; });
@@ -321,10 +432,23 @@ function showDiscover(providerId, list) {
 
 $('#providerForm').addEventListener('submit', guard(async (e) => {
   e.preventDefault();
-  const d = formData(e.target);
+  const f = e.target, { key, ...d } = formData(f);
   const prev = S.providers.find((p) => p.id === d.id);
+  if (prev && !f.dataset.editing && !confirm(`في مزوّد بنفس المعرّف (${d.id}). بدك تستبدل إعداداته؟`)) return;
   await api('POST', '/api/admin/providers', { ...d, monthly_fee: Math.round((+d.monthly_fee || 0) * M), enabled: prev ? !!prev.enabled : true });
-  e.target.reset(); toast('تم الحفظ'); await loadProviders();
+  let msg = 'تم الحفظ';
+  if (key && key.trim()) {
+    await api('POST', `/api/admin/providers/${encodeURIComponent(d.id)}/keys`, { label: 'key 1', key: key.trim(), weight: 1 });
+    S.providers = await api('GET', '/api/admin/providers');
+    const kid = S.providers.find((p) => p.id === d.id)?.keys.at(-1)?.id;
+    const t = kid ? await api('POST', `/api/admin/keys/${kid}/test`).catch(() => null) : null;
+    msg = t?.ok ? `✅ انحفظ والمفتاح شغّال (${t.latency_ms}ms) — استعرض نماذجه من بطاقته` : `انحفظ، بس اختبار المفتاح فشل${t ? `: ${t.status}` : ''}`;
+    if (t && !t.ok) toast(msg, true);
+  }
+  $('#provDlg').close(); PV.open.add(d.id); saveOpen();
+  if (!key || !msg.startsWith('انحفظ،')) toast(msg);
+  await loadProviders();
+  $(`#providerList [data-pid="${CSS.escape(d.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }));
 
 // ── groups ──
@@ -644,3 +768,52 @@ if (store.get(KEY)) boot().catch(() => showLogin()); else showLogin();
 
 // dialogs: close buttons (no inline handlers — the CSP forbids them)
 document.addEventListener('click', (e) => { if (e.target.closest('.dlg-close')) e.target.closest('dialog')?.close(); });
+
+// ── copy OpenRouter prices onto models ──
+const OR = { models: [], catalog: [], byId: new Map() };
+const per1M = (v) => (v == null ? '—' : `⁦$${(v / M).toFixed(v && v < 1e5 ? 3 : 2)}⁩`);
+const samePrice = (m, x) => x && m.pricing_mode === 'token' && m.price_in === x.price_in && m.price_out === x.price_out && (m.price_cache_read || 0) === (x.price_cache_read || 0);
+$('#orPrices').addEventListener('click', guard(async (e) => {
+  const b = e.currentTarget; b.classList.add('loading');
+  try { Object.assign(OR, await api('GET', '/api/admin/pricing/openrouter')); } finally { b.classList.remove('loading'); }
+  OR.byId = new Map(OR.catalog.map((c) => [c.id, c]));
+  $('#orIds').innerHTML = OR.catalog.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  OR.models.forEach((m) => { m.pick = m.match ? { ...m.match } : null; });
+  renderOr(); $('#orDlg').showModal();
+}));
+function renderOr() {
+  const onlyDiff = $('#orOnlyDiff').checked;
+  const rows = OR.models.filter((m) => !onlyDiff || !samePrice(m, m.pick));
+  const matched = OR.models.filter((m) => m.pick).length, diff = OR.models.filter((m) => m.pick && !samePrice(m, m.pick)).length;
+  $('#orSummary').textContent = `${OR.models.length} نموذج · ${matched} انطابق · ${diff} سعره مختلف عن OpenRouter`;
+  $('#orTable').innerHTML = `<tr><th><input type="checkbox" id="orAll" aria-label="الكل"></th><th>النموذج</th><th>سعرك الحالي (دخل · خرج /1M)</th><th>نموذج OpenRouter</th><th class="num">دخل /1M</th><th class="num">خرج /1M</th><th class="num">كاش /1M</th></tr>` +
+    (rows.map((m) => {
+      const i = OR.models.indexOf(m), x = m.pick, same = samePrice(m, x);
+      const cur = m.pricing_mode === 'request' ? `${usdPrecise(m.price_request)} / طلب` : `${per1M(m.price_in)} · ${per1M(m.price_out)}${m.pricing_mode === 'provider' ? ' <span class="badge">provider</span>' : ''}`;
+      return `<tr data-i="${i}"><td><input type="checkbox" class="orSel" ${x && !same ? 'checked' : ''} ${x ? '' : 'disabled'}></td>
+        <td><strong>${esc(m.name)}</strong><div class="mono ltr small muted">${esc(m.id)}</div></td>
+        <td class="small">${cur}${!m.price_in && !m.price_out && m.pricing_mode !== 'request' ? ' <span class="badge warn">مجاني!</span>' : ''}</td>
+        <td><input class="orId ltr" list="orIds" value="${esc(x?.id || '')}" placeholder="z-ai/glm-…" style="min-width:220px;width:100%" autocomplete="off">
+          ${x ? `<div class="small muted">${m.match && x.id === m.match.id ? (m.match.how === 'route' ? 'من مسار OpenRouter' : 'مطابقة بالاسم') : 'اختيار يدوي'}${same ? ' · <span style="color:var(--ok)">نفس السعر</span>' : ''}</div>` : '<div class="small" style="color:var(--warn)">ما انطابق — اكتب المعرّف</div>'}</td>
+        <td class="num">${x ? per1M(x.price_in) : '—'}</td><td class="num">${x ? per1M(x.price_out) : '—'}</td><td class="num">${x ? per1M(x.price_cache_read) : '—'}</td></tr>`;
+    }).join('') || `<tr><td colspan="7"><div class="empty">${icon('check', 40)}<div>كل النماذج المطابقة سعرها نفس OpenRouter</div></div></td></tr>`);
+  $('#orAll').addEventListener('change', (e) => $$('#orTable .orSel:not(:disabled)').forEach((c) => { c.checked = e.target.checked; }));
+}
+$('#orOnlyDiff').addEventListener('change', renderOr);
+$('#orTable').addEventListener('change', (e) => {
+  if (!e.target.classList.contains('orId')) return;
+  const m = OR.models[+e.target.closest('tr').dataset.i], c = OR.byId.get(e.target.value.trim());
+  m.pick = c ? { ...c } : null; renderOr();
+});
+$('#orApply').addEventListener('click', guard(async (e) => {
+  const items = $$('#orTable tr[data-i]').filter((tr) => tr.querySelector('.orSel')?.checked).map((tr) => {
+    const m = OR.models[+tr.dataset.i]; return { id: m.id, price_in: m.pick.price_in, price_out: m.pick.price_out, price_cache_read: m.pick.price_cache_read };
+  });
+  if (!items.length) return toast('ما اخترت ولا نموذج', true);
+  const mk = $('#orMarkup').value;
+  const b = e.currentTarget; b.classList.add('loading');
+  try { await api('POST', '/api/admin/pricing/apply', { items, markup_pct: mk === '' ? null : +mk }); } finally { b.classList.remove('loading'); }
+  $('#orDlg').close(); toast(`✅ ${items.length} نموذج صار بنفس سعر OpenRouter${mk ? ` + ${mk}%` : ''}`);
+  await loadModels();
+}));
+addAction('سعّر النماذج متل OpenRouter', () => { goTab('models'); setTimeout(() => $('#orPrices').click(), 50); });

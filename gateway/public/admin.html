@@ -227,28 +227,21 @@
     </div>
 
     <div data-panel="providers">
-      <div id="providerList"></div>
-      <div class="card">
-        <h2><i data-i="plug"></i>مزوّد جديد / تعديل</h2>
-        <form id="providerForm" class="form">
-          <label class="f">المعرّف<input name="id" class="ltr" required placeholder="deepseek"></label>
-          <label class="f">الاسم<input name="name" placeholder="DeepSeek"></label>
-          <label class="f">OpenAI base URL<input name="openai_base_url" class="ltr" placeholder="https://api.x.com/v1"></label>
-          <label class="f">Anthropic base URL<input name="anthropic_base_url" class="ltr" placeholder="https://api.x.com/anthropic"></label>
-          <label class="f">المصادقة<select name="auth_style"><option value="bearer">Bearer</option><option value="x-api-key">x-api-key (Anthropic)</option></select></label>
-          <label class="f">طريقة الدفع للمزوّد<select name="billing"><option value="usage">حسب الاستخدام</option><option value="subscription">اشتراك شهري ثابت</option></select></label>
-          <label class="f">الاشتراك الشهري ($)<input name="monthly_fee" type="number" step="0.01" min="0" placeholder="مثلاً 30"></label>
-          <label class="f">Headers إضافية (JSON)<input name="extra_headers" class="ltr" placeholder='{"X-Title":"abd"}'></label>
-          <label class="f" style="grid-column:1/-1">سياسة النماذج الجديدة auto (JSON)<input name="auto" class="ltr" placeholder='{"publish":true,"free_only":false,"group":"coding","pricing_mode":"request","price_request":0,"markup_pct":0}'></label>
-          <label class="f" style="grid-column:1/-1">توافق الطلبات compat (JSON)<input name="compat" class="ltr" placeholder='{"max_tokens_field":"max_tokens","developer_role":false,"efforts":["low","medium","high"]}'></label>
-          <button class="primary">حفظ</button>
-        </form>
+      <div class="card" style="padding:14px 16px">
+        <div class="filters">
+          <label class="search" style="flex:1"><i data-i="search" data-s="16"></i><input id="provSearch" type="search" placeholder="ابحث باسم المزوّد أو الرابط… (/)" style="width:100%"></label>
+          <div class="seg" id="provFilter"><button data-f="" class="on">الكل</button><button data-f="on">مفعّل</button><button data-f="off">موقوف</button><button data-f="nokey">بلا مفاتيح</button><button data-f="archived">مؤرشف</button></div>
+          <button class="ghost small" id="provExpand">فتح الكل</button><button class="ghost small" id="provCollapse">طي الكل</button>
+          <button class="primary" id="provNew">+ مزوّد جديد</button>
+        </div>
+        <div class="small muted" id="provCount" style="margin-top:8px"></div>
       </div>
+      <div id="providerList"></div>
     </div>
 
     <div data-panel="models">
       <div class="card">
-        <div class="row"><h2 style="margin:0"><i data-i="cpu"></i>النماذج</h2><span class="spacer"></span><button class="primary" id="newModel">+ نموذج جديد</button></div>
+        <div class="row"><h2 style="margin:0"><i data-i="cpu"></i>النماذج</h2><span class="spacer"></span><button id="orPrices">💲 أسعار OpenRouter</button><button class="primary" id="newModel">+ نموذج جديد</button></div>
         <p class="muted small">الأسعار بالدولار. وضع التسعير: <b>token</b> = جدولك لكل مليون توكن · <b>request</b> = سعر ثابت لكل طلب · <b>provider</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك. النسبة الإضافية تنضاف فوق.</p>
         <div class="table-wrap"><table id="modelTable"></table></div>
       </div>
@@ -352,6 +345,44 @@
   <button type="button" class="small" id="addRoute">➕ مسار</button>
   <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" id="modelCancel">إلغاء</button><button class="primary" id="modelSave" value="save">حفظ</button></div>
 </form></dialog>
+
+<dialog id="provDlg"><form id="providerForm" method="dialog" autocomplete="off">
+  <div class="card-head"><h2 id="provDlgTitle" style="margin:0"><i data-i="plug"></i>مزوّد جديد</h2><span class="spacer"></span><button type="button" class="ghost icon-btn dlg-close" aria-label="إغلاق">✕</button></div>
+  <label class="f" id="presetWrap" style="margin-bottom:14px">ابدأ من مزوّد معروف، أو اختر "مخصص" وحط أي رابط
+    <select id="provPreset"></select></label>
+  <div class="form">
+    <label class="f">الاسم<input name="name" placeholder="DeepSeek" required autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></label>
+    <label class="f">المعرّف (بالإنجليزي، ما بيتغيّر)<input name="id" class="ltr" required placeholder="deepseek" pattern="[A-Za-z0-9][A-Za-z0-9._:\/\-]{0,80}"></label>
+    <label class="f" style="grid-column:1/-1"><span>رابط OpenAI-compatible (ينتهي غالباً بـ <span class="ltr">/v1</span>)</span><input name="openai_base_url" class="ltr" placeholder="https://api.example.com/v1" type="url"></label>
+    <label class="f" style="grid-column:1/-1">رابط Anthropic-compatible (اختياري — لـ Claude Code مباشرة)<input name="anthropic_base_url" class="ltr" placeholder="https://api.example.com/anthropic" type="url"></label>
+    <label class="f">المصادقة<select name="auth_style"><option value="bearer">Authorization: Bearer</option><option value="x-api-key">x-api-key (Anthropic)</option></select></label>
+    <label class="f">طريقة الدفع للمزوّد<select name="billing"><option value="usage">حسب الاستخدام</option><option value="subscription">اشتراك شهري ثابت</option></select></label>
+    <label class="f">الاشتراك الشهري ($)<input name="monthly_fee" type="number" step="0.01" min="0" placeholder="مثلاً 30"></label>
+    <label class="f" id="provKeyWrap">مفتاح API (اختياري — بينحفظ مشفّر)<input name="key" type="text" class="ltr secret-input" placeholder="sk-…" autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></label>
+  </div>
+  <details class="explain" style="margin-top:14px"><summary>إعدادات متقدمة</summary>
+    <div class="form" style="margin-top:10px">
+      <label class="f" style="grid-column:1/-1">Headers إضافية (JSON)<input name="extra_headers" class="ltr" placeholder='{"X-Title":"abd"}'></label>
+      <label class="f" style="grid-column:1/-1">سياسة النماذج الجديدة auto (JSON)<input name="auto" class="ltr" placeholder='{"publish":true,"free_only":false,"group":"coding","pricing_mode":"request","price_request":0,"markup_pct":0}'></label>
+      <label class="f" style="grid-column:1/-1">توافق الطلبات compat (JSON)<input name="compat" class="ltr" placeholder='{"max_tokens_field":"max_tokens","developer_role":false,"efforts":["low","medium","high"]}'></label>
+    </div>
+  </details>
+  <p class="small muted" style="margin:12px 0 0">الروابط لازم تكون <span class="ltr">https://</span>. بعد الحفظ بتقدر تستعرض نماذج المزوّد وتضيفها بضغطة.</p>
+  <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" class="dlg-close">إلغاء</button><button class="primary" value="save">حفظ المزوّد</button></div>
+</form></dialog>
+
+<dialog id="orDlg" style="max-width:min(1100px,96vw)">
+  <div class="card-head"><h2 style="margin:0">💲 نفس أسعار OpenRouter</h2><span class="spacer"></span><button type="button" class="ghost icon-btn dlg-close" aria-label="إغلاق">✕</button></div>
+  <p class="small muted" style="margin-top:-6px">البوابة جابت أسعار OpenRouter الحالية لكل مليون توكن، وطابقتها مع نماذجك (من مسار OpenRouter أو من الاسم). اختار النماذج وطبّق: بيصير وضع التسعير <b>token</b> بنفس سعرهم بالضبط. وإذا ما انطابق نموذج، اكتب معرّفه عند OpenRouter بخانة "نموذج OpenRouter".</p>
+  <div class="row" style="margin:10px 0">
+    <label class="row small">نسبة إضافية فوق سعرهم % <input id="orMarkup" type="number" min="0" max="1000" placeholder="خليها متل ما هي" style="width:170px"></label>
+    <label class="row small"><input type="checkbox" id="orOnlyDiff" checked> بس اللي سعرها مختلف</label>
+    <span class="spacer"></span><span class="small muted" id="orSummary"></span>
+  </div>
+  <datalist id="orIds"></datalist>
+  <div class="table-wrap" style="max-height:58vh;overflow:auto"><table id="orTable"></table></div>
+  <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" class="dlg-close">إلغاء</button><button class="primary" id="orApply">طبّق على المحدد</button></div>
+</dialog>
 
 <dialog id="userDlg"><div id="userDlgBody"></div><div class="row" style="margin-top:12px"><span class="spacer"></span><button type="button" class="dlg-close">إغلاق</button></div></dialog>
 <dialog id="discoverDlg"><div id="discoverBody"></div><div class="row" style="margin-top:12px"><span class="spacer"></span><button type="button" class="dlg-close">إغلاق</button></div></dialog>

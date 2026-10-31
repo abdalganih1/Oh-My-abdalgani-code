@@ -11,7 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const env = { DB: new D1Shim().migrate(path.join(here, '..', 'migrations')), ADMIN_TOKEN: 'adm', ENCRYPTION_KEY: 'k', NOTIFY_WEBHOOK: 'https://hooks.example.com/x' };
 const H = 3600, D = 86400, T0 = 1_800_000_000;
 const catalogs = {
-  zai: [{ id: 'glm-5.2' }, { id: 'glm-5.1' }, { id: 'glm-4.7' }],
+  zai: [{ id: 'glm-5.3' }, { id: 'glm-5.3-flash' }, { id: 'glm-5.2' }, { id: 'glm-5.1' }, { id: 'glm-4.7' }],
   nvidia: [{ id: 'meta/llama-4' }],
   openrouter: [{ id: 'z-ai/glm-5.2', pricing: { prompt: '0.000001', completion: '0.000004' } }],
 };
@@ -99,7 +99,7 @@ test('model removed by the provider → archived after 6h (not before), student 
   assert.equal((await model('glm-4.7')).status, 'archived');
   assert.equal((await call('POST', '/v1/chat/completions', student, { model: 'glm-4.7', messages: [{ role: 'user', content: 'x' }] })).status, 410);
   const r = await call('POST', '/v1/chat/completions', student, { model: 'abd-main', messages: [{ role: 'user', content: 'x' }] });
-  assert.equal(r.status, 200); assert.equal(r.data.model, 'glm-5.2', 'archived personal pick → admin default');
+  assert.equal(r.status, 200); assert.equal(r.data.model, 'glm-5.3', 'archived personal pick → admin default');
   assert.ok(!(await call('GET', '/v1/models', student)).data.data.some((m) => m.id === 'glm-4.7'));
   const mine = (await call('GET', '/api/me/models', student)).data.models.find((m) => m.id === 'glm-4.7');
   assert.equal(mine.status, 'archived'); assert.equal(mine.available, false);
