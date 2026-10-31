@@ -68,7 +68,10 @@ async function loadOverview() {
     tile('رصيد لسا بذمتك', usd(m.outstanding_usd), `${tokens(m.outstanding_tokens)} توكن غير مستهلكة (كل الاشتراكات الفعّالة)`),
   ].join('');
   drawSeries(); drawTops(); drawHeat(); drawMoney(); drawProviders();
-  setUnread((await api('GET', '/api/admin/stats')).unread_events);
+  const st = await api('GET', '/api/admin/stats');
+  setUnread(st.unread_events);
+  const n = (st.open_alerts || 0);
+  $('#secBadge').textContent = n || ''; $('#secBadge').classList.toggle('hidden', !n);
   loadExpenses();
 }
 
@@ -420,7 +423,7 @@ function renderUsers() {
     S.users.filter((u) => !q || `${u.name} ${u.email || ''}`.toLowerCase().includes(q)).map((u) => `<tr>
       <td class="muted">${u.id}</td><td><strong>${esc(u.name)}</strong><div class="small muted ltr" style="text-align:start">${esc(u.email || '')}</div></td>
       <td class="num">${usd(u.usd_left)}</td><td class="num">${tokens(u.tokens_left)}</td><td>${u.keys}</td><td class="small">${date(u.last_request)}</td>
-      <td>${u.disabled ? '<span class="badge bad">موقوف</span>' : '<span class="badge ok">فعّال</span>'}</td>
+      <td>${u.approved === 0 ? `<button class="small primary" data-approve="${u.id}">موافقة</button>` : u.disabled ? '<span class="badge bad">موقوف</span>' : '<span class="badge ok">فعّال</span>'}${u.self_signup ? ' <span class="badge">تسجيل ذاتي</span>' : ''}</td>
       <td><button class="small" data-user="${u.id}">إدارة</button></td></tr>`).join('');
 }
 $('#userSearch').addEventListener('input', renderUsers);
@@ -436,7 +439,11 @@ function showSecret(sel, key, label) {
   el.innerHTML = `${esc(label)}<br><strong>${esc(key)}</strong> <button class="small" type="button">نسخ</button>`;
   el.querySelector('button').onclick = () => copy(key);
 }
-$('#userTable').addEventListener('click', guard(async (e) => { const id = e.target.dataset?.user; if (id) await openUser(+id); }));
+$('#userTable').addEventListener('click', guard(async (e) => {
+  const { user, approve } = e.target.dataset || {};
+  if (approve) { await api('PATCH', `/api/admin/users/${approve}`, { approved: true }); toast('تمت الموافقة'); await loadUsers(); }
+  if (user) await openUser(+user);
+}));
 
 async function openUser(id) {
   const d = await api('GET', `/api/admin/users/${id}`);
@@ -446,8 +453,13 @@ async function openUser(id) {
     <div class="row"><h2 style="margin:0">${esc(u.name)}</h2><span class="spacer"></span>
       <button class="small" data-uact="toggle">${u.disabled ? 'تفعيل الحساب' : 'إيقاف الحساب'}</button>
       <button class="small" data-uact="newkey">مفتاح جديد</button>
+      <button class="small" data-uact="resetpw">كلمة سر مؤقتة</button>
       <button class="small danger" data-uact="delete">حذف</button></div>
     <div id="uSecret" class="secret hidden" style="margin-top:8px"></div>
+    <div class="small muted" style="margin-top:6px">${esc(u.email || '')} ${u.created_ip ? `· سجّل من ${esc(u.created_ip)}` : ''} ${u.last_login_at ? `· آخر دخول ${date(u.last_login_at)}` : ''}</div>
+    <h3>سقف الصرف (يقدر الطالب يغيّره ضمن الحد الأعلى)</h3>
+    <form id="ucapForm" class="row"><label class="row small">يومي $<input name="daily" type="number" step="0.01" min="0.1" value="${(u.daily_cap / 1e6).toFixed(2)}" style="max-width:110px"></label>
+      <label class="row small">شهري $<input name="monthly" type="number" step="0.01" min="0" value="${u.monthly_cap ? (u.monthly_cap / 1e6).toFixed(2) : ''}" placeholder="بلا" style="max-width:110px"></label><button class="small primary">حفظ</button></form>
     <h3>منح اشتراك مباشر</h3>
     <form id="grantForm" class="form">
       <label class="f">النوع<select name="kind"><option value="usd">دولار</option><option value="tokens">توكنات</option></select></label>
@@ -474,10 +486,15 @@ async function openUser(id) {
   body.onclick = guard(async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.uact === 'toggle') { await api('PATCH', `/api/admin/users/${id}`, { disabled: !u.disabled }); await openUser(id); await loadUsers(); }
+    if (b.dataset.uact === 'resetpw') { if (!confirm('توليد كلمة سر مؤقتة؟ (بيطلع الطالب من كل الأجهزة)')) return; const r = await api('PATCH', `/api/admin/users/${id}`, { reset_password: true }); showSecret('#uSecret', r.temp_password, 'كلمة السر المؤقتة — أرسلها للطالب ليغيّرها:'); return; }
     if (b.dataset.uact === 'newkey') { const r = await api('POST', `/api/admin/users/${id}/keys`, { name: 'admin-issued' }); await openUser(id); showSecret('#uSecret', r.api_key, 'المفتاح الجديد:'); }
     if (b.dataset.uact === 'delete' && confirm('حذف الطالب وكل بياناته؟')) { await api('DELETE', `/api/admin/users/${id}`); $('#userDlg').close(); await loadUsers(); }
     if (b.dataset.sub) { await api('PATCH', `/api/admin/subscriptions/${b.dataset.sub}`, { disabled: b.dataset.dis !== '1' }); await openUser(id); }
     if (b.dataset.revoke && confirm('إلغاء المفتاح؟')) { await api('DELETE', `/api/admin/users/${id}/keys/${b.dataset.revoke}`); await openUser(id); }
+  });
+  $('#ucapForm').onsubmit = guard(async (e) => {
+    e.preventDefault(); const d = formData(e.target);
+    await api('PATCH', `/api/admin/users/${id}`, { daily_cap: Math.round(+d.daily * M), monthly_cap: d.monthly ? Math.round(+d.monthly * M) : 0 }); toast('تم');
   });
   $('#grantForm').onsubmit = guard(async (e) => {
     e.preventDefault();
@@ -518,57 +535,101 @@ $('#couponTable').addEventListener('click', guard(async (e) => {
   if (b.dataset.cdel && confirm('حذف الكوبون؟')) { await api('DELETE', `/api/admin/coupons/${encodeURIComponent(b.dataset.cdel)}`); await loadCoupons(); }
 }));
 
-// ── usage ──
-async function loadUsage() {
-  const rows = await api('GET', '/api/admin/usage?limit=300');
-  $('#usageTable').innerHTML = '<tr><th>الوقت</th><th>الطالب</th><th>النموذج</th><th>المزوّد</th><th class="num">دخل</th><th class="num">خرج</th><th class="num">كلفة</th><th class="num">ms</th><th>حالة</th></tr>' +
-    rows.map((r) => `<tr><td class="small">${date(r.created_at)}</td><td>${esc(r.user_name || r.user_id)}</td><td class="mono ltr small">${r.requested_model && r.requested_model !== r.model_id ? esc(r.requested_model) + ' → ' : ''}${esc(r.model_id)}${r.upstream_model ? `<div class="muted">${esc(r.upstream_model)}</div>` : ''}</td>
+// ── live log (LiteLLM-style). Resource rules: setTimeout chain (never overlapping), only new
+// rows (cursor), max 500 rows in the DOM, paused when the tab/panel is hidden or idle 10 min,
+// exponential back-off on errors. Worst case ≈ 12 tiny requests/min while you watch.
+const LIVE = { timer: null, after: 0, running: true, busy: false, rows: [], lastAct: Date.now(), backoff: 5000, usersLoaded: false };
+['pointermove', 'keydown', 'scroll', 'click'].forEach((ev) => window.addEventListener(ev, () => { LIVE.lastAct = Date.now(); }, { passive: true }));
+const livePanelVisible = () => !$('[data-panel="usage"]').classList.contains('hidden');
+function liveSetState(text, cls) { const d = $('#liveDot'); d.textContent = text; d.className = `badge ${cls || ''}`; }
+function liveSchedule(ms) { clearTimeout(LIVE.timer); LIVE.timer = setTimeout(liveTick, ms); }
+async function liveTick() {
+  if (!LIVE.running) return liveSetState('موقوف');
+  if (document.hidden || !livePanelVisible()) return liveSetState('موقوف (التبويب مخفي)');
+  if (Date.now() - LIVE.lastAct > 10 * 60 * 1000) { LIVE.running = false; $('#liveToggle').textContent = '▶ استئناف'; return liveSetState('موقوف (ما في نشاط)', 'warn'); }
+  if (LIVE.busy) return liveSchedule(1000);
+  LIVE.busy = true;
+  try {
+    const q = new URLSearchParams({ after: String(LIVE.after), limit: LIVE.after ? '200' : '100' });
+    if ($('#liveUser').value) q.set('user_id', $('#liveUser').value);
+    if ($('#liveModel').value.trim()) q.set('model', $('#liveModel').value.trim());
+    if ($('#liveErrors').checked) q.set('errors', '1');
+    const { rows } = await api('GET', `/api/admin/live?${q}`);
+    if (rows.length) { LIVE.after = rows.at(-1).id; LIVE.rows = [...rows.reverse(), ...LIVE.rows].slice(0, 500); renderLive(rows.length); }
+    else if (!LIVE.rows.length) renderLive(0);
+    LIVE.backoff = 5000;
+    liveSetState(`مباشر · ${new Date().toLocaleTimeString('en-GB')}`, 'ok');
+  } catch (e) {
+    LIVE.backoff = Math.min(60000, LIVE.backoff * 2);
+    liveSetState(`خطأ — إعادة بعد ${LIVE.backoff / 1000}ث`, 'bad');
+  } finally { LIVE.busy = false; }
+  liveSchedule(LIVE.backoff);
+}
+function renderLive(fresh) {
+  $('#liveTable').innerHTML = '<tr><th>الوقت</th><th>الطالب</th><th>النموذج</th><th>المزوّد</th><th class="num">دخل</th><th class="num">خرج</th><th class="num">كلفة</th><th class="num">ms</th><th>IP</th><th>حالة</th></tr>' +
+    (LIVE.rows.map((r, i) => `<tr data-live="${r.id}" style="${i < fresh ? 'background:var(--accent-2)' : ''}">
+      <td class="small" style="white-space:nowrap">${new Date(r.created_at * 1000).toLocaleTimeString('en-GB')}</td><td>${esc(r.user_name || r.user_id)}</td>
+      <td class="mono ltr small">${r.requested_model && r.requested_model !== r.model_id ? esc(r.requested_model) + ' → ' : ''}${esc(r.model_id)}</td>
       <td class="small">${esc(r.provider_id || '—')}</td><td class="num">${tokens(r.prompt_tokens)}</td><td class="num">${tokens(r.completion_tokens)}</td>
-      <td class="num">${usdPrecise(r.cost)}</td><td class="num">${r.latency_ms ?? ''}</td>
-      <td title="${esc(r.error || '')}">${r.status < 400 ? `<span class="badge ok">${r.status}</span>` : `<span class="badge bad">${r.status}</span>`}</td></tr>`).join('');
+      <td class="num">${usdPrecise(r.cost)}</td><td class="num">${r.latency_ms ?? ''}</td><td class="mono ltr small">${esc(r.ip || '')}</td>
+      <td title="${esc(r.error || '')}">${r.status < 400 ? `<span class="badge ok">${r.status}</span>` : `<span class="badge bad">${r.status}</span>`}</td></tr>`).join('') || '<tr><td class="muted">ما في طلبات بعد</td></tr>');
 }
+function liveRestart() { LIVE.after = 0; LIVE.rows = []; LIVE.lastAct = Date.now(); if (LIVE.running) liveSchedule(0); }
+async function loadUsage() {
+  if (!LIVE.usersLoaded) {
+    const users = await api('GET', '/api/admin/users');
+    $('#liveUser').innerHTML = '<option value="">كل الطلاب</option>' + users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+    LIVE.usersLoaded = true;
+  }
+  LIVE.lastAct = Date.now();
+  if (LIVE.running) liveSchedule(0);
+}
+$('#liveToggle').addEventListener('click', () => {
+  LIVE.running = !LIVE.running; LIVE.lastAct = Date.now();
+  $('#liveToggle').textContent = LIVE.running ? '⏸ إيقاف' : '▶ استئناف';
+  if (LIVE.running) liveSchedule(0); else { clearTimeout(LIVE.timer); liveSetState('موقوف'); }
+});
+['#liveUser', '#liveErrors'].forEach((id) => $(id).addEventListener('change', liveRestart));
+let liveModelT; $('#liveModel').addEventListener('input', () => { clearTimeout(liveModelT); liveModelT = setTimeout(liveRestart, 600); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && LIVE.running && livePanelVisible()) { LIVE.lastAct = Date.now(); liveSchedule(0); } });
+$('#liveTable').addEventListener('click', (e) => {
+  const id = e.target.closest('tr')?.dataset?.live; if (!id) return;
+  const r = LIVE.rows.find((x) => String(x.id) === id); if (!r) return;
+  alert([`#${r.id} · ${new Date(r.created_at * 1000).toLocaleString('en-GB')}`, `الطالب: ${r.user_name} (${r.user_id})`, `الطلب: ${r.requested_model} → ${r.model_id} عبر ${r.provider_id || '—'} (${r.upstream_model || '—'})`,
+    `${r.endpoint} · ${r.status} · ${r.latency_ms}ms`, `توكنات: دخل ${r.prompt_tokens} (كاش ${r.cached_tokens}) · خرج ${r.completion_tokens}`,
+    `كلفة على الطالب ${usdPrecise(r.cost)} · علينا ${usdPrecise(r.upstream_cost)}`, `IP ${r.ip || '—'} · جهاز ${r.device_id || '—'}`, r.error ? `خطأ: ${r.error}` : ''].filter(Boolean).join('\n'));
+});
 
-// ── security ──
-let SEC = null;
-async function loadSecurity() {
-  SEC = await api('GET', '/api/admin/security');
-  const f = $('#secForm');
-  for (const [k, v] of Object.entries(SEC.settings)) if (f.elements[k]) f.elements[k].value = v;
-  const up = SEC.unpriced_models;
-  $('#unpricedCard').classList.toggle('hidden', !up.length);
-  $('#unpricedList').textContent = up.map((m) => m.id).join(', ');
-  const pend = SEC.devices.filter((d) => d.status === 'pending').length;
-  $('#secBadge').textContent = pend || ''; $('#secBadge').classList.toggle('hidden', !pend);
-  $('#blockTable').innerHTML = '<tr><th>النوع</th><th>القيمة</th><th>السبب</th><th>ينتهي</th><th></th></tr>' + (SEC.blocks.map((b) =>
-    `<tr><td>${b.kind === 'ip' ? 'IP' : 'جهاز'}${b.auto ? ' <span class="badge warn">تلقائي</span>' : ''}</td><td class="mono ltr small">${esc(b.value)}</td><td class="small">${esc(b.reason || '')}</td>
-     <td class="small">${b.expires_at ? date(b.expires_at) : 'دائم'}</td><td><button class="small" data-unblock="${b.id}">فك الحظر</button></td></tr>`).join('') || '<tr><td class="muted">لا يوجد</td></tr>');
-  const ST = { active: '<span class="badge ok">مسموح</span>', pending: '<span class="badge warn">بانتظارك</span>', blocked: '<span class="badge bad">محظور</span>' };
-  $('#deviceTable').innerHTML = '<tr><th>الطالب</th><th>الجهاز</th><th>الحالة</th><th>آخر IP</th><th>آخر استخدام</th><th class="num">طلبات</th><th></th></tr>' + (SEC.devices.map((d) =>
-    `<tr><td>${esc(d.user_name || d.user_id)}</td><td>${esc(d.name || '—')}<div class="mono ltr small muted" style="text-align:start">${esc(d.device_id.slice(0, 12))}…</div></td><td>${ST[d.status] || esc(d.status)}</td>
-     <td class="mono ltr small">${esc(d.last_ip || '')}</td><td class="small">${date(d.last_seen)}</td><td class="num">${d.requests}</td>
-     <td class="row" style="flex-wrap:nowrap">${d.status !== 'active' ? `<button class="small primary" data-dev="${d.id}" data-st="active">سماح</button>` : ''}
-       ${d.status !== 'blocked' ? `<button class="small danger" data-dev="${d.id}" data-st="blocked">حظر</button>` : ''}
-       <button class="small" data-devdel="${d.id}" title="حذف من القائمة (يحرر مكان للطالب)">✕</button>
-       ${d.last_ip ? `<button class="small danger" data-blockip="${esc(d.last_ip)}" title="حظر هذا العنوان">IP⛔</button>` : ''}</td></tr>`).join('') || '<tr><td class="muted">لا أجهزة بعد — بتظهر لما الطلاب يستخدموا الأدوات المثبتة عبر abdalgani-setup</td></tr>');
-  $('#ipTable').innerHTML = '<tr><th>العنوان</th><th class="num">طلبات</th><th class="num">طلاب</th><th class="num">أخطاء</th><th></th></tr>' + (SEC.top_ips.map((x) =>
-    `<tr><td class="mono ltr small">${esc(x.ip)}</td><td class="num">${x.requests}</td><td class="num">${x.users}${x.users > 1 ? ' ⚠️' : ''}</td><td class="num">${x.errors}</td>
-     <td><button class="small danger" data-blockip="${esc(x.ip)}">حظر</button></td></tr>`).join('') || '<tr><td class="muted">لا بيانات</td></tr>');
-  $('#secEvents').innerHTML = SEC.events.map((e) => `<tr><td class="small" style="white-space:nowrap">${date(e.created_at)}</td><td>${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">لا أحداث</td></tr>';
+// ── abuse alerts ──
+const SEV = { high: '<span class="badge bad">عالي</span>', warn: '<span class="badge warn">تحذير</span>', info: '<span class="badge">معلومة</span>' };
+async function loadAlerts() {
+  const list = await api('GET', `/api/admin/alerts${$('#alertsAll').checked ? '?all=1' : ''}`);
+  $('#alertTable').innerHTML = '<tr><th>الوقت</th><th>الخطورة</th><th>التنبيه</th><th>إجراء النظام</th><th></th></tr>' + (list.map((a) =>
+    `<tr style="${a.resolved ? 'opacity:.55' : ''}"><td class="small" style="white-space:nowrap">${date(a.created_at)}</td><td>${SEV[a.severity] || ''}</td><td>${esc(a.message)}</td>
+     <td class="small">${esc(a.action || '—')}</td><td class="row" style="flex-wrap:nowrap">
+      ${a.resolved ? '' : `<button class="small" data-resolve="${a.id}">تم</button>`}
+      ${a.rule === 'agent_loop' && !a.resolved ? `<button class="small primary" data-unpause="${a.user_id}">فك الإيقاف</button>` : ''}
+      ${a.user_id ? `<button class="small danger" data-disable="${a.user_id}">إيقاف الطالب</button>` : ''}
+      ${a.ip ? `<button class="small danger" data-blockip="${esc(a.ip)}">حظر IP</button>` : ''}</td></tr>`).join('') || '<tr><td class="muted">✅ ما في تنبيهات مفتوحة</td></tr>');
 }
-$('#secForm').addEventListener('submit', guard(async (e) => { e.preventDefault(); await api('PUT', '/api/admin/security', formData(e.target)); toast('تم الحفظ'); await loadSecurity(); }));
-$('#blockForm').addEventListener('submit', guard(async (e) => { e.preventDefault(); await api('POST', '/api/admin/blocks', formData(e.target)); e.target.reset(); toast('تم الحظر'); await loadSecurity(); }));
-document.querySelector('[data-panel="security"]').addEventListener('click', guard(async (e) => {
+$('#alertsAll').addEventListener('change', guard(loadAlerts));
+$('#scanNow').addEventListener('click', guard(async (e) => {
+  e.target.disabled = true;
+  try { const r = await api('POST', '/api/admin/alerts/scan'); toast(r.found.length ? `تنبيهات جديدة: ${r.found.length}` : 'ما في شي جديد'); }
+  finally { e.target.disabled = false; }
+  await loadAlerts();
+}));
+$('#alertTable').addEventListener('click', guard(async (e) => {
   const b = e.target.closest('button'); if (!b) return;
-  const { unblock, dev, st, devdel, blockip } = b.dataset;
-  if (unblock) await api('DELETE', `/api/admin/blocks/${unblock}`);
-  else if (dev) await api('PATCH', `/api/admin/devices/${dev}`, { status: st });
-  else if (devdel) { if (!confirm('حذف الجهاز من القائمة؟ (إذا رجع بيتسجّل من جديد حسب الحد)')) return; await api('DELETE', `/api/admin/devices/${devdel}`); }
-  else if (blockip) { const reason = prompt(`حظر ${blockip}؟ السبب:`, 'abuse'); if (reason === null) return; await api('POST', '/api/admin/blocks', { kind: 'ip', value: blockip, reason }); }
-  else return;
-  toast('تم'); await loadSecurity();
+  const { resolve, unpause, disable } = b.dataset;
+  if (resolve) await api('POST', `/api/admin/alerts/${resolve}/resolve`);
+  else if (unpause) await api('DELETE', `/api/admin/pauses/${unpause}`);
+  else if (disable) { if (!confirm('إيقاف حساب الطالب؟ (مفاتيحه وجلساته بتتوقف)')) return; await api('PATCH', `/api/admin/users/${disable}`, { disabled: true }); }
+  else return; // blockip handled by the security panel listener
+  toast('تم'); await loadAlerts();
 }));
 
-const LOADERS = { security: loadSecurity, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
+const LOADERS = { security: async () => { await loadSecurity(); await loadAlerts(); }, updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
 
 if (store.get(KEY)) boot().catch(() => showLogin()); else showLogin();
 

@@ -9,6 +9,7 @@ import { handleMe } from './api/user.js';
 import { apiError, HttpError, json } from './util.js';
 import { runMaintenance } from './lifecycle.js';
 import { preflight, authFailure, clientIp, cleanupSecurity } from './security.js';
+import { handleAuth } from './accounts.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -42,7 +43,8 @@ export async function route(request, env, ctx) {
   try {
     return await dispatch(request, env, ctx, p, m, sec);
   } catch (e) {
-    if (e instanceof HttpError && e.status === 401) ctx.waitUntil(authFailure(env, sec.ip, p.startsWith('/api/admin') ? 'admin' : 'key'));
+    // (login failures are counted inside handleAuth, together with the per-account lockout)
+    if (e instanceof HttpError && e.status === 401 && !p.startsWith('/api/auth')) ctx.waitUntil(authFailure(env, sec.ip, p.startsWith('/api/admin') ? 'admin' : 'key'));
     throw e;
   }
 }
@@ -63,6 +65,7 @@ async function dispatch(request, env, ctx, p, m, sec) {
   }
   if (p === '/v1/messages/count_tokens') return handleCountTokens(request, env, ctx);
   if ((p === '/v1/models' || p === '/models') && m === 'GET') return handleModels(request, env, ctx, sec);
+  if (p.startsWith('/api/auth')) return handleAuth(request, env, ctx, p, sec);
   if (p.startsWith('/api/admin')) return handleAdmin(request, env, ctx, p);
   if (p.startsWith('/api/me')) return handleMe(request, env, ctx, p, sec);
   throw new HttpError(404, `Unknown endpoint ${m} ${p}`, 'not_found_error');

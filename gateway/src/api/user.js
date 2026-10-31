@@ -5,12 +5,13 @@ import { isSubUsable, loadSubscriptions } from '../billing.js';
 import { getGlobalAliases } from '../routing.js';
 import { json, readJson, HttpError, now, toInt, sha256Hex, newApiKey } from '../util.js';
 import { userReport } from '../reports.js';
-import { authFailure } from '../security.js';
+import { authFailure, getSecurity } from '../security.js';
+import { changePassword } from '../accounts.js';
 
 const ALIAS_RE = /^[a-z0-9][a-z0-9._-]{0,40}$/;
 
 export async function handleMe(request, env, ctx, path, sec = {}) {
-  const { user, keyId } = await authUser(request, env, ctx);
+  const { user, keyId } = await authUser(request, env, ctx, { allowSession: true });
   const db = env.DB;
   const method = request.method;
   const [a, b, c] = path.replace(/^\/api\/me\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
@@ -51,7 +52,7 @@ export async function handleMe(request, env, ctx, path, sec = {}) {
       a.served_by = r ? `${r.provider} · ${r.upstream_model}` : null;
     }
     return json({
-      user: { id: user.id, name: user.name, email: user.email },
+      user: { id: user.id, name: user.name, email: user.email, has_password: !!user.password_hash },
       current_key_id: keyId,
       subscriptions: subs.sort((x, y) => y.id - x.id).map((s) => ({
         ...s, remaining: Math.max(0, s.total - s.used),
@@ -128,6 +129,36 @@ export async function handleMe(request, env, ctx, path, sec = {}) {
       await db.prepare('DELETE FROM user_aliases WHERE user_id = ? AND alias = ?').bind(user.id, b).run();
       return json({ ok: true });
     }
+  }
+
+  // ── spending caps the student controls (daily is mandatory, max set by the admin) ──
+  if (a === 'limits') {
+    const cfg = await getSecurity(db);
+    const maxCap = Math.round((cfg.user_cap_max_usd || 50) * 1e6);
+    if (method === 'GET') {
+      const dayStart = Math.floor(now() / 86400) * 86400;
+      const d = new Date(); const monthStart = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000);
+      const [today, month] = await Promise.all([
+        db.prepare('SELECT COALESCE(SUM(cost), 0) c FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, dayStart).first(),
+        db.prepare('SELECT COALESCE(SUM(cost), 0) c FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, monthStart).first(),
+      ]);
+      return json({ daily_cap: Math.min(user.daily_cap, maxCap), monthly_cap: user.monthly_cap, max_cap: maxCap, spent_today: today.c, spent_month: month.c, resets_at: dayStart + 86400 });
+    }
+    if (method === 'PUT') {
+      const body = await readJson(request);
+      const daily = Math.round(Number(body.daily_cap));
+      if (!Number.isFinite(daily) || daily < 100_000) throw new HttpError(400, 'السقف اليومي إجباري: أقل قيمة $0.10');
+      if (daily > maxCap) throw new HttpError(400, `أعلى سقف يومي مسموح $${(maxCap / 1e6).toFixed(2)}`);
+      const monthly = body.monthly_cap == null || body.monthly_cap === '' ? null : Math.round(Number(body.monthly_cap));
+      if (monthly !== null && (!Number.isFinite(monthly) || monthly < 100_000)) throw new HttpError(400, 'السقف الشهري غير صالح');
+      await db.prepare('UPDATE users SET daily_cap = ?, monthly_cap = ? WHERE id = ?').bind(daily, monthly, user.id).run();
+      return json({ ok: true });
+    }
+  }
+
+  if (a === 'password' && method === 'POST') {
+    await changePassword(db, user, await readJson(request));
+    return json({ ok: true });
   }
 
   if (a === 'devices' && method === 'GET') {

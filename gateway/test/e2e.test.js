@@ -401,3 +401,109 @@ test('security: upstream details never reach students; oversized bodies refused'
   const sec = (await admin('GET', '/security')).data;
   assert.ok(Array.isArray(sec.unpriced_models));
 });
+
+// ── accounts, caps, abuse detection, live log ──
+const reg = (ip, body) => callFrom(ip, 'POST', '/api/auth/register', { body });
+
+test('accounts: register → session → own API key → redeem code; sessions cannot call models', async () => {
+  const r = await reg('192.0.2.50', { name: 'Rami', email: 'Rami@Example.com', password: 'correct horse 1' });
+  assert.equal(r.status, 200, r.text);
+  const ses = r.data.session;
+  assert.match(ses, /^abd_ses_/);
+  assert.equal((await reg('192.0.2.51', { name: 'xx', email: 'rami@example.com', password: '12345678' })).status, 409, 'email is case-insensitive unique');
+  const me = await call('GET', '/api/me', { token: ses });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.subscriptions.length, 0, 'no free credit on sign-up');
+  assert.equal((await call('GET', '/v1/models', { token: ses })).status, 401, 'session ≠ API key');
+  const k = await call('POST', '/api/me/keys', { token: ses, body: { name: 'laptop' } });
+  assert.match(k.data.api_key, /^sk-abd-/);
+  assert.equal((await call('POST', '/v1/chat/completions', { token: k.data.api_key, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } })).status, 402);
+  const code = (await admin('POST', '/coupons', { kind: 'usd', amount: 2_000_000 })).data.codes[0];
+  assert.equal((await call('POST', '/api/me/redeem', { token: ses, body: { code } })).status, 200);
+  assert.equal((await call('POST', '/v1/chat/completions', { token: k.data.api_key, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } })).status, 200);
+  // login / logout / admin view never exposes password hashes
+  const login = await callFrom('192.0.2.50', 'POST', '/api/auth/login', { body: { email: 'rami@example.com', password: 'correct horse 1' } });
+  assert.equal(login.status, 200);
+  await call('POST', '/api/auth/logout', { token: login.data.session });
+  assert.equal((await call('GET', '/api/me', { token: login.data.session })).status, 401);
+  const users = (await admin('GET', '/users')).data;
+  assert.ok(users.every((u) => !('password_hash' in u)));
+});
+
+test('accounts: wrong passwords lock the account; sign-up flood per network refused; approval mode', async () => {
+  for (let i = 0; i < 5; i++) await callFrom(`192.0.2.${60 + i}`, 'POST', '/api/auth/login', { body: { email: 'rami@example.com', password: `wrong${i}` } });
+  const locked = await callFrom('192.0.2.70', 'POST', '/api/auth/login', { body: { email: 'rami@example.com', password: 'correct horse 1' } });
+  assert.equal(locked.status, 429, 'locked even with the right password');
+  for (let i = 0; i < 3; i++) assert.equal((await reg('192.0.2.80', { name: `bot${i}`, email: `bot${i}@x.io`, password: '12345678' })).status, 200);
+  assert.equal((await reg('192.0.2.80', { name: 'bot4', email: 'bot4@x.io', password: '12345678' })).status, 429);
+  await setSecurity({ signup_mode: 'approval' });
+  const p = await reg('192.0.2.90', { name: 'Waiting', email: 'wait@x.io', password: '12345678' });
+  assert.equal(p.data.pending, true);
+  assert.equal((await callFrom('192.0.2.90', 'POST', '/api/auth/login', { body: { email: 'wait@x.io', password: '12345678' } })).status, 403);
+  const u = (await admin('GET', '/users')).data.find((x) => x.email === 'wait@x.io');
+  await admin('PATCH', `/users/${u.id}`, { approved: true });
+  assert.equal((await callFrom('192.0.2.90', 'POST', '/api/auth/login', { body: { email: 'wait@x.io', password: '12345678' } })).status, 200);
+  await setSecurity({ signup_mode: 'closed' });
+  assert.equal((await reg('192.0.2.91', { name: 'Late', email: 'late@x.io', password: '12345678' })).status, 403);
+  await setSecurity({ signup_mode: 'open' });
+});
+
+test('caps: every student starts with a mandatory $5/day cap they can change within the admin max', async () => {
+  const l = (await call('GET', '/api/me/limits', { token: userKey })).data;
+  assert.equal(l.daily_cap, 5_000_000);
+  assert.equal((await call('PUT', '/api/me/limits', { token: userKey, body: { daily_cap: 0 } })).status, 400, 'cannot remove the daily cap');
+  assert.equal((await call('PUT', '/api/me/limits', { token: userKey, body: { daily_cap: 999_000_000 } })).status, 400, 'cannot exceed the admin maximum');
+  assert.equal((await call('PUT', '/api/me/limits', { token: userKey, body: { daily_cap: 100_000, monthly_cap: 20_000_000 } })).status, 200);
+  // spent today is far above $0.10 → blocked by the student's own cap
+  const r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(r.status, 429);
+  assert.match(r.data.error.message, /Daily spending cap/);
+  await call('PUT', '/api/me/limits', { token: userKey, body: { daily_cap: 50_000_000, monthly_cap: '' } });
+});
+
+test('loop guard: an agent resending the same request gets paused + alert; admin can lift it', async () => {
+  await setSecurity({ loop_guard_repeats: 4, loop_guard_window_s: 60 });
+  const body = { model: 'glm-5.2', messages: [{ role: 'user', content: 'fix the bug' }, { role: 'assistant', content: 'ok' }, { role: 'user', content: 'continue' }] };
+  const codes = [];
+  for (let i = 0; i < 5; i++) codes.push((await call('POST', '/v1/chat/completions', { token: userKey, body })).status);
+  assert.deepEqual(codes.slice(0, 3), [200, 200, 200]);
+  assert.equal(codes[3], 429);
+  assert.equal(codes[4], 429, 'still paused');
+  const other = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'different' }] } });
+  assert.equal(other.status, 429, 'the whole student is paused, not just that prompt');
+  const alerts = (await admin('GET', '/alerts')).data;
+  const loop = alerts.find((a) => a.rule === 'agent_loop');
+  assert.ok(loop && loop.severity === 'high' && loop.action);
+  await admin('DELETE', `/pauses/${userId}`);
+  assert.equal((await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'again' }] } })).status, 200);
+  await setSecurity({ loop_guard_repeats: 25, loop_guard_window_s: 120 });
+});
+
+test('detectors: heavy day + key used from many networks → one alert each (deduplicated)', async () => {
+  await setSecurity({ alert_daily_requests: 10, alert_ips_per_user: 3 });
+  for (const ip of ['198.51.100.1', '198.51.100.2', '198.51.100.3']) {
+    await callFrom(ip, 'POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: ip }] } });
+  }
+  const scan1 = (await admin('POST', '/alerts/scan')).data.found;
+  assert.ok(scan1.includes('heavy_day'));
+  assert.ok(scan1.includes('many_ips'));
+  const scan2 = (await admin('POST', '/alerts/scan')).data.found;
+  assert.deepEqual(scan2.filter((x) => x === 'heavy_day' || x === 'many_ips'), [], 'same day → no duplicate alert');
+  const a = (await admin('GET', '/alerts')).data.find((x) => x.rule === 'many_ips');
+  await admin('POST', `/alerts/${a.id}/resolve`);
+  assert.ok(!(await admin('GET', '/alerts')).data.some((x) => x.id === a.id));
+  await setSecurity({ alert_daily_requests: 1500, alert_ips_per_user: 4 });
+});
+
+test('live log: first page = newest rows, then only rows after the cursor', async () => {
+  const first = (await admin('GET', '/live?limit=5')).data;
+  assert.equal(first.rows.length, 5);
+  assert.ok(first.rows[0].id < first.rows[4].id, 'oldest → newest for appending');
+  const last = first.rows.at(-1).id;
+  assert.equal((await admin('GET', `/live?after=${last}`)).data.rows.length, 0, 'nothing new → empty, cheap');
+  await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'live' }] } });
+  const next = (await admin('GET', `/live?after=${last}`)).data.rows;
+  assert.equal(next.length, 1);
+  assert.equal(next[0].user_name, 'Student 1');
+  assert.ok('ip' in next[0] && 'latency_ms' in next[0]);
+});

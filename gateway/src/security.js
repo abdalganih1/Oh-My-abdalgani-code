@@ -12,8 +12,19 @@ const DEFAULTS = {
   auth_fail_limit: 10,
   auth_fail_window_min: 10,
   auto_block_min: 60,
-  user_daily_usd: 3,
   user_daily_tokens: 15000000,
+  user_cap_default_usd: 5,
+  user_cap_max_usd: 50,
+  signup_mode: 'open',
+  signup_per_ip_day: 3,
+  alert_daily_requests: 1500,
+  alert_spike_factor: 4,
+  alert_ips_per_user: 4,
+  alert_users_per_ip: 4,
+  alert_error_rate: 0.5,
+  loop_guard_repeats: 25,
+  loop_guard_window_s: 120,
+  loop_guard_pause_min: 10,
   global_daily_upstream_usd: 20,
   max_body_mb: 20,
   min_reserve_output_tokens: 1024,
@@ -96,6 +107,8 @@ export async function afterAuth(request, env, ctx, { user, keyId, ip, cfg }) {
     const { success } = await env.RL_USER.limit({ key: `k${keyId}` });
     if (!success) throw new HttpError(429, 'Too many requests for this key — slow down.', 'rate_limit_error');
   }
+  const paused = await blocked(db, 'user', String(user.id));
+  if (paused) throw new HttpError(429, `Your keys are paused until ${new Date(paused.expires_at * 1000).toISOString().slice(11, 16)} UTC: ${paused.reason.replace(/^auto: /, '')}. Check your tool isn't stuck in a loop.`, 'loop_guard');
   const dev = deviceFrom(request);
   if (dev && await blocked(db, 'device', dev.id)) throw new HttpError(403, 'This device is blocked. Contact the administrator.', 'permission_error');
   if (cfg.device_policy === 'off') return { device: dev };
@@ -132,9 +145,17 @@ export function noteSpend(micro) { if (micro > 0) budgetCache.spent += micro; }
 export async function checkSpendCaps(env, user, cfg) {
   const db = env.DB;
   const dayStart = Math.floor(now() / 86400) * 86400; // UTC day
-  if (cfg.user_daily_usd > 0 || cfg.user_daily_tokens > 0) {
+  {
+    // the student's own caps (daily is mandatory, clamped to the admin maximum)
+    const maxCap = Math.round((cfg.user_cap_max_usd || 50) * 1e6);
+    const daily = Math.min(user.daily_cap > 0 ? user.daily_cap : Math.round((cfg.user_cap_default_usd || 5) * 1e6), maxCap);
     const r = await db.prepare('SELECT COALESCE(SUM(cost), 0) c, COALESCE(SUM(prompt_tokens + completion_tokens), 0) t FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, dayStart).first();
-    if (cfg.user_daily_usd > 0 && r.c >= cfg.user_daily_usd * 1e6) throw new HttpError(429, `Daily spending limit reached ($${cfg.user_daily_usd}). It resets at 00:00 UTC.`, 'daily_limit');
+    if (r.c >= daily) throw new HttpError(429, `Daily spending cap reached ($${(daily / 1e6).toFixed(2)}). It resets at 00:00 UTC — you can change your cap in the dashboard.`, 'daily_limit');
+    if (user.monthly_cap > 0) {
+      const d = new Date(now() * 1000); const monthStart = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000);
+      const m = await db.prepare('SELECT COALESCE(SUM(cost), 0) c FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, monthStart).first();
+      if (m.c >= user.monthly_cap) throw new HttpError(429, `Monthly spending cap reached ($${(user.monthly_cap / 1e6).toFixed(2)}) — change it in the dashboard.`, 'monthly_limit');
+    }
     // token cap also protects zero-priced models, which never move the dollar counter
     if (cfg.user_daily_tokens > 0 && r.t >= cfg.user_daily_tokens) throw new HttpError(429, `Daily token limit reached (${(cfg.user_daily_tokens / 1e6).toFixed(1)}M). It resets at 00:00 UTC.`, 'daily_limit');
   }

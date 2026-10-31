@@ -111,6 +111,13 @@
     </div>
 
     <div data-panel="security">
+      <div class="card">
+        <div class="row"><h2 style="margin:0">🚨 تنبيهات الإساءة</h2><span class="spacer"></span>
+          <label class="row small"><input type="checkbox" id="alertsAll"> عرض المحلولة</label>
+          <button id="scanNow" class="primary">🔍 افحص الآن</button></div>
+        <p class="small muted">فحص تلقائي كل 30 دقيقة: يوم استخدام ثقيل، قفزة مفاجئة، مفتاح من شبكات كثيرة، شبكة عليها حسابات كثيرة، أخطاء كثيرة (سكربت عم يجرّب)، أداة عالقة بحلقة، تسجيلات بالجملة. نفس التنبيه ما بيتكرر بنفس اليوم.</p>
+        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="alertTable"></table></div>
+      </div>
       <div class="card hidden" id="unpricedCard" style="border-color:var(--bad)">
         <h2 style="color:var(--bad)">⚠️ نماذج بسعر صفر</h2>
         <p class="small">أي طالب عنده رصيد بيستخدم هالنماذج <b>مجاناً</b> (الحد الوحيد هو سقف التوكنات اليومي). حدّد سعرها من "النماذج والتوجيه": <span id="unpricedList" class="mono ltr"></span></p>
@@ -124,7 +131,18 @@
             <option value="track">مراقبة فقط (تسجيل الأجهزة بدون منع)</option>
             <option value="enforce">إلزامي (المفتاح يشتغل فقط من أجهزة مسجّلة)</option></select></label>
           <label class="f">أقصى عدد أجهزة لكل طالب<input name="max_devices" type="number" min="1"></label>
-          <label class="f">سقف صرف يومي لكل طالب ($، 0 = بلا)<input name="user_daily_usd" type="number" step="0.01" min="0"></label>
+          <label class="f">السقف اليومي الافتراضي للطالب الجديد ($)<input name="user_cap_default_usd" type="number" step="0.01" min="0.1"></label>
+          <label class="f">أعلى سقف يومي يقدر الطالب يختاره ($)<input name="user_cap_max_usd" type="number" step="0.01" min="0.1"></label>
+          <label class="f">التسجيل الذاتي<select name="signup_mode"><option value="open">مفتوح</option><option value="approval">بموافقة المدير</option><option value="closed">مغلق</option></select></label>
+          <label class="f">أقصى حسابات جديدة من نفس الشبكة باليوم<input name="signup_per_ip_day" type="number" min="1"></label>
+          <label class="f">تنبيه إذا طالب تجاوز (طلب/يوم)<input name="alert_daily_requests" type="number" min="0"></label>
+          <label class="f">تنبيه قفزة (× معدله)<input name="alert_spike_factor" type="number" step="0.5" min="0"></label>
+          <label class="f">تنبيه مفتاح من شبكات ≥<input name="alert_ips_per_user" type="number" min="2"></label>
+          <label class="f">تنبيه حسابات من نفس الشبكة ≥<input name="alert_users_per_ip" type="number" min="2"></label>
+          <label class="f">تنبيه نسبة فشل ≥<input name="alert_error_rate" type="number" step="0.05" min="0" max="1"></label>
+          <label class="f">كاشف الحلقات: طلبات متطابقة<input name="loop_guard_repeats" type="number" min="0"></label>
+          <label class="f">خلال (ثانية)<input name="loop_guard_window_s" type="number" min="10"></label>
+          <label class="f">إيقاف الطالب (دقائق)<input name="loop_guard_pause_min" type="number" min="1"></label>
           <label class="f">سقف توكنات يومي لكل طالب (0 = بلا)<input name="user_daily_tokens" type="number" min="0"></label>
           <label class="f">ميزانية يومية كلية للمزوّدين ($، 0 = بلا)<input name="global_daily_upstream_usd" type="number" step="0.01" min="0"></label>
           <label class="f">حظر تلقائي بعد محاولات خاطئة<input name="auth_fail_limit" type="number" min="3"></label>
@@ -250,7 +268,21 @@
       <div class="card"><h2>الكوبونات</h2><div class="table-wrap"><table id="couponTable"></table></div></div>
     </div>
 
-    <div data-panel="usage"><div class="card"><h2>آخر 300 طلب</h2><div class="table-wrap"><table id="usageTable"></table></div></div></div>
+    <div data-panel="usage">
+      <div class="card">
+        <div class="row">
+          <h2 style="margin:0">📡 السجل المباشر</h2>
+          <span id="liveDot" class="badge">متوقف</span>
+          <span class="spacer"></span>
+          <select id="liveUser"><option value="">كل الطلاب</option></select>
+          <input id="liveModel" class="ltr" placeholder="model id" style="max-width:150px">
+          <label class="row small"><input type="checkbox" id="liveErrors"> الفاشلة فقط</label>
+          <button id="liveToggle" class="primary">⏸ إيقاف</button>
+        </div>
+        <p class="small muted" style="margin:8px 0 0">بيتحدّث كل 5 ثواني (بيجيب الجديد بس). بيتوقف لحاله إذا خبّيت التبويب أو ما لمست الصفحة 10 دقائق — كرمال ما يستهلك موارد عالفاضي.</p>
+        <div class="table-wrap" style="margin-top:10px;max-height:70vh;overflow:auto"><table id="liveTable"></table></div>
+      </div>
+    </div>
 
     <div data-panel="settings">
       <div class="card">

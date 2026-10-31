@@ -44,7 +44,9 @@ export async function handleAdmin(request, env, ctx, path) {
     ]);
     const topModels = await db.prepare('SELECT model_id, COUNT(*) req, COALESCE(SUM(cost),0) cost FROM usage_logs WHERE created_at > ? GROUP BY model_id ORDER BY req DESC LIMIT 10').bind(t - 7 * 86400).all();
     const unread = await q('SELECT COUNT(*) n FROM events WHERE read = 0');
-    return json({ users: users.n, provider_keys: keys, day, month, providers: providers.results, top_models: topModels.results, unread_events: unread.n });
+    const openAlerts = await q('SELECT COUNT(*) n FROM alerts WHERE resolved = 0');
+    const pendingUsers = await q('SELECT COUNT(*) n FROM users WHERE approved = 0');
+    return json({ users: users.n, provider_keys: keys, day, month, providers: providers.results, top_models: topModels.results, unread_events: unread.n, open_alerts: openAlerts.n, pending_users: pendingUsers.n });
   }
 
   // ── providers & keys ──
@@ -237,7 +239,8 @@ export async function handleAdmin(request, env, ctx, path) {
     if (method === 'PUT') {
       const body = await readJson(request);
       need(['off', 'track', 'enforce'].includes(body.device_policy), 'device_policy must be off|track|enforce');
-      const clean = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, k === 'device_policy' ? v : Number(v)]));
+      need(!body.signup_mode || ['open', 'approval', 'closed'].includes(body.signup_mode), 'signup_mode must be open|approval|closed');
+      const clean = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, ['device_policy', 'signup_mode'].includes(k) ? v : Number(v)]));
       await db.prepare("INSERT INTO settings (key, value) VALUES ('security', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(JSON.stringify(clean)).run();
       resetSecurityCache();
       return json({ ok: true });
@@ -270,6 +273,42 @@ export async function handleAdmin(request, env, ctx, path) {
       return json({ ok: true });
     }
     if (method === 'DELETE') { await db.prepare('DELETE FROM devices WHERE id = ?').bind(toInt(b)).run(); return json({ ok: true }); }
+  }
+
+  // ── live log (polled every few seconds by the panel: cheap PK range scan, capped rows) ──
+  if (a === 'live' && method === 'GET') {
+    const url = new URL(request.url);
+    const after = toInt(url.searchParams.get('after'), 0);
+    const limit = Math.min(200, Math.max(1, toInt(url.searchParams.get('limit'), 100)));
+    const where = ['l.id > ?']; const args = [after];
+    if (url.searchParams.get('user_id')) { where.push('l.user_id = ?'); args.push(toInt(url.searchParams.get('user_id'))); }
+    if (url.searchParams.get('model')) { where.push('l.model_id = ?'); args.push(url.searchParams.get('model')); }
+    if (url.searchParams.get('errors') === '1') where.push('l.status >= 400');
+    // first load (after=0): newest rows; then only rows newer than the last one seen
+    const order = after ? 'ASC' : 'DESC';
+    const { results } = await db.prepare(`SELECT l.id, l.created_at, l.user_id, u.name AS user_name, l.requested_model, l.model_id, l.provider_id, l.upstream_model,
+        l.endpoint, l.status, l.prompt_tokens, l.completion_tokens, l.cached_tokens, l.cost, l.upstream_cost, l.latency_ms, l.ip, l.device_id, l.error
+      FROM usage_logs l LEFT JOIN users u ON u.id = l.user_id WHERE ${where.join(' AND ')} ORDER BY l.id ${order} LIMIT ?`).bind(...args, limit).all();
+    return json({ rows: after ? results : results.reverse(), server_time: now() });
+  }
+
+  // ── abuse alerts ──
+  if (a === 'alerts') {
+    if (method === 'GET') {
+      const all = new URL(request.url).searchParams.get('all') === '1';
+      const { results } = await db.prepare(`SELECT a.*, u.name AS user_name FROM alerts a LEFT JOIN users u ON u.id = a.user_id
+          ${all ? '' : 'WHERE a.resolved = 0'} ORDER BY a.resolved, a.created_at DESC LIMIT 300`).all();
+      return json(results);
+    }
+    if (method === 'POST' && b && c === 'resolve') { await db.prepare('UPDATE alerts SET resolved = 1 WHERE id = ?').bind(toInt(b)).run(); return json({ ok: true }); }
+    if (method === 'POST' && b === 'scan') {
+      const { runDetectors } = await import('../detect.js');
+      return json({ found: await runDetectors(env, await getSecurity(db, true)) });
+    }
+  }
+  if (a === 'pauses' && method === 'DELETE' && b) {
+    await db.prepare("DELETE FROM blocks WHERE kind = 'user' AND value = ?").bind(String(toInt(b))).run();
+    return json({ ok: true });
   }
 
   // ── lifecycle: update feed, upstream catalogs, run-now ──
@@ -319,7 +358,7 @@ export async function handleAdmin(request, env, ctx, path) {
            (SELECT MAX(created_at) FROM usage_logs l WHERE l.user_id = u.id) AS last_request
          FROM users u ORDER BY u.id DESC`
       ).bind(t, t).all();
-      return json(results);
+      return json(results.map(({ password_hash, ...u }) => ({ ...u, has_password: !!password_hash })));
     }
     if (!b && method === 'POST') {
       const u = await readJson(request);
@@ -338,15 +377,26 @@ export async function handleAdmin(request, env, ctx, path) {
         db.prepare('SELECT * FROM user_aliases WHERE user_id = ?').bind(uid).all(),
         db.prepare('SELECT * FROM usage_logs WHERE user_id = ? ORDER BY id DESC LIMIT 100').bind(uid).all(),
       ]);
-      return json({ user, subscriptions: subs.results, keys: keys.results, aliases: aliases.results, usage: usage.results });
+      const { password_hash, ...safeUser } = user;
+      return json({ user: { ...safeUser, has_password: !!password_hash }, subscriptions: subs.results, keys: keys.results, aliases: aliases.results, usage: usage.results });
     }
     if (b && !c && method === 'PATCH') {
       const u = await readJson(request);
       const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(uid).first();
       need(row, 'user not found');
-      await db.prepare('UPDATE users SET name=?, email=?, note=?, disabled=? WHERE id=?')
-        .bind(u.name ?? row.name, u.email ?? row.email, u.note ?? row.note, u.disabled == null ? row.disabled : (u.disabled ? 1 : 0), uid).run();
-      return json({ ok: true });
+      await db.prepare('UPDATE users SET name=?, email=?, note=?, disabled=?, approved=?, daily_cap=?, monthly_cap=? WHERE id=?')
+        .bind(u.name ?? row.name, u.email ?? row.email, u.note ?? row.note, u.disabled == null ? row.disabled : (u.disabled ? 1 : 0),
+          u.approved == null ? row.approved : (u.approved ? 1 : 0), u.daily_cap == null ? row.daily_cap : Math.max(100_000, toInt(u.daily_cap)),
+          u.monthly_cap === undefined ? row.monthly_cap : (u.monthly_cap ? toInt(u.monthly_cap) : null), uid).run();
+      if (u.disabled) await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(uid).run();
+      let temp = null;
+      if (u.reset_password) {
+        const { hashPassword } = await import('../accounts.js');
+        temp = `abd-${crypto.getRandomValues(new Uint32Array(2)).join('').slice(0, 10)}`;
+        await db.batch([db.prepare('UPDATE users SET password_hash = ?, login_fail = 0, locked_until = NULL WHERE id = ?').bind(await hashPassword(temp), uid),
+          db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(uid)]);
+      }
+      return json({ ok: true, temp_password: temp });
     }
     if (b && !c && method === 'DELETE') { await db.prepare('DELETE FROM users WHERE id = ?').bind(uid).run(); return json({ ok: true }); }
     if (c === 'keys' && !d && method === 'POST') {

@@ -3,25 +3,66 @@ import { bars, fillSeries, css } from '/charts.js';
 
 const KEY = 'abd:userKey';
 const api = makeApi(KEY, () => { store.del(KEY); showLogin(); });
-let me = null, catalog = { models: [], groups: [] }, rep = null, myMetric = 'cost';
+let me = null, catalog = { models: [], groups: [] }, rep = null, limits = null, myMetric = 'cost';
 const TZ = -new Date().getTimezoneOffset();
 
 const TOOLS = ['OpenCode', 'Hermes', 'ClaudeCode', 'CodexCLI', 'KiloCLI', 'PiCode', 'QwenCode', 'Goose', 'Aider', 'OpenClaw', 'KimiCode', 'EHCode'];
 
-function showLogin() { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); }
+function showLogin() { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); initAuth(); }
+const isSession = () => (store.get(KEY) || '').startsWith('abd_ses_');
 
+let authInit = false, turnstileToken = '';
+async function initAuth() {
+  if (authInit) return; authInit = true;
+  $('#authTabs').addEventListener('click', (e) => {
+    const a = e.target.dataset?.a; if (!a) return;
+    $$('#authTabs button').forEach((b) => b.classList.toggle('on', b.dataset.a === a));
+    $$('#login form').forEach((f) => f.classList.toggle('hidden', f.dataset.a !== a));
+  });
+  try {
+    const cfg = await (await fetch('/api/auth/config')).json();
+    if (cfg.signup_mode === 'closed') $('[data-a="register"]').classList.add('hidden');
+    if (cfg.turnstile_site_key) {
+      window.onTurnstile = (t) => { turnstileToken = t; };
+      $('#turnstile').innerHTML = `<div class="cf-turnstile" data-sitekey="${esc(cfg.turnstile_site_key)}" data-callback="onTurnstile"></div>`;
+      const sc = document.createElement('script'); sc.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'; sc.async = true; document.head.appendChild(sc);
+    }
+  } catch { /* offline */ }
+}
+async function authPost(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  return data;
+}
+const fd = (f) => Object.fromEntries(new FormData(f).entries());
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  store.set(KEY, $('#keyInput').value.trim());
+  try { const r = await authPost('/api/auth/login', fd(e.target)); store.set(KEY, r.session); await load(); } catch (err) { toast(err.message, true); }
+});
+$('#registerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const r = await authPost('/api/auth/register', { ...fd(e.target), turnstile: turnstileToken });
+    if (r.pending) { toast('تم التسجيل ✅ حسابك بانتظار موافقة المدرّس'); return; }
+    store.set(KEY, r.session); await load();
+    toast('أهلاً! الخطوة الجاية: اعمل مفتاح API من "المفاتيح"، وفعّل كود التفعيل من "حسابي"');
+  } catch (err) { toast(err.message, true); }
+});
+$('#keyForm0').addEventListener('submit', async (e) => {
+  e.preventDefault(); store.set(KEY, $('#keyInput').value.trim());
   try { await load(); } catch (err) { toast(err.message, true); }
 });
-$('#logout').addEventListener('click', () => { store.del(KEY); location.reload(); });
+$('#logout').addEventListener('click', async () => {
+  if (isSession()) { try { await api('POST', '/api/auth/logout'); } catch { /* ignore */ } }
+  store.del(KEY); store.del('abd:lastApiKey'); location.reload();
+});
 
 async function load() {
-  [me, catalog, rep] = await Promise.all([api('GET', '/api/me'), api('GET', '/api/me/models'), api('GET', `/api/me/report?tz=${TZ}`)]);
+  [me, catalog, rep, limits] = await Promise.all([api('GET', '/api/me'), api('GET', '/api/me/models'), api('GET', `/api/me/report?tz=${TZ}`), api('GET', '/api/me/limits')]);
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#who').textContent = me.user.name;
-  renderOverview(); renderModels(); renderAliases(); renderSetup(); renderKeys();
+  renderOverview(); renderLimits(); renderModels(); renderAliases(); renderSetup(); renderKeys();
   if (!$('[data-panel="usage"]').classList.contains('hidden')) renderUsage().catch((e) => toast(e.message, true));
 }
 
@@ -114,6 +155,32 @@ $('#redeemForm').addEventListener('submit', async (e) => {
   } catch (err) { toast(err.message, true); }
 });
 
+function renderLimits() {
+  const l = limits;
+  const pct = Math.min(100, Math.round((l.spent_today / l.daily_cap) * 100));
+  $('#capToday').textContent = `صرفت اليوم ${usdPrecise(l.spent_today)} من سقفك ${usd(l.daily_cap)} (${pct}%) · بيتصفّر الساعة ${new Date(l.resets_at * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${l.monthly_cap ? ` · هالشهر ${usd(l.spent_month)} من ${usd(l.monthly_cap)}` : ''}`;
+  $('#capBar').style.width = `${pct}%`;
+  $('#capBar').style.background = pct >= 90 ? 'var(--bad)' : '';
+  const f = $('#capForm');
+  f.elements.daily.value = (l.daily_cap / 1e6).toFixed(2);
+  f.elements.daily.max = (l.max_cap / 1e6).toFixed(2);
+  f.elements.monthly.value = l.monthly_cap ? (l.monthly_cap / 1e6).toFixed(2) : '';
+  $('#capForm .f').title = `الحد الأعلى المسموح $${(l.max_cap / 1e6).toFixed(2)}`;
+}
+$('#capForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target).entries());
+  try {
+    await api('PUT', '/api/me/limits', { daily_cap: Math.round(+d.daily * 1e6), monthly_cap: d.monthly ? Math.round(+d.monthly * 1e6) : null });
+    toast('تم حفظ حدودك'); limits = await api('GET', '/api/me/limits'); renderLimits();
+  } catch (err) { toast(err.message, true); }
+});
+$('#pwForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try { await api('POST', '/api/me/password', Object.fromEntries(new FormData(e.target).entries())); toast('تم — سجّل الدخول من جديد'); store.del(KEY); setTimeout(() => location.reload(), 1200); }
+  catch (err) { toast(err.message, true); }
+});
+
 function drawMine() {
   const r = rep.range;
   const rows = fillSeries(rep.series, r.from, r.to, TZ, 'day');
@@ -183,7 +250,7 @@ $('#aliasForm').addEventListener('submit', (e) => { e.preventDefault(); setAlias
 function renderSetup() {
   const sel = $('#toolSel');
   if (!sel.options.length) sel.innerHTML = TOOLS.map((t) => `<option>${t}</option>`).join('');
-  const key = store.get(KEY);
+  const key = isSession() ? (store.get('abd:lastApiKey') || 'sk-abd-…(اعمل مفتاح من تبويب المفاتيح)') : store.get(KEY);
   const base = me.base_url;
   const tool = sel.value, win = $('#osSel').value === 'win';
   $('#installCmd').textContent = win
@@ -221,7 +288,8 @@ function renderKeys() {
   renderDevices().catch(() => {});
   $('#keysTable').innerHTML = `<tr><th>الاسم</th><th>البادئة</th><th>آخر استخدام</th><th></th></tr>` + me.keys.map((k) =>
     `<tr><td>${esc(k.name)}</td><td class="mono ltr">${esc(k.prefix)}…</td><td class="small">${date(k.last_used_at)}</td>
-     <td>${k.id === me.current_key_id ? '<span class="badge accent">الحالي</span>' : `<button class="small danger" data-revoke="${k.id}">إلغاء</button>`}</td></tr>`).join('');
+     <td>${k.id === me.current_key_id ? '<span class="badge accent">الحالي</span>' : `<button class="small danger" data-revoke="${k.id}">إلغاء</button>`}</td></tr>`).join('') || '<tr><td class="muted">ما عندك مفاتيح — اعمل واحد تحت لتربط أدواتك</td></tr>';
+  $('#pwCard').classList.toggle('hidden', !me.user.has_password);
 }
 $('#keysTable').addEventListener('click', async (e) => {
   const id = e.target.dataset?.revoke; if (!id || !confirm('إلغاء هذا المفتاح نهائياً؟')) return;
@@ -232,7 +300,8 @@ $('#keyForm').addEventListener('submit', async (e) => {
   try {
     const r = await api('POST', '/api/me/keys', { name: $('#keyName').value || 'key' });
     $('#newKey').classList.remove('hidden');
-    $('#newKey').innerHTML = `احفظه الآن — لن يظهر مرة ثانية:<br><strong>${esc(r.api_key)}</strong>`;
+    $('#newKey').innerHTML = `احفظه الآن — لن يظهر مرة ثانية (وصار جاهز بأوامر "التثبيت والاستخدام"):<br><strong>${esc(r.api_key)}</strong>`;
+    store.set('abd:lastApiKey', r.api_key);
     await load();
   } catch (err) { toast(err.message, true); }
 });

@@ -8,6 +8,8 @@
 //   5. notifications  — new events are pushed to NOTIFY_WEBHOOK (Discord / Slack / Telegram)
 import { decryptSecret, now as nowSec } from './util.js';
 import { upstreamHeaders } from './routing.js';
+import { runDetectors } from './detect.js';
+import { getSecurity } from './security.js';
 
 const DEFAULTS = { archive_after_hours: 6, new_days: 7, missing_hours: 6 };
 
@@ -270,6 +272,7 @@ export async function runMaintenance(env, { now = nowSec(), sync = true } = {}) 
   }
   summary.health = await checkHealth(env, cfg, now);
   summary.models = await reconcileModels(env, cfg, now);
+  try { summary.alerts = await runDetectors(env, await getSecurity(env.DB, true), now); } catch (e) { summary.alerts = { error: e.message }; }
   await env.DB.prepare('DELETE FROM events WHERE created_at < ?').bind(now - 90 * 86400).run();
   summary.notified = await notifyPending(env);
   return summary;

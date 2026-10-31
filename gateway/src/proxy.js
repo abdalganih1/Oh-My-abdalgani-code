@@ -10,6 +10,7 @@ import { anthropicToOpenAIRequest, openAIToAnthropicResponse, OpenAIToAnthropicS
 import { responsesToChatRequest, chatToResponsesResponse, ChatToResponsesStream } from './responses.js';
 import { json, apiError, readJson, HttpError } from './util.js';
 import { recordOk, recordFail, countsAsFailure } from './lifecycle.js';
+import { fingerprint, noteRequest, pauseForLoop } from './detect.js';
 
 // ── usage extraction ──
 export function usageFromOpenAI(u) {
@@ -71,6 +72,11 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
   const { device } = await afterAuth(request, env, ctx, { user, keyId, ip: sec.ip, cfg });
   await checkSpendCaps(env, user, cfg);
   const body = await readJson(request);
+  // runaway-agent guard: the same last turn resent again and again → pause this student briefly
+  if (cfg.loop_guard_repeats > 0 && noteRequest(user.id, await fingerprint(body), cfg)) {
+    await pauseForLoop(env.DB, user, cfg, 'loop');
+    throw new HttpError(429, `Your tool sent the same request ${cfg.loop_guard_repeats} times in ${cfg.loop_guard_window_s}s — keys paused ${cfg.loop_guard_pause_min} min to protect your balance. Check the agent isn't stuck.`, 'loop_guard');
+  }
   const model = await resolveModel(env.DB, user.id, body.model);
   const requestedName = body.model;
 

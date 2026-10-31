@@ -11,9 +11,25 @@
 <body>
 <section id="login" class="login hidden">
   <div class="card">
-    <h2>🔐 دخول الطالب</h2>
-    <p class="muted small">ادخل مفتاح API اللي أعطاك ياه المدرّس (يبدأ بـ <code>sk-abd-</code>). ما في تسجيل ذاتي ولا تجربة مجانية — الرصيد بيجي فقط من كوبونات المدير.</p>
-    <form id="loginForm"><input id="keyInput" placeholder="sk-abd-..." autocomplete="off" required><button class="primary" style="width:100%">دخول</button></form>
+    <h2>⚡ abdalgani AI</h2>
+    <div class="seg" id="authTabs" style="margin:8px 0 14px"><button data-a="login" class="on">دخول</button><button data-a="register">حساب جديد</button><button data-a="key">دخول بمفتاح API</button></div>
+    <form id="loginForm" data-a="login">
+      <input name="email" type="email" placeholder="الإيميل" autocomplete="email" required>
+      <input name="password" type="password" placeholder="كلمة السر" autocomplete="current-password" required>
+      <button class="primary" style="width:100%">دخول</button>
+    </form>
+    <form id="registerForm" data-a="register" class="hidden">
+      <input name="name" placeholder="اسمك" autocomplete="name" required style="direction:rtl">
+      <input name="email" type="email" placeholder="الإيميل" autocomplete="email" required>
+      <input name="password" type="password" placeholder="كلمة سر (8 أحرف على الأقل)" autocomplete="new-password" minlength="8" required>
+      <div id="turnstile"></div>
+      <button class="primary" style="width:100%">إنشاء حساب</button>
+      <p class="small muted">الحساب مجاني بس ما فيه رصيد: بعد التسجيل بتعمل مفتاح API لحالك، وبتاخد <b>كود تفعيل</b> من المدرّس لتشحن رصيدك.</p>
+    </form>
+    <form id="keyForm0" data-a="key" class="hidden">
+      <input id="keyInput" placeholder="sk-abd-..." autocomplete="off" required>
+      <button class="primary" style="width:100%">دخول</button>
+    </form>
   </div>
 </section>
 
@@ -41,6 +57,18 @@
         <div class="hero-sub" id="heroTokens"></div>
       </div>
       <div class="grid" id="stats"></div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>🧯 حدود صرفي</h2>
+        <p class="small muted">حماية لرصيدك: إذا علقت أداة بحلقة أو انسرق مفتاحك، ما بيقدر يصرف أكثر من سقفك. السقف اليومي إجباري (بيبدأ بـ $5) وبتقدر تغيّره هون.</p>
+        <div class="row" style="margin-bottom:8px"><span id="capToday" class="small"></span></div>
+        <div class="bar" style="height:8px"><i id="capBar" style="width:0"></i></div>
+        <form id="capForm" class="form" style="margin-top:12px">
+          <label class="f">السقف اليومي ($)<input name="daily" type="number" step="0.01" min="0.1" required></label>
+          <label class="f">السقف الشهري ($، اختياري)<input name="monthly" type="number" step="0.01" min="0.1" placeholder="بلا"></label>
+          <button class="primary">حفظ</button>
+        </form>
+      </div>
 
       <div class="card" style="margin-top:16px">
         <div class="row"><h2 style="margin:0" id="myTsTitle">استهلاكك آخر 30 يوم</h2><span class="spacer"></span>
@@ -127,6 +155,15 @@
         <div class="table-wrap"><table id="keysTable"></table></div>
         <form id="keyForm" class="row" style="margin-top:12px"><input id="keyName" placeholder="اسم الجهاز (laptop)"><button class="primary">مفتاح جديد</button></form>
         <div id="newKey" class="secret hidden"></div>
+      </div>
+      <div class="card" id="pwCard">
+        <h2>🔒 كلمة السر</h2>
+        <form id="pwForm" class="form">
+          <label class="f">الحالية<input name="current" type="password" autocomplete="current-password"></label>
+          <label class="f">الجديدة<input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+          <button class="primary">تغيير</button>
+        </form>
+        <p class="small muted">تغيير كلمة السر بيطلّعك من كل الأجهزة.</p>
       </div>
       <div class="card">
         <h2>💻 أجهزتي</h2>
