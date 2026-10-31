@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 import {
   Activity, BarChart3, Check, ChevronDown, Cpu, Gauge, HelpCircle, Layers, Lock, Save, Sparkles, Ticket, Wallet, ArrowLeft, CalendarClock,
 } from 'lucide-react';
-import { Badge, BarChart, Button, Card, CountUp, DataTable, Field, Input, Progress, Reveal, Ring, Segmented, Stat, cn, toast } from '../../ui/index.js';
+import { Badge, BarChart, Button, Card, CountUp, DataTable, Empty, Field, Input, Progress, Reveal, Ring, Segmented, Stat, cn, toast } from '../../ui/index.js';
 import { day, M, STATUS, TZ, tokens, usd, usdPrecise, int } from '../../lib/format.js';
 import { fillSeries } from '../../ui/charts.jsx';
 import { api, focusLater, useStudent } from '../ctx.js';
@@ -156,7 +156,7 @@ function Caps() {
       </div>
       <p className="mt-3 text-[12.5px] text-muted">السقف اليومي إجباري (بيبدأ بـ <span className="ltr">$5</span>) وبتقدر تغيّره هون.</p>
       <form onSubmit={save} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <Field label="السقف اليومي ($)" hint={`الحد الأعلى المسموح $${(l.max_cap / M).toFixed(2)}`}>
+        <Field label="السقف اليومي ($)" hint={<>الحد الأعلى المسموح {usd(l.max_cap)}</>}>
           <Input type="number" step="0.01" min="0.1" max={(l.max_cap / M).toFixed(2)} required value={daily} onChange={(e) => setDaily(e.target.value)} className="ltr num" />
         </Field>
         <Field label="السقف الشهري ($، اختياري)" hint=" ">
@@ -173,7 +173,7 @@ function RealModels() {
   const { me, catalog } = useStudent();
   const rows = me.aliases.map((a) => ({ ...a, t: catalog.models.find((m) => m.id === a.model_id), was: a.fallback ? catalog.models.find((m) => m.id === a.archived_model_id) : null }));
   const cols = [
-    { key: 'alias', header: 'الاسم بأدواتك', primary: true, cell: (a) => <span className="rounded-lg border border-line bg-sunken px-2 py-0.5 font-mono text-[12.5px] ltr">{a.alias}</span> },
+    { key: 'alias', header: 'الاسم بأدواتك', primary: true, cell: (a) => <span className="whitespace-nowrap rounded-lg border border-line bg-sunken px-2 py-0.5 font-mono text-[12.5px] ltr">{a.alias}</span> },
     { key: 'model', header: 'النموذج الحقيقي', mobileFull: true, cell: (a) => (
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -181,7 +181,7 @@ function RealModels() {
           {a.t && <StatusBadge s={a.t.status} />}
           {a.t && !a.t.available && a.t.status !== 'archived' && <Badge tone="bad"><Lock size={11} />خارج اشتراكك</Badge>}
         </div>
-        <div className="font-mono text-[11.5px] text-muted ltr text-start">{a.model_id}</div>
+        <div><span className="font-mono text-[11.5px] text-muted ltr">{a.model_id}</span></div>
         {a.was && <div className="text-[12px] text-warn">بدلاً من {a.was.name} (مؤرشف)</div>}
       </div>
     ) },
@@ -205,7 +205,9 @@ function UsageChart() {
   return (
     <Card title={`${METRIC_NAMES[metric]} آخر 30 يوم`} icon={BarChart3}
       actions={<Segmented size="sm" value={metric} onChange={setMetric} options={[{ value: 'cost', label: 'الكلفة $' }, { value: 'requests', label: 'الطلبات' }, { value: 'tokens', label: 'التوكنات' }]} />}>
-      <BarChart labels={rows.map((x) => x.t.slice(5))} series={[{ name: METRIC_NAMES[metric], color: 'var(--series-1)', values: rows.map((x) => x[metric] || 0) }]} format={fmt} height={220} />
+      {rep.series.length
+        ? <BarChart labels={rows.map((x) => x.t.slice(5))} series={[{ name: METRIC_NAMES[metric], color: 'var(--series-1)', values: rows.map((x) => x[metric] || 0) }]} format={fmt} height={220} />
+        : <Empty icon={BarChart3} title="لسا ما في استخدام" text="أول ما تبعت طلبات من أدواتك، رح تشوف استهلاكك يوم بيوم هون." className="py-8" />}
     </Card>
   );
 }
@@ -323,13 +325,13 @@ function Explainer() {
 
 export default function Overview() {
   return (
-    <div className="grid gap-4 sm:gap-5">
+    <div className="grid gap-4 sm:gap-5 [&>*]:min-w-0">
       <Reveal><Onboarding /></Reveal>
-      <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] [&>*]:min-w-0">
         <Reveal delay={0.04}><Hero /></Reveal>
         <Reveal delay={0.08}><Stats /></Reveal>
       </div>
-      <div className="grid gap-4 sm:gap-5 xl:grid-cols-2">
+      <div className="grid gap-4 sm:gap-5 xl:grid-cols-2 [&>*]:min-w-0">
         <Reveal delay={0.1}><Caps /></Reveal>
         <Reveal delay={0.12}><RealModels /></Reveal>
       </div>

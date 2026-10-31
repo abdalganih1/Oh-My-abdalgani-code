@@ -44,7 +44,7 @@ export default function SwitchPanel() {
   const cols = [
     { key: 'alias', header: 'الاسم الثابت (بالأدوات)', primary: true, width: '30%', cell: (a) => (
       <div className="min-w-0">
-        <span className="rounded-lg border border-line bg-sunken px-2 py-0.5 font-mono text-[13px] ltr">{a.alias}</span>
+        <span className="whitespace-nowrap rounded-lg border border-line bg-sunken px-2 py-0.5 font-mono text-[13px] ltr">{a.alias}</span>
         <div className="mt-1 truncate text-[12px] text-muted">= {a.model_name}</div>
       </div>
     ) },
@@ -68,7 +68,7 @@ export default function SwitchPanel() {
   ];
 
   return (
-    <div className="grid gap-4 sm:gap-5">
+    <div className="grid gap-4 sm:gap-5 [&>*]:min-w-0">
       <Reveal>
         <div className="relative overflow-hidden rounded-3xl border border-accent/25 bg-accent-soft p-4 text-[14px] leading-[1.9] text-fg-2 sm:p-5">
           <div aria-hidden className="pointer-events-none absolute -top-20 end-0 size-60 rounded-full bg-[radial-gradient(closest-side,var(--mesh-1),transparent)]" />

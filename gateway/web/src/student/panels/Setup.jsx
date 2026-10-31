@@ -17,7 +17,7 @@ export default function Setup() {
   const noKey = isSession() && !store.get('abd:lastApiKey');
 
   return (
-    <div className="grid gap-4 sm:gap-5">
+    <div className="grid gap-4 sm:gap-5 [&>*]:min-w-0">
       {noKey && (
         <Reveal>
           <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-warn/30 bg-warn-soft p-4 text-[13.5px] text-fg-2">

@@ -18,12 +18,16 @@ export const fmtAmount = (kind, v) => (kind === 'usd' ? usd(v) : `${tokens(v)} Ø
 
 /** Navigate then focus an element by id (palette commands + onboarding steps). */
 export function focusLater(id, scroll = true) {
-  setTimeout(() => {
+  let tries = 0;
+  const tick = () => {
     const el = document.getElementById(id);
-    if (!el) return;
-    if (scroll) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.focus({ preventScroll: true });
-  }, 380);
+    if (!el) { if (++tries < 30) setTimeout(tick, 100); return; }
+    setTimeout(() => {
+      if (scroll) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.focus({ preventScroll: true });
+    }, 320); // let the page transition settle
+  };
+  setTimeout(tick, 60);
 }
 
 export const StudentCtx = createContext(null);

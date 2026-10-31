@@ -26,7 +26,7 @@ export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowCl
     const primary = columns.find((c) => c.primary) || columns[0];
     const rest = columns.filter((c) => c !== primary && !c.hideOnMobile);
     return (
-      <div className={cn('flex flex-col gap-2.5', className)} style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined}>
+      <div className={cn('flex flex-col gap-2.5', className)}>
         {groups.map(({ g, items }, gi) => (
           <Fragment key={gi}>
             {groupBy && <div className="px-1 pt-2 text-xs font-semibold text-muted">{groupLabel ? groupLabel(g) : g}</div>}

@@ -112,7 +112,7 @@ export default function App() {
               </span>
               <div className="min-w-0">
                 <div className="truncate text-[13.5px] font-semibold">{u.name}</div>
-                {u.email && <div className="truncate text-[11.5px] text-muted ltr text-start">{u.email}</div>}
+                {u.email && <div className="truncate text-[11.5px] text-muted ltr text-right">{u.email}</div>}
               </div>
             </div>
             <Button variant="ghost" className="justify-start text-bad hover:text-bad" icon={LogOut} onClick={logout}>خروج</Button>

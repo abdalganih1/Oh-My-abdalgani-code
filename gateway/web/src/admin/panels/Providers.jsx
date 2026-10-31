@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react';
 import {
   Archive, ArrowDown, ArrowUp, ChevronDown, ChevronsDownUp, ChevronsUpDown, CircleCheck, Download, Eye, EyeOff, FlaskConical, GripVertical, KeyRound,
-  ListOrdered, Pencil, Plug, Plus, RefreshCcw, RotateCcw, Search, Settings2, Trash2, TriangleAlert, Power, Replace, Link2,
+  ListOrdered, Pencil, Plug, Plus, RefreshCcw, RotateCcw, Search, Settings2, Trash2, TriangleAlert, Power, Replace,
 } from 'lucide-react';
 import {
   Badge, Button, Card, DataTable, Empty, Field, Input, Modal, Segmented, Select, Skeleton, Switch, Textarea, Tip, cn, toast, useConfirm,
@@ -448,10 +448,10 @@ function ProviderDialog({ state, onClose, providers, onSaved }) {
           <Field label="الاسم"><Input ref={nameRef} {...NO_AUTOFILL} name="abd-prov-name" value={f.name} onChange={set('name')} placeholder="DeepSeek" required autoFocus={!!editing} /></Field>
           <Field label="المعرّف (بالإنجليزي، ما بيتغيّر)"><Input mono {...NO_AUTOFILL} name="abd-prov-id" value={f.id} onChange={set('id')} readOnly={!!editing} required placeholder="deepseek" /></Field>
           <Field className="sm:col-span-2" label={<>رابط OpenAI-compatible (ينتهي غالباً بـ <span className="ltr">/v1</span>)</>} error={urlErr(f.openai_base_url)}>
-            <Input mono icon={Link2} type="url" {...NO_AUTOFILL} name="abd-prov-openai" value={f.openai_base_url} onChange={set('openai_base_url')} placeholder="https://api.example.com/v1" />
+            <Input mono type="url" {...NO_AUTOFILL} name="abd-prov-openai" value={f.openai_base_url} onChange={set('openai_base_url')} placeholder="https://api.example.com/v1" />
           </Field>
           <Field className="sm:col-span-2" label="رابط Anthropic-compatible (اختياري — لـ Claude Code مباشرة)" error={urlErr(f.anthropic_base_url)}>
-            <Input mono icon={Link2} type="url" {...NO_AUTOFILL} name="abd-prov-anthropic" value={f.anthropic_base_url} onChange={set('anthropic_base_url')} placeholder="https://api.example.com/anthropic" />
+            <Input mono type="url" {...NO_AUTOFILL} name="abd-prov-anthropic" value={f.anthropic_base_url} onChange={set('anthropic_base_url')} placeholder="https://api.example.com/anthropic" />
           </Field>
           <Field label="المصادقة">
             <Select value={f.auth_style} onChange={set('auth_style')} mono options={[{ value: 'bearer', label: 'Authorization: Bearer' }, { value: 'x-api-key', label: 'x-api-key (Anthropic)' }]} />

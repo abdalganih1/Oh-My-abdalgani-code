@@ -41,7 +41,7 @@ function KeysCard() {
       : <Button size="xs" variant="danger" icon={Trash2} loading={revoking === k.id} onClick={() => revoke(k)}>إلغاء</Button>) },
   ];
   return (
-    <Card title="مفاتيحي" icon={KeyRound} subtitle="مفتاح لكل جهاز — حتى خمس مفاتيح فعّالة" actions={<span className="text-[12.5px] text-muted num">{me.keys.length} / 5</span>}>
+    <Card title="مفاتيحي" icon={KeyRound} subtitle="مفتاح لكل جهاز — حتى خمس مفاتيح فعّالة" actions={<span className="text-[12.5px] text-muted num ltr">{me.keys.length} / 5</span>}>
       <DataTable columns={cols} rows={me.keys} empty={{ icon: KeyRound, title: 'ما عندك مفاتيح', text: 'اعمل واحد تحت لتربط أدواتك' }} />
       <form onSubmit={create} className="mt-4 flex flex-col gap-2 sm:flex-row">
         <Input id="keyName" icon={Monitor} className="flex-1" placeholder="اسم الجهاز (laptop)" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="اسم الجهاز" />
@@ -111,9 +111,9 @@ function Password() {
 export default function Keys() {
   const { me } = useStudent();
   return (
-    <div className="grid gap-4 sm:gap-5">
+    <div className="grid gap-4 sm:gap-5 [&>*]:min-w-0">
       <Reveal><KeysCard /></Reveal>
-      <div className={me.user.has_password ? 'grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]' : 'grid'}>
+      <div className={me.user.has_password ? 'grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] [&>*]:min-w-0' : 'grid [&>*]:min-w-0'}>
         <Reveal delay={0.05}><Devices /></Reveal>
         {me.user.has_password && <Reveal delay={0.1}><Password /></Reveal>}
       </div>

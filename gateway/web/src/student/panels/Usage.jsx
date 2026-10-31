@@ -14,7 +14,7 @@ export default function Usage() {
     { key: 'model', header: 'النموذج', primary: true, cell: (r) => {
       const alias = r.requested_model && r.requested_model.replace(/^(abdalgani|abd)\//, '') !== r.model_id ? r.requested_model : null;
       return (
-        <div className="min-w-0 font-mono text-[12.5px] ltr text-start">
+        <div className="min-w-0 font-mono text-[12.5px] ltr text-right">
           {alias && <span className="text-muted">{alias} → </span>}<b className="text-fg">{r.model_id}</b>
           {r.upstream_model && r.upstream_model !== r.model_id && <div className="text-[11.5px] text-muted">{r.upstream_model}</div>}
         </div>
@@ -33,7 +33,7 @@ export default function Usage() {
       {q.error && !q.data ? (
         <div className="rounded-2xl border border-bad/25 bg-bad-soft p-4 text-sm text-bad">{q.error.message} <Button size="xs" variant="ghost" onClick={q.reload}>جرّب مرة تانية</Button></div>
       ) : (
-        <DataTable columns={cols} rows={rows} loading={q.loading} maxHeight="70vh"
+        <DataTable columns={cols} rows={rows} loading={q.loading}
           empty={{ icon: List, title: 'ما في طلبات بعد', text: 'أول ما تستخدم أداة مربوطة بمفتاحك، كل طلب رح يظهر هون مع كلفته.' }} />
       )}
     </Card>

@@ -24,7 +24,7 @@ function ModelCard({ m, main, onUse, busy }) {
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-display text-[15.5px] font-semibold" title={m.name}>{m.name}</h3>
-          <div className="truncate font-mono text-[11.5px] text-muted ltr text-start" title={m.id}>{m.id}</div>
+          <div className="truncate font-mono text-[11.5px] text-muted ltr text-right" title={m.id}>{m.id}</div>
         </div>
         {st && <Badge tone={st.tone} dot={m.status === 'new'} pulse={m.status === 'new'}>{st.label}</Badge>}
       </div>
@@ -83,7 +83,7 @@ export default function Models() {
   const filtered = q || st || gr || av;
 
   return (
-    <div className="grid gap-4 sm:gap-5">
+    <div className="grid gap-4 sm:gap-5 [&>*]:min-w-0">
       <Card pad={false} spotlight={false} className="sticky top-[88px] z-10 p-3 sm:p-3.5">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative min-w-[200px] flex-[2_1_260px]">
