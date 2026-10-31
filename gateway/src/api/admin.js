@@ -54,12 +54,14 @@ export async function handleAdmin(request, env, ctx, path) {
       const p = await readJson(request);
       need(ID_RE.test(p.id || ''), 'invalid provider id');
       need(p.openai_base_url || p.anthropic_base_url, 'at least one base URL is required');
-      if (p.extra_headers) { try { JSON.parse(p.extra_headers); } catch { throw new HttpError(400, 'extra_headers must be a JSON object'); } }
+      for (const f of ['extra_headers', 'compat']) {
+        if (p[f]) { try { const v = JSON.parse(p[f]); need(v && typeof v === 'object' && !Array.isArray(v), `${f} must be a JSON object`); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, `${f} must be a JSON object`); } }
+      }
       await db.prepare(
-        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, enabled) VALUES (?,?,?,?,?,?,?)
+        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, enabled) VALUES (?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, openai_base_url=excluded.openai_base_url, anthropic_base_url=excluded.anthropic_base_url,
-           auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, enabled=excluded.enabled`
-      ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.enabled === false || p.enabled === 0 ? 0 : 1).run();
+           auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, compat=excluded.compat, enabled=excluded.enabled`
+      ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.compat || null, p.enabled === false || p.enabled === 0 ? 0 : 1).run();
       return json({ ok: true });
     }
     if (b && !c && method === 'DELETE') {
@@ -93,6 +95,8 @@ export async function handleAdmin(request, env, ctx, path) {
         price_in: m.pricing?.prompt != null ? Math.round(Number(m.pricing.prompt) * 1e12) : null,
         price_out: m.pricing?.completion != null ? Math.round(Number(m.pricing.completion) * 1e12) : null,
         price_cache_read: m.pricing?.input_cache_read != null ? Math.round(Number(m.pricing.input_cache_read) * 1e12) : null,
+        vision: Array.isArray(m.architecture?.input_modalities) ? m.architecture.input_modalities.includes('image') : null,
+        reasoning: Array.isArray(m.supported_parameters) ? m.supported_parameters.includes('reasoning') || m.supported_parameters.includes('include_reasoning') : null,
       }));
       return json(list);
     }
@@ -164,15 +168,15 @@ export async function handleAdmin(request, env, ctx, path) {
       need(['token', 'request', 'provider'].includes(m.pricing_mode || 'token'), 'pricing_mode must be token|request|provider');
       need(['new', 'active', 'legacy', 'hidden'].includes(m.status || 'active'), 'status must be new|active|legacy|hidden');
       const stmts = [db.prepare(
-        `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort, vision)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, group_id=excluded.group_id, context_length=excluded.context_length, max_output=excluded.max_output,
-           reasoning=excluded.reasoning, pricing_mode=excluded.pricing_mode, price_in=excluded.price_in, price_out=excluded.price_out,
+           reasoning=excluded.reasoning, vision=excluded.vision, pricing_mode=excluded.pricing_mode, price_in=excluded.price_in, price_out=excluded.price_out,
            price_cache_read=excluded.price_cache_read, price_request=excluded.price_request, markup_pct=excluded.markup_pct,
            status=excluded.status, description=excluded.description, sort=excluded.sort`
       ).bind(m.id, m.name || m.id, m.group_id || null, toInt(m.context_length, 128000), toInt(m.max_output, 8192), m.reasoning ? 1 : 0,
         m.pricing_mode || 'token', toInt(m.price_in), toInt(m.price_out), toInt(m.price_cache_read), toInt(m.price_request), toInt(m.markup_pct),
-        m.status || 'active', m.description || null, toInt(m.sort, 100))];
+        m.status || 'active', m.description || null, toInt(m.sort, 100), m.vision ? 1 : 0)];
       if (Array.isArray(m.routes)) {
         stmts.push(db.prepare('DELETE FROM model_routes WHERE model_id = ?').bind(m.id));
         m.routes.forEach((r, i) => {

@@ -13,6 +13,7 @@ const CORS = {
   'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'access-control-allow-headers': 'authorization,content-type,x-api-key,anthropic-version,anthropic-beta,http-referer,x-title',
   'access-control-max-age': '86400',
+  'access-control-expose-headers': 'x-abdalgani-model,x-abdalgani-upstream,x-abdalgani-alias',
 };
 
 function withCors(res) {

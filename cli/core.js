@@ -75,11 +75,18 @@ const G_CONFIG = path.join(HOME, '.abdalgani-code.json');
 export function savedKey() {
   try { return JSON.parse(fs.readFileSync(G_CONFIG, 'utf8')).apiKey || null; } catch { return null; }
 }
-export function saveKey(apiKey) {
-  let data = {};
-  try { data = JSON.parse(fs.readFileSync(G_CONFIG, 'utf8')); } catch { /* new */ }
-  fs.writeFileSync(G_CONFIG, JSON.stringify({ ...data, apiKey, baseUrl: BASE_URL }, null, 2));
+export function loadState() {
+  try { return JSON.parse(fs.readFileSync(G_CONFIG, 'utf8')); } catch { return {}; }
+}
+export function saveState(patch) {
+  fs.writeFileSync(G_CONFIG, JSON.stringify({ ...loadState(), ...patch, baseUrl: BASE_URL }, null, 2));
   try { fs.chmodSync(G_CONFIG, 0o600); } catch { /* windows */ }
+}
+export const saveKey = (apiKey) => saveState({ apiKey });
+/** Remember how each tool was configured so `--sync` can refresh it later. */
+export function rememberTool(tool, opts) {
+  const s = loadState();
+  saveState({ tools: { ...(s.tools || {}), [tool]: opts } });
 }
 
 // ── processes ──

@@ -53,6 +53,7 @@
           <label class="f">Anthropic base URL<input name="anthropic_base_url" class="ltr" placeholder="https://api.x.com/anthropic"></label>
           <label class="f">المصادقة<select name="auth_style"><option value="bearer">Bearer</option><option value="x-api-key">x-api-key (Anthropic)</option></select></label>
           <label class="f">Headers إضافية (JSON)<input name="extra_headers" class="ltr" placeholder='{"X-Title":"abd"}'></label>
+          <label class="f" style="grid-column:1/-1">توافق الطلبات compat (JSON)<input name="compat" class="ltr" placeholder='{"max_tokens_field":"max_tokens","developer_role":false,"efforts":["low","medium","high"]}'></label>
           <button class="primary">حفظ</button>
         </form>
       </div>
@@ -140,6 +141,7 @@
     <label class="f">نسبة إضافية %<input name="markup_pct" type="number"></label>
     <label class="f">الترتيب<input name="sort" type="number"></label>
     <label class="f row"><input name="reasoning" type="checkbox"> يدعم التفكير</label>
+    <label class="f row"><input name="vision" type="checkbox"> يقبل صور</label>
   </div>
   <label class="f" style="margin-top:10px">الوصف<input name="description"></label>
   <h3>التوجيه (بالترتيب — الأول أولاً، والباقي احتياط تلقائي)</h3>

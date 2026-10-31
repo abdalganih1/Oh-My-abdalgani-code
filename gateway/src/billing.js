@@ -54,7 +54,7 @@ export async function loadSubscriptions(db, userId) {
 }
 
 /** Record usage + charge wallet atomically (single D1 batch). */
-export async function settle(db, { user, keyId, model, routeInfo, endpoint, status, usage, providerCostUsd, latency, error, subscriptionId }) {
+export async function settle(db, { user, keyId, model, routeInfo, endpoint, status, usage, providerCostUsd, latency, error, subscriptionId, requestedModel }) {
   const cost = status < 400 ? computeCost(model, usage, providerCostUsd) : 0;
   let charged = 0;
   let subId = subscriptionId ?? null;
@@ -68,11 +68,11 @@ export async function settle(db, { user, keyId, model, routeInfo, endpoint, stat
   }
   stmts.push(db.prepare(
     `INSERT INTO usage_logs (user_id, api_key_id, model_id, provider_id, provider_key_id, endpoint, status,
-       prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, error)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, error, requested_model, upstream_model)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(user.id, keyId ?? null, model.id, routeInfo?.provider_id ?? null, routeInfo?.key_id ?? null, endpoint, status,
     usage.prompt || 0, usage.completion || 0, usage.cached || 0, cost, subId, charged, latency ?? null,
-    error ? String(error).slice(0, 500) : null));
+    error ? String(error).slice(0, 500) : null, requestedModel ? String(requestedModel).slice(0, 120) : null, routeInfo?.upstream_model ?? null));
   await db.batch(stmts);
   return { cost, charged };
 }

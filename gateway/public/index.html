@@ -35,6 +35,11 @@
     <div data-panel="overview">
       <div class="grid" id="stats"></div>
       <div class="card" style="margin-top:16px">
+        <h2>🎯 النماذج الحقيقية اللي عم تستخدمها هلق</h2>
+        <div class="table-wrap"><table id="realTable"></table></div>
+        <p class="muted small">كل رد من البوابة فيه كمان الترويسة <code>x-abdalgani-model</code> وحقل <code>model</code> بالنموذج الحقيقي.</p>
+      </div>
+      <div class="card">
         <h2>🎟️ تفعيل كوبون</h2>
         <form id="redeemForm" class="row"><input id="couponInput" class="ltr" placeholder="ABD-XXXX-XXXX-XXXX" required style="flex:1;min-width:200px"><button class="primary">تفعيل</button></form>
       </div>
@@ -56,7 +61,7 @@
     <div data-panel="switch">
       <div class="card">
         <h2>🔀 تبديل النماذج بدون إعادة تثبيت</h2>
-        <p class="muted small">أدواتك (OpenCode, Hermes, Claude Code…) مضبوطة على أسماء ثابتة مثل <code>abd-main</code> و<code>abd-fast</code>. غيّر هون لأي نموذج مسموح لك يشتغل فوراً بكل الأدوات.</p>
+        <p class="muted small">أدواتك (OpenCode, Hermes, Claude Code…) مضبوطة على أسماء ثابتة مثل <code>abd-main</code> و<code>abd-fast</code>. غيّر هون لأي نموذج مسموح لك يشتغل فوراً بكل الأدوات. ولتحديث الأسماء الظاهرة داخل أدواتك (اختياري) شغّل <code class="ltr">abdalgani-setup --sync</code>.</p>
         <div class="table-wrap"><table id="aliasTable"></table></div>
         <h3>اسم مخصص جديد</h3>
         <form id="aliasForm" class="row"><input id="aliasName" class="ltr" placeholder="my-model" required><select id="aliasModel"></select><button class="primary">حفظ</button></form>
@@ -69,6 +74,8 @@
         <p class="muted small">بيثبّت الأداة إذا مش موجودة ويربطها بالبوابة مع مفتاحك. اختر الأداة:</p>
         <div class="row"><select id="toolSel"></select><select id="osSel"><option value="unix">macOS / Linux / Git Bash</option><option value="win">Windows PowerShell</option></select></div>
         <pre id="installCmd"></pre><button class="small" data-copy="installCmd">نسخ</button>
+        <h3>أوامر مفيدة بعد التثبيت</h3>
+        <pre id="helperCmds"></pre>
       </div>
       <div class="card">
         <h2>🔌 استخدام مباشر (أي أداة/SDK متوافق)</h2>

@@ -156,3 +156,27 @@ test('chat → responses (non-stream + stream with custom tool)', () => {
   assert.equal(done.response.usage.output_tokens, 4);
   assert.deepEqual(ev.map((e) => e.sequence_number), ev.map((_, i) => i));
 });
+
+import { mapEffort, applyCompat } from '../src/routing.js';
+
+test('mapEffort: nearest supported level, never silently disables reasoning', () => {
+  const lmh = ['low', 'medium', 'high'];
+  assert.equal(mapEffort('medium', lmh), 'medium');
+  assert.equal(mapEffort('xhigh', lmh), 'high');
+  assert.equal(mapEffort('max', lmh), 'high');
+  assert.equal(mapEffort('ultra', ['none', 'low', 'high', 'max']), 'max');
+  assert.equal(mapEffort('minimal', lmh), 'low');
+  assert.equal(mapEffort('none', lmh), null);
+  assert.equal(mapEffort('high', undefined), 'high');
+  assert.equal(mapEffort('bogus', lmh), null);
+});
+
+test('applyCompat: max tokens field, developer role, effort', () => {
+  const zai = { compat: '{"max_tokens_field":"max_tokens","developer_role":false,"efforts":["low","medium","high"]}' };
+  const out = applyCompat({ max_completion_tokens: 50, reasoning_effort: 'xhigh', messages: [{ role: 'developer', content: 'x' }] }, zai);
+  assert.deepEqual(out, { max_tokens: 50, reasoning_effort: 'high', messages: [{ role: 'system', content: 'x' }] });
+  const oa = applyCompat({ max_tokens: 10 }, { compat: '{"max_tokens_field":"max_completion_tokens"}' });
+  assert.deepEqual(oa, { max_completion_tokens: 10 });
+  assert.deepEqual(applyCompat({ reasoning_effort: 'none' }, zai), {});
+  assert.deepEqual(applyCompat({ a: 1 }, { compat: 'not json' }), { a: 1 });
+});

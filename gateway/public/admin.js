@@ -53,7 +53,7 @@ async function loadProviders() {
         <button class="small" data-act="edit-provider" data-p="${esc(p.id)}">تعديل</button>
         <button class="small" data-act="toggle-provider" data-p="${esc(p.id)}">${p.enabled ? 'إيقاف' : 'تفعيل'}</button>
       </div>
-      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}</div>
+      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}${p.compat ? ` · compat: ${esc(p.compat)}` : ''}</div>
       <div class="table-wrap"><table>
         <tr><th>الاسم</th><th>المفتاح</th><th class="num">الوزن</th><th class="num">استخدام</th><th>الحالة</th><th>آخر خطأ</th><th></th></tr>
         ${p.keys.map((k) => `<tr>
@@ -107,7 +107,7 @@ $('#providerList').addEventListener('click', guard(async (e) => {
     await api('POST', '/api/admin/providers', { ...prov, enabled: !prov.enabled }); await loadProviders();
   } else if (act === 'edit-provider') {
     const f = $('#providerForm');
-    for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
+    for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers', 'compat']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
     f.scrollIntoView({ behavior: 'smooth' });
   } else if (act === 'discover') {
     b.disabled = true;
@@ -134,7 +134,7 @@ function showDiscover(providerId, list) {
     openModel({
       id: m.id.split('/').pop().replace(/[:]/g, '-'), name: m.name, context_length: m.context_length || 128000, max_output: m.max_output || 16384,
       pricing_mode: providerId === 'openrouter' ? 'provider' : 'token', price_in: m.price_in || 0, price_out: m.price_out || 0, price_cache_read: m.price_cache_read || 0,
-      status: 'new', routes: [{ provider_id: providerId, upstream_model: m.id }],
+      status: 'new', reasoning: m.reasoning ?? true, vision: !!m.vision, routes: [{ provider_id: providerId, upstream_model: m.id }],
     }, true);
   });
   $('#discoverDlg').showModal();
@@ -225,7 +225,7 @@ $('#modelForm').addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const f = e.target, d = formData(f);
   const body = {
-    ...d, reasoning: f.elements.reasoning.checked,
+    ...d, reasoning: f.elements.reasoning.checked, vision: f.elements.vision.checked,
     price_in: Math.round((+d.price_in || 0) * M), price_out: Math.round((+d.price_out || 0) * M),
     price_cache_read: Math.round((+d.price_cache_read || 0) * M), price_request: Math.round((+d.price_request || 0) * M),
     routes: $$('#routeRows > div').map((row, i) => ({
@@ -349,7 +349,7 @@ $('#couponTable').addEventListener('click', guard(async (e) => {
 async function loadUsage() {
   const rows = await api('GET', '/api/admin/usage?limit=300');
   $('#usageTable').innerHTML = '<tr><th>الوقت</th><th>الطالب</th><th>النموذج</th><th>المزوّد</th><th class="num">دخل</th><th class="num">خرج</th><th class="num">كلفة</th><th class="num">ms</th><th>حالة</th></tr>' +
-    rows.map((r) => `<tr><td class="small">${date(r.created_at)}</td><td>${esc(r.user_name || r.user_id)}</td><td class="mono ltr small">${esc(r.model_id)}</td>
+    rows.map((r) => `<tr><td class="small">${date(r.created_at)}</td><td>${esc(r.user_name || r.user_id)}</td><td class="mono ltr small">${r.requested_model && r.requested_model !== r.model_id ? esc(r.requested_model) + ' → ' : ''}${esc(r.model_id)}${r.upstream_model ? `<div class="muted">${esc(r.upstream_model)}</div>` : ''}</td>
       <td class="small">${esc(r.provider_id || '—')}</td><td class="num">${tokens(r.prompt_tokens)}</td><td class="num">${tokens(r.completion_tokens)}</td>
       <td class="num">${usdPrecise(r.cost)}</td><td class="num">${r.latency_ms ?? ''}</td>
       <td title="${esc(r.error || '')}">${r.status < 400 ? `<span class="badge ok">${r.status}</span>` : `<span class="badge bad">${r.status}</span>`}</td></tr>`).join('');

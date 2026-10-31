@@ -1,8 +1,8 @@
 // Oh-My-abdalgani-code — wires AI coding tools to the abdalgani gateway.
 import chalk from 'chalk';
 import { select, input, checkbox, search, confirm } from '@inquirer/prompts';
-import { BASE_URL, API_URL, ALIASES, setLang, tr, log, savedKey, saveKey, which, run } from './core.js';
-import { fetchCatalog, describeAccount } from './gateway.js';
+import { BASE_URL, API_URL, ALIASES, setLang, getLang, tr, log, savedKey, saveKey, which, run, loadState, rememberTool } from './core.js';
+import { fetchCatalog, describeAccount, printStatus } from './gateway.js';
 import { INSTALL, installTool, opencodeMajor } from './install.js';
 import { TOOLS } from './tools/index.js';
 
@@ -31,7 +31,10 @@ Headless:      node setup.js --tool <Name[,Name]> [--model abd-main] [--effort h
   --api-key     gateway key (else ABDALGANI_API_KEY env, else the saved key)
   --no-install  only write config, never install the tool
   --upgrade     upgrade OpenCode V1 → V2 if found
+  --arabic      OpenCode / EH Code reply in Arabic by default (/ar and /en are always added)
   --lang        ar | en
+  --status      balance + the real model behind abd-main / abd-fast / abd-think
+  --sync        refresh every tool configured before (after switching models in the dashboard)
   --list-tools / --list-models / --help
 
 Dashboard:     ${BASE_URL}       Base URL: ${API_URL}`;
@@ -102,6 +105,27 @@ async function configure(tool, base, cli, interactive) {
   console.log(chalk.bold.cyan(`\n━━ ${TOOLS[tool].label} ━━`));
   const opencodeMajorVer = await ensureInstalled(tool, cli, interactive);
   TOOLS[tool].configure({ ...base, opencodeMajor: opencodeMajorVer ?? 2 });
+  rememberTool(tool, { model: base.model, effort: base.effort, arabic: base.arabic });
+}
+
+function printMapping(models) {
+  const aliases = models.filter((m) => m.alias && m.target);
+  if (!aliases.length) return;
+  log.info(tr('\n🎯 أسماؤك الثابتة تشير الآن إلى:', '\n🎯 Your stable aliases currently point to:'));
+  for (const a of aliases) console.log(`   ${a.id.padEnd(12)} → ${a.targetName || a.target} (${a.target})`);
+}
+
+/** Re-run every tool configured before, keeping its options (no prompts, no installs). */
+async function sync(key, catalog) {
+  const tools = loadState().tools || {};
+  const names = Object.keys(tools).filter((t) => TOOLS[t]);
+  if (!names.length) { log.warn(tr('ما في أدوات مضبوطة سابقاً — شغّل الإعداد أولاً.', 'No tools configured yet — run the setup first.')); return; }
+  for (const t of names) {
+    const o = tools[t];
+    console.log(chalk.bold.cyan(`\n━━ ${TOOLS[t].label} ━━`));
+    TOOLS[t].configure({ apiKey: key, models: catalog.models, model: o.model || ALIASES.main, effort: o.effort || '', arabic: !!o.arabic, opencodeMajor: t === 'OpenCode' ? (opencodeMajor() || 2) : 2 });
+  }
+  printMapping(catalog.models);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -116,6 +140,16 @@ export async function main(argv = process.argv.slice(2)) {
     setLang(await select({ message: 'Language / اللغة', choices: [{ name: 'العربية', value: 'ar' }, { name: 'English', value: 'en' }] }));
   }
   console.log(chalk.bold.cyan(`\n⚡ abdalgani — ${tr('إعداد أدوات البرمجة', 'coding tools setup')}  (${BASE_URL})\n`));
+
+  if (cli.status || cli.sync) {
+    const key = (typeof cli['api-key'] === 'string' && cli['api-key']) || process.env.ABDALGANI_API_KEY || savedKey();
+    if (!key) { log.err(tr('❌ لا يوجد مفتاح محفوظ — شغّل الإعداد أولاً', '❌ No saved key — run the setup first')); process.exit(1); }
+    if (cli.status) { process.exit(await printStatus(key) ? 0 : 1); }
+    const cat = await fetchCatalog(key);
+    if (!cat.ok) { log.err(`❌ ${cat.reason}`); process.exit(1); }
+    await sync(key, cat);
+    return;
+  }
 
   const { key, catalog } = await resolveKey(cli, interactive);
   if (cli['list-models']) { console.log(catalog.models.map((m) => m.id).join('\n')); return; }
@@ -137,13 +171,24 @@ export async function main(argv = process.argv.slice(2)) {
   let effort = typeof cli.effort === 'string' ? cli.effort : '';
   if (interactive && tools.some((t) => TOOLS[t].effort)) effort = await pickEffort();
 
-  const base = { apiKey: key, models: catalog.models, model, effort };
+  let arabic = cli.arabic === true || cli.arabic === 'true';
+  if (interactive && tools.some((t) => t === 'OpenCode' || t === 'EHCode')) {
+    arabic = await confirm({
+      message: tr('OpenCode: يحكي عربي افتراضياً؟ (الأوامر /ar و /en بتنضاف بكل الأحوال)', 'OpenCode: reply in Arabic by default? (/ar and /en are added either way)'),
+      default: getLang() === 'ar',
+    });
+  }
+
+  const base = { apiKey: key, models: catalog.models, model, effort, arabic };
   for (const tool of tools) {
     try { await configure(tool, base, cli, interactive); }
     catch (e) { log.err(`❌ ${tool}: ${e.message}`); }
   }
 
+  printMapping(catalog.models);
   console.log(chalk.bold.green(`\n✅ ${tr('تم.', 'Done.')}`));
+  log.dim(`   abdalgani-setup --status   ${tr('← رصيدك والنموذج الحقيقي', '← balance + real models')}`);
+  log.dim(`   abdalgani-setup --sync     ${tr('← بعد التبديل من اللوحة', '← after switching in the dashboard')}`);
   log.info(`🌐 ${tr('لوحة التحكم (الرصيد، الكوبونات، تبديل النماذج)', 'Dashboard (balance, coupons, model switching)')}: ${BASE_URL}`);
   if (interactive && tools.length === 1) {
     const exe = INSTALL[tools[0]]?.exe;

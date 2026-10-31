@@ -131,7 +131,7 @@ test('chat completion: failover past rate-limited key, flat price charged', asyn
   const r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'abdalgani/glm-5.2', messages: [{ role: 'user', content: 'ping' }] } });
   assert.equal(r.status, 200, r.text);
   assert.equal(r.data.choices[0].message.content, 'pong');
-  assert.equal(r.data.model, 'abdalgani/glm-5.2');
+  assert.equal(r.data.model, 'glm-5.2'); // real model, not the prefixed/aliased request name
   assert.equal(upstreamCalls.at(-1).body.model, 'glm-5.2');
   assert.equal(upstreamCalls.at(-1).auth, 'Bearer zai-good-key-1234');
   const prov = await admin('GET', '/providers');
@@ -240,4 +240,33 @@ test('/v1/responses (Codex) translated to chat, stream + non-stream, billed', as
   const log = (await admin('GET', `/usage?user_id=${userId}`)).data[0];
   assert.equal(log.endpoint, '/v1/responses');
   assert.equal(log.prompt_tokens, 100);
+});
+
+test('real model is visible: headers, body.model, usage log keeps alias + upstream', async () => {
+  const pending = [];
+  const res = await worker.fetch(new Request('https://api.abdalgani.com/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${userKey}` },
+    body: JSON.stringify({ model: 'abd-main', reasoning_effort: 'ultra', max_completion_tokens: 20, messages: [{ role: 'developer', content: 'd' }, { role: 'user', content: 'x' }] }),
+  }), env, { waitUntil: (p) => pending.push(p) });
+  const body = await res.json(); await Promise.all(pending);
+  assert.equal(res.headers.get('x-abdalgani-alias'), 'abd-main');
+  assert.equal(res.headers.get('x-abdalgani-model'), 'glm-4.7');           // re-mapped earlier in this suite
+  assert.equal(res.headers.get('x-abdalgani-upstream'), 'zai/glm-4.7');
+  assert.equal(body.model, 'glm-4.7');
+  const sent = upstreamCalls.at(-1).body;                                   // z.ai compat applied
+  assert.equal(sent.max_tokens, 20); assert.equal(sent.max_completion_tokens, undefined);
+  assert.equal(sent.reasoning_effort, 'max');
+  assert.equal(sent.messages[0].role, 'system');
+  const log = (await admin('GET', `/usage?user_id=${userId}`)).data[0];
+  assert.equal(log.requested_model, 'abd-main');
+  assert.equal(log.upstream_model, 'glm-4.7');
+  const me = await call('GET', '/api/me', { token: userKey });
+  const main = me.data.aliases.find((a) => a.alias === 'abd-main');
+  assert.equal(main.model_name, 'GLM-4.7');
+  assert.match(main.served_by, /Z\.AI/);
+});
+
+test('NVIDIA + OpenCode Zen providers are seeded', async () => {
+  const prov = (await admin('GET', '/providers')).data.map((p) => p.id);
+  assert.ok(prov.includes('nvidia') && prov.includes('opencode-zen'));
 });

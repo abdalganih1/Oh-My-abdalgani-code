@@ -11,7 +11,7 @@ npx wrangler login
 npx wrangler d1 create abdalgani-gateway        # انسخ database_id إلى wrangler.toml
 npx wrangler secret put ADMIN_TOKEN             # كلمة سر لوحة المدير (طويلة وعشوائية)
 npx wrangler secret put ENCRYPTION_KEY          # مفتاح تشفير مفاتيح المزوّدين — لا تغيّره بعدين
-npm run db:migrate                              # ينشئ الجداول + المزوّدين الأربعة + فئات + نماذج GLM
+npm run db:migrate                              # الجداول + المزوّدون (zai, openrouter, anthropic, openai, nvidia, opencode-zen) + فئات + نماذج GLM
 npm run deploy
 ```
 
@@ -21,7 +21,7 @@ npm run deploy
 
 ## 🧭 أول إعداد من لوحة المدير (`https://api.abdalgani.com/admin.html`)
 
-1. **المزوّدون والمفاتيح:** أضف مفتاح Z.AI coding plan، ومفتاح OpenRouter، ولاحقاً Anthropic و OpenAI. تقدر تضيف أكثر من مفتاح لنفس المزوّد (أوزان + احتياط). زر **اختبار** يتأكد إن المفتاح شغّال.
+1. **المزوّدون والمفاتيح:** أضف مفتاح Z.AI coding plan، ومفتاح OpenRouter، ومفاتيح NVIDIA (`build.nvidia.com` — كل حساب له حد طلبات، فأكثر من مفتاح = توزيع)، ولاحقاً Anthropic و OpenAI و OpenCode Zen. تقدر تضيف أكثر من مفتاح لنفس المزوّد (أوزان + احتياط). زر **اختبار** يتأكد إن المفتاح شغّال.
 2. **النماذج والتوجيه:** سعّر نماذج GLM (الافتراضي `request` بسعر 0 = مجاني — غيّره). زر **📥 استعراض نماذج المزوّد** يجيب كتالوج المزوّد مع الأسعار والسياق، وزر "إضافة" يعبّي النموذج. كل نموذج له مسارات مرتّبة: الأول أساسي والباقي احتياط تلقائي (مثلاً `glm-5.2` ← zai، وإذا فشل ← OpenRouter `z-ai/glm-5.2`).
 3. **الطلاب:** أنشئ طالب ← بيطلع مفتاح `sk-abd-…` مرة وحدة، أرسله له.
 4. **الكوبونات:** ولّد كوبونات (دولار أو مليون توكن، لكل الفئات أو لفئة محددة، مدة الاشتراك، عدد الاستخدامات). أو امنح اشتراك مباشر من صفحة الطالب.
@@ -41,6 +41,9 @@ npm run deploy
 - المفاتيح: ترتيب عشوائي موزون. 429 ← تبريد 60 ث، 401/403/402 ← ساعة، 5xx/شبكة ← 20 ث، ثم المفتاح التالي ثم المسار التالي. أخطاء 400 تُرجع للعميل فوراً بدون استهلاك مفاتيح أخرى.
 - الترجمة: Claude Code (`/v1/messages`) على مزوّد بدون Anthropic endpoint (OpenAI) ← ترجمة كاملة مع الأدوات والبث. Codex (`/v1/responses`) ← يُترجم دائماً إلى Chat Completions (بما فيه custom tools مثل `apply_patch`).
 - `reasoning_effort` يُحذف تلقائياً للنماذج غير المفعّل لها "يدعم التفكير".
+- **توافق لكل مزوّد (`compat` JSON بلوحة المدير):** `max_tokens_field` (يحوّل max_tokens ⇄ max_completion_tokens)، `developer_role: false` (يحوّل رسائل developer إلى system)، `efforts` (المستويات المقبولة؛ الباقي يُقرّب لأقرب مستوى — Hermes يرسل `reasoning_effort` دائماً، و`ultra` ← `max`). مضبوطة مسبقاً لـ Z.AI و NVIDIA و OpenAI و OpenRouter و Anthropic.
+- **شفافية النموذج الحقيقي:** كل رد يرجع `model` = المعرّف الحقيقي + ترويسات `x-abdalgani-model` و `x-abdalgani-upstream` (مزوّد/معرّف) و `x-abdalgani-alias`، والسجل يحفظ `requested_model` و `upstream_model`.
+- كل الطلبات للمزوّدين تحمل `User-Agent: abdalgani-gateway/2.1` (OpenCode يطلب تعريف العميل).
 
 ## 📚 الـ API
 

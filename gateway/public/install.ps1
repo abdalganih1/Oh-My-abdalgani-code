@@ -16,6 +16,13 @@ New-Item -ItemType Directory -Force -Path $Root | Out-Null
 if (Test-Path (Join-Path $Dir '.git')) { git -C $Dir pull --ff-only --quiet } else { git clone --depth 1 --quiet $Repo $Dir }
 Push-Location $Dir; npm install --silent --no-audit --no-fund; Pop-Location
 
+# permanent command (cmd + PowerShell): %LOCALAPPDATA%\abdalgani\bin\abdalgani-setup.cmd on the user PATH
+$Bin = Join-Path ($env:LOCALAPPDATA) 'abdalgani\bin'
+New-Item -ItemType Directory -Force -Path $Bin | Out-Null
+Set-Content -Path (Join-Path $Bin 'abdalgani-setup.cmd') -Encoding ASCII -Value "@echo off`r`nnode `"$Dir\setup.js`" %*"
+$userPath = [Environment]::GetEnvironmentVariable('Path','User')
+if (($userPath -split ';') -notcontains $Bin) { [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $Bin), 'User') }
+if (($env:Path -split ';') -notcontains $Bin) { $env:Path += ';' + $Bin }
 function global:abdalgani-setup { node (Join-Path $Dir 'setup.js') @args }
 Write-Host "✅ Ready. Run:  abdalgani-setup            (interactive)" -ForegroundColor Green
 Write-Host "            or  abdalgani-setup --tool OpenCode --api-key sk-abd-..." -ForegroundColor Green

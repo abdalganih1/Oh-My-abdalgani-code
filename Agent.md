@@ -16,7 +16,7 @@ cli/
   tools/*.js              كاتب إعداد لكل أداة (build* دوال نقية مُختبرة + configure* تكتب الملف)
 gateway/
   wrangler.toml           D1 + Assets + الدومين
-  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة
+  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة، 0003 compat/vision/NVIDIA/Zen/أعمدة النموذج الحقيقي
   src/index.js            الراوتر
   src/proxy.js            /v1/chat/completions، /v1/messages، /v1/responses، /v1/models + البث والمحاسبة
   src/routing.js          حلّ النموذج، المسارات، مفاتيح موزونة + تبريد، الترويسات
@@ -34,6 +34,7 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 |---|---|
 | `npm test` | كل الاختبارات (CLI + البوابة) |
 | `node setup.js --help` | مساعدة الـ CLI |
+| `node setup.js --status` / `--sync` | النموذج الحقيقي والرصيد / تحديث كل الأدوات المضبوطة |
 | `cd gateway && npm run dev` | تشغيل محلي (wrangler) |
 | `cd gateway && npm run db:migrate && npm run deploy` | نشر |
 
@@ -45,6 +46,11 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 - **الأدوات تُضبط على الأسماء الثابتة** `abd-main/abd-fast/abd-think` حتى يبدّل الطالب من اللوحة بدون إعادة إعداد.
 - **OpenCode V2** يستخدم `providers` (جمع) + `package` + `settings` + `variants`، و V1/Kilo/EH Code يستخدمون `provider` + `npm` + `options`. `opencodeMajor()` يقرر.
 - **Codex** يدعم `wire_api = "responses"` فقط → البوابة تخدم `/v1/responses`.
+- **Hermes** بالصيغة الحالية: `providers.abdalgani` (`api`, `key_env`, `transport`, `default_model`, `models`) + `model.provider: custom:abdalgani`؛ مدخل `custom_providers` القديم باسمنا يُحذف.
+- **الشفافية:** لا ترجع الاسم المستعار بحقل `model` — دائماً النموذج الحقيقي + ترويسات `x-abdalgani-*`.
+- **compat لكل مزوّد** بدل حالات خاصة بالكود: أي مزوّد جديد يرفض بارامتر ← عدّل `providers.compat` (أو أضف مفتاح جديد لـ `applyCompat` مع اختبار).
+- **OpenCode بالعربي:** أوامر `/ar` و `/en` (`commands` بـ V2، `command` بـ V1) + ملف `abdalgani-arabic.md` بـ `instructions` عند اختيار "عربي افتراضياً".
+- **OpenCode Go** لا يُضاف كمزوّد مشترك (شروطه: workspace بعضو واحد). المعتمد: OpenCode Zen.
 - كتّاب الإعداد يدمجون ولا يحذفون مزوّدات المستخدم الأخرى، ويأخذون نسخة `*.abdalgani.bak` أول مرة.
 - أي تعديل على البوابة: أضف/حدّث اختبار في `gateway/test/` وشغّل `npm test`.
 

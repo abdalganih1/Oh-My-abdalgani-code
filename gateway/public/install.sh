@@ -20,6 +20,17 @@ mkdir -p "$(dirname "$DIR")"
 if [ -d "$DIR/.git" ]; then git -C "$DIR" pull --ff-only --quiet; else git clone --depth 1 --quiet "$REPO" "$DIR"; fi
 cd "$DIR"
 npm install --silent --no-audit --no-fund
+# permanent command: abdalgani-setup (--status / --sync / add tools later)
+BIN="$HOME/.local/bin"; mkdir -p "$BIN"
+NODE_BIN="$(command -v node)"
+printf '#!/bin/sh\nexec "%s" "%s/setup.js" "$@"\n' "$NODE_BIN" "$DIR" > "$BIN/abdalgani-setup"
+chmod +x "$BIN/abdalgani-setup"
+case ":$PATH:" in *":$BIN:"*) ;; *)
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [ -f "$rc" ] && ! grep -q 'abdalgani-setup PATH' "$rc" && printf '\nexport PATH="$HOME/.local/bin:$PATH"  # abdalgani-setup PATH\n' >> "$rc"
+  done
+  export PATH="$BIN:$PATH";;
+esac
 # stdin is the curl pipe → reattach the terminal so interactive prompts work
 if [ $# -eq 0 ] && [ -e /dev/tty ]; then exec node setup.js </dev/tty; fi
 exec node setup.js "$@"

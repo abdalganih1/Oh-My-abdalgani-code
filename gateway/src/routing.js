@@ -80,8 +80,11 @@ export async function markKeySuccess(db, keyId) {
   await db.prepare('UPDATE provider_keys SET used_count = used_count + 1, fail_count = 0 WHERE id = ?').bind(keyId).run();
 }
 
+export const USER_AGENT = 'abdalgani-gateway/2.1 (+https://api.abdalgani.com)';
+
 export function upstreamHeaders(provider, secret, format, incoming) {
-  const h = { 'content-type': 'application/json' };
+  // upstreams like OpenCode ask clients to identify themselves instead of a generic SDK UA
+  const h = { 'content-type': 'application/json', 'user-agent': USER_AGENT };
   if (format === 'anthropic') {
     if (provider.auth_style === 'x-api-key') h['x-api-key'] = secret;
     else h['authorization'] = `Bearer ${secret}`;
@@ -100,4 +103,50 @@ export function upstreamHeaders(provider, secret, format, incoming) {
 export function upstreamUrl(provider, format) {
   if (format === 'anthropic') return provider.anthropic_base_url ? `${provider.anthropic_base_url.replace(/\/$/, '')}/v1/messages` : null;
   return provider.openai_base_url ? `${provider.openai_base_url.replace(/\/$/, '')}/chat/completions` : null;
+}
+
+export function parseCompat(provider) {
+  if (!provider?.compat) return {};
+  try { return JSON.parse(provider.compat) || {}; } catch { return {}; }
+}
+
+const EFFORT_LADDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Map a requested effort onto what the upstream accepts. null = drop the parameter. */
+export function mapEffort(requested, allowed) {
+  if (requested == null) return requested;
+  let r = String(requested).toLowerCase();
+  if (r === 'ultra') r = 'max';
+  if (!Array.isArray(allowed) || !allowed.length) return r;
+  if (allowed.includes(r)) return r;
+  if (r === 'none') return null;
+  const idx = EFFORT_LADDER.indexOf(r);
+  if (idx < 0) return null;
+  let best = null, dist = Infinity;
+  for (const a of allowed) {
+    const i = EFFORT_LADDER.indexOf(a);
+    if (i <= 0) continue; // never silently turn reasoning off
+    const d = Math.abs(i - idx) + (i > idx ? 0.5 : 0); // tie → prefer the lower level
+    if (d < dist) { dist = d; best = a; }
+  }
+  return best;
+}
+
+/** Apply per-provider quirks to an OpenAI chat-completions body (mutates + returns it). */
+export function applyCompat(body, provider) {
+  const c = parseCompat(provider);
+  if (c.max_tokens_field === 'max_tokens' && body.max_completion_tokens != null) {
+    body.max_tokens ??= body.max_completion_tokens; delete body.max_completion_tokens;
+  } else if (c.max_tokens_field === 'max_completion_tokens' && body.max_tokens != null) {
+    body.max_completion_tokens ??= body.max_tokens; delete body.max_tokens;
+  }
+  if (c.developer_role === false && Array.isArray(body.messages)) {
+    body.messages = body.messages.map((m) => (m.role === 'developer' ? { ...m, role: 'system' } : m));
+  }
+  if (body.reasoning_effort != null) {
+    const e = mapEffort(body.reasoning_effort, c.efforts);
+    if (e == null) delete body.reasoning_effort; else body.reasoning_effort = e;
+  }
+  if (Array.isArray(c.strip)) for (const k of c.strip) delete body[k];
+  return body;
 }

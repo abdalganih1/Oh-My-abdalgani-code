@@ -2,20 +2,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
-import { HOME, API_URL, PROVIDER_ID, KEY_ENV, readJson, writeJson, writeText, run, log, tr } from '../core.js';
+import { HOME, API_URL, PROVIDER_ID, KEY_ENV, readJson, writeJson, writeText, run, log, tr, persistEnv } from '../core.js';
 
 export function configurePi(ctx) {
   const dir = process.env.PI_CODING_AGENT_DIR || path.join(HOME, '.pi', 'agent');
   const file = path.join(dir, 'models.json');
   const cfg = readJson(file, {});
+  // literal key = works in the current terminal too (an env reference needs a new shell).
+  // The gateway normalizes max_tokens / developer role / reasoning levels per upstream,
+  // so pi needs no compat flags.
   const entry = {
     baseUrl: API_URL, apiKey: ctx.apiKey, api: 'openai-completions',
-    models: ctx.models.map((m) => ({ id: m.id, name: m.name, reasoning: m.reasoning, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: m.context, maxTokens: m.output })),
+    headers: { 'X-Abdalgani-Client': 'pi' },
+    models: ctx.models.map((m) => ({
+      id: m.id, name: m.name, reasoning: m.reasoning, input: m.vision ? ['text', 'image'] : ['text'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: m.context, maxTokens: m.output,
+    })),
   };
+  cfg.$schema = cfg.$schema || 'https://pi.dev/schemas/models.schema.json';
   cfg.providers = { ...(cfg.providers && typeof cfg.providers === 'object' ? cfg.providers : {}), [PROVIDER_ID]: entry };
   delete cfg[PROVIDER_ID]; // pre-2026 layout written by old versions of this tool
   writeJson(file, cfg);
-  log.dim(`   pi --provider ${PROVIDER_ID} --model ${ctx.model}`);
+  log.dim(`   pi --provider ${PROVIDER_ID} --model ${ctx.model}   (${tr('أو /model داخل pi', 'or /model inside pi')})`);
 }
 
 export function configureQwen(ctx) {

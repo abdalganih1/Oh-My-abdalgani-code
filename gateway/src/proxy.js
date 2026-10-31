@@ -3,7 +3,7 @@ import { authUser } from './auth.js';
 import { pickSubscription, loadSubscriptions, settle, isSubUsable } from './billing.js';
 import {
   resolveModel, loadRoutes, attempts, isRetryable, markKeyFailure, markKeySuccess,
-  upstreamHeaders, upstreamUrl, getGlobalAliases,
+  upstreamHeaders, upstreamUrl, getGlobalAliases, applyCompat,
 } from './routing.js';
 import { anthropicToOpenAIRequest, openAIToAnthropicResponse, OpenAIToAnthropicStream, SSEParser } from './translate.js';
 import { responsesToChatRequest, chatToResponsesResponse, ChatToResponsesStream } from './responses.js';
@@ -47,6 +47,7 @@ function buildUpstreamBody(clientFormat, m, body, route, model) {
   if (m.format === 'openai' && route.id === 'openrouter') out.usage = { include: true };
   // tools send a reasoning effort to every model; non-reasoning upstreams reject it with 400
   if (!model.reasoning) { delete out.reasoning_effort; delete out.reasoning; if (m.format === 'anthropic') delete out.thinking; }
+  if (m.format === 'openai') applyCompat(out, route);
   return out;
 }
 
@@ -81,7 +82,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
   const endpoint = { anthropic: '/v1/messages', responses: '/v1/responses' }[clientFormat] || '/v1/chat/completions';
   const customTools = clientFormat === 'responses' ? responsesToChatRequest(body, '').customTools : null;
   const finish = (routeInfo, status, usage, error) => settle(env.DB, {
-    user, keyId, model, routeInfo, endpoint, status, usage: usage || ZERO,
+    user, keyId, model, routeInfo, endpoint, status, usage: usage || ZERO, requestedModel: requestedName,
     providerCostUsd: usage?.providerCost ?? null, latency: Date.now() - started, error, subscriptionId: sub.id,
   });
 
@@ -91,7 +92,13 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
     const m = modeFor(clientFormat, route);
     if (!m) continue;
     tried++;
-    const routeInfo = { provider_id: route.id, key_id: key.id };
+    const routeInfo = { provider_id: route.id, key_id: key.id, upstream_model: route.upstream_model };
+    // tell the student which real model answered (the body's `model` too — aliases stay transparent)
+    const realHeaders = {
+      'x-abdalgani-model': model.id,
+      'x-abdalgani-upstream': `${route.id}/${route.upstream_model}`,
+      ...(requestedName !== model.id ? { 'x-abdalgani-alias': String(requestedName) } : {}),
+    };
     let upstream;
     try {
       upstream = await fetch(upstreamUrl(route, m.format), {
@@ -114,7 +121,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
       }
       // client error (400/404/422): don't burn other keys, relay it
       ctx.waitUntil(finish(routeInfo, upstream.status, null, text));
-      return new Response(text, { status: upstream.status, headers: { 'content-type': upstream.headers.get('content-type') || 'application/json' } });
+      return new Response(text, { status: upstream.status, headers: { 'content-type': upstream.headers.get('content-type') || 'application/json', ...realHeaders } });
     }
 
     ctx.waitUntil(markKeySuccess(env.DB, key.id));
@@ -124,14 +131,14 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
     if (!isStream) {
       const data = await upstream.json();
       let usage, out;
-      if (m.format === 'anthropic') { usage = usageFromAnthropic(data.usage); out = { ...data, model: requestedName }; }
+      if (m.format === 'anthropic') { usage = usageFromAnthropic(data.usage); out = { ...data, model: model.id }; }
       else {
         usage = usageFromOpenAI(data.usage);
-        out = clientFormat === 'responses' ? chatToResponsesResponse(data, requestedName, body, customTools)
-          : m.mode === 'translate' ? openAIToAnthropicResponse(data, requestedName) : { ...data, model: requestedName };
+        out = clientFormat === 'responses' ? chatToResponsesResponse(data, model.id, body, customTools)
+          : m.mode === 'translate' ? openAIToAnthropicResponse(data, model.id) : { ...data, model: model.id };
       }
       ctx.waitUntil(finish(routeInfo, 200, usage));
-      return json(out);
+      return json(out, 200, realHeaders);
     }
 
     // ── streaming: pass bytes through (or translate) while sniffing usage ──
@@ -140,8 +147,8 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     const parser = new SSEParser();
-    const conv = clientFormat === 'responses' ? new ChatToResponsesStream(requestedName, body, customTools)
-      : m.mode === 'translate' ? new OpenAIToAnthropicStream(requestedName) : null;
+    const conv = clientFormat === 'responses' ? new ChatToResponsesStream(model.id, body, customTools)
+      : m.mode === 'translate' ? new OpenAIToAnthropicStream(model.id) : null;
     let usage = null;
 
     const pump = (async () => {
@@ -179,7 +186,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
 
     return new Response(readable, {
       status: 200,
-      headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' },
+      headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive', ...realHeaders },
     });
   }
 
@@ -197,14 +204,14 @@ export async function handleModels(request, env, ctx) {
   const created = (m) => m.created_at;
   const data = usable.map((m) => ({
     id: m.id, object: 'model', created: created(m), owned_by: 'abdalgani',
-    name: m.name, context_length: m.context_length, max_output_tokens: m.max_output, reasoning: !!m.reasoning, status: m.status, group: m.group_id,
+    name: m.name, context_length: m.context_length, max_output_tokens: m.max_output, reasoning: !!m.reasoning, vision: !!m.vision, status: m.status, group: m.group_id,
   }));
   const { results: mine } = await env.DB.prepare('SELECT alias, model_id FROM user_aliases WHERE user_id = ?').bind(user.id).all();
   const aliases = { ...(await getGlobalAliases(env.DB)) };
   for (const a of mine) aliases[a.alias] = a.model_id;
   for (const [alias, target] of Object.entries(aliases)) {
     const m = usable.find((x) => x.id === target);
-    if (m) data.push({ id: alias, object: 'model', created: m.created_at, owned_by: 'abdalgani', name: `${alias} → ${m.name}`, context_length: m.context_length, max_output_tokens: m.max_output, reasoning: !!m.reasoning, alias_of: m.id });
+    if (m) data.push({ id: alias, object: 'model', created: m.created_at, owned_by: 'abdalgani', name: `${alias} → ${m.name}`, context_length: m.context_length, max_output_tokens: m.max_output, reasoning: !!m.reasoning, vision: !!m.vision, alias_of: m.id, alias_of_name: m.name });
   }
   return json({ object: 'list', data });
 }

@@ -29,6 +29,18 @@ export async function handleMe(request, env, ctx, path) {
       const ex = aliases.find((x) => x.alias === m.alias);
       if (ex) { ex.model_id = m.model_id; ex.custom = true; } else aliases.push({ alias: m.alias, model_id: m.model_id, default_model_id: null, custom: true });
     }
+    // the real model + where it is served from, so the student always knows what abd-main really is
+    const { results: mods } = await db.prepare("SELECT id, name FROM models WHERE status != 'hidden'").all();
+    const { results: routes } = await db.prepare(
+      `SELECT r.model_id, r.upstream_model, p.name AS provider FROM model_routes r JOIN providers p ON p.id = r.provider_id
+       WHERE r.enabled = 1 AND p.enabled = 1 AND EXISTS (SELECT 1 FROM provider_keys k WHERE k.provider_id = p.id AND k.enabled = 1)
+       ORDER BY r.priority, r.id`
+    ).all();
+    for (const a of aliases) {
+      a.model_name = mods.find((x) => x.id === a.model_id)?.name || a.model_id;
+      const r = routes.find((x) => x.model_id === a.model_id);
+      a.served_by = r ? `${r.provider} · ${r.upstream_model}` : null;
+    }
     return json({
       user: { id: user.id, name: user.name, email: user.email },
       current_key_id: keyId,
@@ -48,7 +60,7 @@ export async function handleMe(request, env, ctx, path) {
     const groups = (await db.prepare('SELECT * FROM model_groups').all()).results;
     const models = (await allModels()).map((m) => ({
       id: m.id, name: m.name, group_id: m.group_id, status: m.status, description: m.description,
-      context_length: m.context_length, max_output: m.max_output, reasoning: !!m.reasoning,
+      context_length: m.context_length, max_output: m.max_output, reasoning: !!m.reasoning, vision: !!m.vision,
       pricing_mode: m.pricing_mode, price_in: m.price_in, price_out: m.price_out, price_request: m.price_request, markup_pct: m.markup_pct,
       created_at: m.created_at,
       available: subs.some((s) => isSubUsable(s, m)),
@@ -107,7 +119,7 @@ export async function handleMe(request, env, ctx, path) {
   if (a === 'usage' && method === 'GET') {
     const limit = Math.min(500, toInt(new URL(request.url).searchParams.get('limit'), 100));
     const { results } = await db.prepare(
-      'SELECT id, model_id, endpoint, status, prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, created_at FROM usage_logs WHERE user_id = ? ORDER BY id DESC LIMIT ?'
+      'SELECT id, model_id, requested_model, upstream_model, endpoint, status, prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, created_at FROM usage_logs WHERE user_id = ? ORDER BY id DESC LIMIT ?'
     ).bind(user.id, limit).all();
     return json(results);
   }

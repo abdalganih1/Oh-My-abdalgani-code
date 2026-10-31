@@ -15,7 +15,9 @@ api.abdalgani.com  ── Cloudflare Worker + D1
         ├── Z.AI Coding Plan   (OpenAI + Anthropic endpoints)
         ├── OpenRouter          (OpenAI + Anthropic endpoints، الكلفة الفعلية من usage.cost)
         ├── Anthropic           (Messages native، و OpenAI-compat)
-        └── OpenAI Platform     (Chat Completions؛ /v1/messages يُترجَم تلقائياً)
+        ├── OpenAI Platform     (Chat Completions؛ /v1/messages يُترجَم تلقائياً)
+        ├── NVIDIA NIM          (Chat Completions — عدة مفاتيح مجانية بالتناوب)
+        └── OpenCode Zen        (pay-as-you-go، Chat + Anthropic)
 ```
 
 ## 📁 هيكل المستودع
@@ -33,6 +35,7 @@ api.abdalgani.com  ── Cloudflare Worker + D1
 - **المحاسبة لكل نموذج** بأحد ثلاثة أوضاع: `request` سعر ثابت لكل طلب (كاش) · `token` جدول أسعارك لكل مليون توكن · `provider` الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) — مع نسبة إضافية اختيارية.
 - **الطالب يشوف** بلوحته: رصيده واشتراكاته، كل النماذج **الجديدة والقديمة** (المتاحة له والمقفولة)، سجل استهلاكه، ومفاتيحه.
 - **تبديل النماذج بدون إعادة تثبيت:** كل الأدوات مضبوطة على أسماء ثابتة `abd-main` / `abd-fast` / `abd-think`، والطالب يغيّر لوين بتشير من لوحته فوراً.
+- **الطالب دايماً بيعرف النموذج الحقيقي:** بلوحته (جدول "النماذج الحقيقية اللي عم تستخدمها" مع المزوّد اللي عم يخدم فعلياً)، وبكل رد (حقل `model` = النموذج الحقيقي + الترويسات `x-abdalgani-model` / `x-abdalgani-upstream` / `x-abdalgani-alias`)، وبسجل استهلاكه (`abd-main → glm-5.2`)، وبالطرفية `abdalgani-setup --status`. وأسماء النماذج داخل الأدوات نفسها مكتوب فيها الهدف (`abd-main → GLM-5.2`) وبتتحدث بـ `abdalgani-setup --sync`.
 - **المدير** يضيف/يبدّل/يوقف **مفاتيح المزوّدين** من اللوحة (مشفّرة AES-GCM بالقاعدة)، مع عدة مفاتيح لكل مزوّد: توزيع بالأوزان + تبريد تلقائي للمفتاح اللي بيرجع 429/401 + انتقال للمسار الاحتياطي.
 
 ## 🧰 للطالب: تثبيت الأدوات بأمر واحد
@@ -60,9 +63,29 @@ git clone https://github.com/abdalganih1/Oh-My-abdalgani-code.git && cd Oh-My-ab
 |---|---|---|
 | **OpenCode 2** | `curl -fsSL https://opencode.ai/v2/install \| bash` · Windows: `npm i -g @opencode/cli` | `~/.config/opencode/opencode.json` بصيغة **V2** (`providers` + `settings` + `variants`)؛ لو V1 موجود بيعرض الترقية وإلا بيكتب صيغة V1 |
 | **Claude Code** | `curl -fsSL https://claude.ai/install.sh \| bash` · Windows: `irm https://claude.ai/install.ps1 \| iex` | `~/.claude/settings.json` (Opus→`abd-think`، Sonnet→`abd-main`، Haiku→`abd-fast`) |
-| **Hermes Agent** | `curl -fsSL https://hermes-agent.nousresearch.com/install.sh \| bash` · Windows: `iex (irm https://hermes-agent.nousresearch.com/install.ps1)` | `~/.hermes/config.yaml` (`custom_providers` باسم abdalgani) + `.env` |
+| **Hermes Agent** | `curl -fsSL https://hermes-agent.nousresearch.com/install.sh \| bash` · Windows: `iex (irm https://hermes-agent.nousresearch.com/install.ps1)` | `~/.hermes/config.yaml` بالصيغة الحالية `providers: abdalgani` (`transport: chat_completions` + كل النماذج مع `context_length`/`supports_vision`) + `.env`. التبديل داخل Hermes: `/model custom:abdalgani:<id>` |
+| **Pi** | `npm i -g @mariozechner/pi-coding-agent` | `~/.pi/agent/models.json` (`providers.abdalgani`، صور للنماذج اللي بتدعمها) |
 | **Codex CLI** | `npm i -g @openai/codex` | `~/.codex/config.toml` (`wire_api = "responses"`) + متغير `ABDALGANI_API_KEY` |
-| Kilo CLI · Pi · Qwen Code · Goose · Aider · OpenClaw · Kimi · EH Code | المثبّت الرسمي لكل أداة | كلٍّ بملفه — بدون حذف مزوّداتك الأخرى (ونسخة احتياطية `*.abdalgani.bak` أول مرة) |
+| Kilo CLI · Qwen Code · Goose · Aider · OpenClaw · Kimi · EH Code | المثبّت الرسمي لكل أداة | كلٍّ بملفه — بدون حذف مزوّداتك الأخرى (ونسخة احتياطية `*.abdalgani.bak` أول مرة) |
+
+### 🇸🇦 OpenCode بالعربي (لمن يثبّت عبر أداتنا فقط)
+
+داخل OpenCode (و EH Code) بتنضاف أوامر:
+
+| الأمر | الوظيفة |
+|---|---|
+| `/ar` | من هلق لآخر الجلسة: الرد بالعربي، والكود والمصطلحات التقنية تبقى إنجليزي. `/ar اشرح هالملف` بتطبّق وبتسأل بنفس الوقت |
+| `/en` | رجوع للإنجليزي |
+
+وخيار **"عربي افتراضياً"** (سؤال بالإعداد أو `--arabic`) بيضيف ملف تعليمات دائم `abdalgani-arabic.md` لـ `instructions` — كل جلسة بتبلّش بالعربي.
+
+### 🧭 أوامر الطالب بعد التثبيت
+
+```bash
+abdalgani-setup --status    # رصيدك + النموذج الحقيقي ورا كل اسم + المزوّد اللي عم يخدم
+abdalgani-setup --sync      # بعد ما تبدّل من اللوحة: يحدّث أسماء النماذج داخل كل أدواتك
+abdalgani-setup             # إضافة أداة جديدة
+```
 
 ### استخدام مباشر (أي SDK)
 
@@ -99,3 +122,12 @@ npm install && npm --prefix gateway install
 npm test                       # اختبارات الـ CLI + البوابة (وحدات + E2E على D1 محلية بـ node:sqlite)
 cd gateway && npm run dev      # wrangler dev على http://127.0.0.1:8787
 ```
+
+## 💡 سؤال: أشترك بـ OpenCode Go (10$) وأشاركه مع الطلاب عبر البوابة؟
+
+**لا أنصح فيها — وهذا الترتيب الأفضل بدلها:**
+
+1. **شروط OpenCode صريحة:** حسب [وثائق Go](https://opencode.ai/docs/go/) خطط Go و Go Plus مخصصة لـ workspace **بعضو واحد**، والفرق عندها خطة **Go Teams** (20$ لكل عضو)، والترافيك مراقب ضد الإساءة. مشاركة اشتراك واحد بين عدة طلاب عبر بوابة = مخالفة وخطر حظر الحساب.
+2. **حسابياً ما بتوفّر:** كل نموذج له سقف شهري (مثلاً GLM-5.3 = 15$ بالشهر على Go)، ومنه 20% بس بأي 5 ساعات ≈ **3$ لكل الطلاب سوا** — بيخلص بدقائق مع صف كامل.
+3. **البديل المعتمد بالبوابة:** **OpenCode Zen** (دفع حسب الاستخدام، يدعم فرق) مضاف كمزوّد `opencode-zen` — حط مفتاحه من لوحة المدير، اربط النماذج اللي بدك ياها، واختار تسعير `provider`/`token` مع نسبة إضافية. أو استخدم **Go لنفسك أنت** عبر OpenCode مباشرة.
+4. للطلاب الأرخص فعلياً: **Z.AI coding plan + OpenRouter + عدة مفاتيح NVIDIA (مجانية بحدود)** مع الاحتياط التلقائي — وكلهم جاهزين بالبوابة. (راجع شروط كل مزوّد بخصوص الاستخدام المشترك.)

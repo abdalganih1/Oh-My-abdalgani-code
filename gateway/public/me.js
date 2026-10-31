@@ -39,6 +39,12 @@ function renderOverview() {
     ['آخر 30 يوم', `${me.stats_30d.req} طلب`, `${tokens(me.stats_30d.tokens)} توكن · ${usd(me.stats_30d.cost)}`],
   ].map(([l, v, s]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join('');
 
+  $('#realTable').innerHTML = '<tr><th>الاسم بأدواتك</th><th>النموذج الحقيقي</th><th>المزوّد · المعرّف عنده</th></tr>' + me.aliases.map((a) => {
+    const t = catalog.models.find((m) => m.id === a.model_id);
+    return `<tr><td class="mono ltr">${esc(a.alias)}</td><td><strong>${esc(a.model_name)}</strong> <span class="muted mono small ltr">${esc(a.model_id)}</span> ${t ? STATUS_BADGE[t.status] || '' : ''}${t && !t.available ? ' <span class="badge bad">🔒 خارج اشتراكك</span>' : ''}</td>
+      <td class="small muted ltr" style="text-align:start">${esc(a.served_by || '—')}</td></tr>`;
+  }).join('');
+
   $('#subsTable').innerHTML = me.subscriptions.length
     ? `<tr><th>النوع</th><th>الفئة</th><th>المتبقي</th><th>الاستهلاك</th><th>ينتهي</th><th>الحالة</th><th>المصدر</th></tr>` +
       me.subscriptions.map((s) => {
@@ -102,7 +108,7 @@ function renderAliases() {
   $('#aliasTable').innerHTML = `<tr><th>الاسم الثابت (بالأدوات)</th><th>يشير إلى</th><th></th></tr>` + me.aliases.map((a) => {
     const target = catalog.models.find((m) => m.id === a.model_id);
     const locked = target && !target.available;
-    return `<tr><td class="mono ltr">${esc(a.alias)}</td>
+    return `<tr><td class="mono ltr">${esc(a.alias)}<div class="small muted" style="direction:rtl">= ${esc(a.model_name)}</div></td>
       <td><select data-alias="${esc(a.alias)}">${locked ? `<option selected>${esc(a.model_id)} 🔒</option>` : ''}${modelOptions(a.model_id)}</select>
         ${locked ? '<div class="small" style="color:var(--bad)">النموذج الحالي خارج اشتراكك — اختر غيره</div>' : ''}</td>
       <td>${a.custom ? `<button class="small danger" data-reset="${esc(a.alias)}">${a.default_model_id ? 'رجوع للافتراضي' : 'حذف'}</button>` : '<span class="muted small">افتراضي</span>'}</td></tr>`;
@@ -126,6 +132,7 @@ function renderSetup() {
     ? `$env:ABDALGANI_API_KEY="${key}"; irm ${base}/install.ps1 | iex; abdalgani-setup --tool ${tool}`
     : `curl -fsSL ${base}/install.sh | bash -s -- --tool ${tool} --api-key ${key}`;
   $('#oaSnippet').textContent = `Base URL : ${base}/v1\nAPI Key  : ${key}\nModel    : abd-main   (or any id from the Models tab)\n\ncurl ${base}/v1/chat/completions \\\n  -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" \\\n  -d '{"model":"abd-main","messages":[{"role":"user","content":"hello"}]}'`;
+ $('#helperCmds').textContent = `abdalgani-setup --status     # رصيدك + النموذج الحقيقي ورا كل اسم\nabdalgani-setup --sync       # حدّث أسماء النماذج داخل أدواتك بعد التبديل\nabdalgani-setup              # إضافة أداة جديدة`;
   $('#anSnippet').textContent = `export ANTHROPIC_BASE_URL=${base}\nexport ANTHROPIC_AUTH_TOKEN=${key}\nexport ANTHROPIC_MODEL=abd-main\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL=abd-fast\nclaude`;
 }
 $('#toolSel').addEventListener('change', renderSetup);
@@ -138,7 +145,8 @@ async function renderUsage() {
     rows.map((r) => {
       const sub = me.subscriptions.find((s) => s.id === r.subscription_id);
       const charged = sub ? fmtAmount(sub.kind, r.charged) : r.charged;
-      return `<tr><td class="small">${date(r.created_at)}</td><td class="mono ltr">${esc(r.model_id)}</td><td class="num">${tokens(r.prompt_tokens)}</td>
+      const alias = r.requested_model && r.requested_model.replace(/^(abdalgani|abd)\//, '') !== r.model_id ? `${esc(r.requested_model)} → ` : '';
+      return `<tr><td class="small">${date(r.created_at)}</td><td class="mono ltr small">${alias}<strong>${esc(r.model_id)}</strong>${r.upstream_model && r.upstream_model !== r.model_id ? `<div class="muted">${esc(r.upstream_model)}</div>` : ''}</td><td class="num">${tokens(r.prompt_tokens)}</td>
         <td class="num">${tokens(r.completion_tokens)}</td><td class="num">${usdPrecise(r.cost)}</td><td class="num">${charged}</td>
         <td>${r.status < 400 ? '<span class="badge ok">' + r.status + '</span>' : '<span class="badge bad">' + r.status + '</span>'}</td></tr>`;
     }).join('');

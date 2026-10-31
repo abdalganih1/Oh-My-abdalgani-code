@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import TOML from '@iarna/toml';
-import { buildOpenCodeV2, buildOpenCodeV1 } from '../cli/tools/opencode.js';
+import { buildOpenCodeV2, buildOpenCodeV1, applyArabic, ARABIC_COMMANDS } from '../cli/tools/opencode.js';
 import { buildClaudeSettings } from '../cli/tools/claude.js';
 import { buildHermesConfig, upsertEnv } from '../cli/tools/hermes.js';
 import { buildCodexConfig } from '../cli/tools/codex.js';
@@ -49,14 +49,25 @@ test('Claude Code: env merged, unrelated settings kept, window = smallest used a
   assert.equal(out.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, '204800');
 });
 
-test('Hermes: named custom provider replaces ours, keeps others; env upsert', () => {
-  const out = buildHermesConfig({ custom_providers: [{ name: 'Abdalgani', base_url: 'old' }, { name: 'local', base_url: 'x' }], model: { temperature: 0.2 } }, ctx);
-  assert.equal(out.custom_providers.length, 2);
-  assert.equal(out.custom_providers[1].name, 'abdalgani');
-  assert.equal(out.custom_providers[1].models['abd-main'].context_length, 1_000_000);
-  assert.equal(out.model.provider, 'custom:abdalgani');
-  assert.equal(out.model.temperature, 0.2);
+test('Hermes: current `providers:` schema, legacy entry migrated, others kept; env upsert', () => {
+  const vctx = { ...ctx, models: [...models, { id: 'vis', name: 'V', context: 1000, output: 10, vision: true }] };
+  const out = buildHermesConfig({
+    custom_providers: [{ name: 'Abdalgani', base_url: 'old' }, { name: 'local', base_url: 'x' }],
+    providers: { work: { api: 'http://w/v1' } },
+    model: { temperature: 0.2, base_url: 'https://api.abdalgani.com/v1', api_key: '${ABDALGANI_API_KEY}' },
+  }, vctx);
+  assert.deepEqual(out.custom_providers, [{ name: 'local', base_url: 'x' }]);
+  assert.ok(out.providers.work);
+  const p = out.providers.abdalgani;
+  assert.equal(p.transport, 'chat_completions');
+  assert.equal(p.key_env, 'ABDALGANI_API_KEY');
+  assert.match(p.api, /\/v1$/);
+  assert.equal(p.default_model, 'abd-main');
+  assert.equal(p.models['abd-main'].context_length, 1_000_000);
+  assert.equal(p.models.vis.supports_vision, true);
+  assert.deepEqual(out.model, { temperature: 0.2, default: 'abd-main', provider: 'custom:abdalgani' });
   assert.equal(out.agent.reasoning_effort, 'high');
+  assert.equal(buildHermesConfig({ custom_providers: [{ name: 'abdalgani' }] }, ctx).custom_providers, undefined);
   assert.equal(upsertEnv('A=1\nABDALGANI_API_KEY=old\n', 'ABDALGANI_API_KEY', 'new'), 'A=1\nABDALGANI_API_KEY=new\n');
   assert.equal(upsertEnv('', 'K', 'v'), 'K=v\n');
 });
@@ -70,4 +81,17 @@ test('Codex: responses wire API, valid TOML round trip, keeps other providers', 
   assert.ok(parsed.model_providers.ollama);
   assert.equal(parsed.approval_policy, 'on-request');
   assert.equal(parsed.model_reasoning_effort, 'high');
+});
+
+test('OpenCode Arabic: /ar + /en commands per schema, default-Arabic instructions toggle', () => {
+  const v2 = applyArabic({ commands: { mine: { template: 'x' } }, instructions: ['AGENTS.md'] }, { v2: true, arabicDefault: true, dir: '/h/.config/opencode' });
+  assert.ok(v2.commands.mine && v2.commands.ar && v2.commands.en);
+  assert.match(v2.commands.ar.template, /العربية/);
+  assert.match(v2.commands.ar.template, /\$ARGUMENTS/);
+  assert.deepEqual(v2.instructions, ['AGENTS.md', '/h/.config/opencode/abdalgani-arabic.md']);
+  const off = applyArabic(v2, { v2: true, arabicDefault: false, dir: '/h/.config/opencode' });
+  assert.deepEqual(off.instructions, ['AGENTS.md']);
+  const v1 = applyArabic({}, { v2: false, arabicDefault: false, dir: '/d' });
+  assert.deepEqual(Object.keys(v1.command), Object.keys(ARABIC_COMMANDS));
+  assert.equal(v1.instructions, undefined);
 });

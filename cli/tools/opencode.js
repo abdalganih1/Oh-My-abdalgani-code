@@ -1,6 +1,41 @@
 // OpenCode (V1 + V2 schemas), KiloCLI and EH Code (both on the V1 schema).
 import path from 'node:path';
-import { HOME, API_URL, PROVIDER_ID, ALIASES, readJson, writeJson, log, tr } from '../core.js';
+import { HOME, API_URL, PROVIDER_ID, ALIASES, readJson, writeJson, writeText, log, tr } from '../core.js';
+
+// ── Arabic mode (only for students who install through this tool) ──
+// /ar and /en slash commands + an optional always-Arabic instructions file.
+export const ARABIC_RULE = `تكلّم مع المستخدم دائماً باللغة العربية بأسلوب واضح وبسيط.
+- اترك الكود، وأسماء الملفات والدوال والمتغيرات، وأوامر الطرفية، والمصطلحات التقنية بالإنجليزية كما هي.
+- تعليقات الكود ورسائل الـ commit بالإنجليزية إلا إذا طلب المستخدم غير ذلك.
+- اشرح الأخطاء والخطوات بالعربية، وضع المصطلح الإنجليزي بين قوسين عند الحاجة.`;
+
+export const ARABIC_COMMANDS = {
+  ar: {
+    description: 'تحدّث بالعربية من الآن (Arabic mode)',
+    template: `${ARABIC_RULE}\n\nطبّق هذا من الآن حتى نهاية الجلسة. إذا لم يُكتب طلب بعد هذا السطر، أكّد بجملة عربية قصيرة واحدة فقط.\n\n$ARGUMENTS`,
+  },
+  en: {
+    description: 'Switch replies back to English',
+    template: 'From now on reply in English for the rest of this session. If no request follows, confirm in one short sentence.\n\n$ARGUMENTS',
+  },
+};
+
+const ARABIC_FILE = (dir) => path.join(dir, 'abdalgani-arabic.md');
+
+/** Add /ar + /en (V2 `commands`, V1 `command`) and toggle the default-Arabic instructions file. */
+export function applyArabic(config, { v2, arabicDefault, dir }) {
+  const key = v2 ? 'commands' : 'command';
+  config[key] = { ...(config[key] || {}), ...ARABIC_COMMANDS };
+  const file = ARABIC_FILE(dir);
+  const list = (Array.isArray(config.instructions) ? config.instructions : []).filter((p) => !String(p).endsWith('abdalgani-arabic.md'));
+  if (arabicDefault) list.push(file);
+  if (list.length) config.instructions = list; else delete config.instructions;
+  return config;
+}
+
+function writeArabicFile(dir, enabled) {
+  if (enabled) writeText(ARABIC_FILE(dir), `# Language\n\n${ARABIC_RULE}\n`);
+}
 
 const EFFORTS = ['low', 'medium', 'high'];
 
@@ -52,11 +87,16 @@ export function buildOpenCodeV1(config, { apiKey, models, model, effort, smallMo
 }
 
 export function configureOpenCode(ctx) {
-  const file = path.join(HOME, '.config', 'opencode', 'opencode.json');
+  const dir = path.join(HOME, '.config', 'opencode');
+  const file = path.join(dir, 'opencode.json');
   const v2 = ctx.opencodeMajor !== 1;
   const cfg = readJson(file, {});
-  writeJson(file, v2 ? buildOpenCodeV2(cfg, ctx) : buildOpenCodeV1(cfg, { ...ctx, smallModel: ALIASES.fast }));
+  const out = v2 ? buildOpenCodeV2(cfg, ctx) : buildOpenCodeV1(cfg, { ...ctx, smallModel: ALIASES.fast });
+  applyArabic(out, { v2, arabicDefault: !!ctx.arabic, dir });
+  writeArabicFile(dir, !!ctx.arabic);
+  writeJson(file, out);
   log.dim(`   ${tr('صيغة الإعداد', 'Config schema')}: OpenCode V${v2 ? 2 : 1} · ${tr('النموذج', 'model')}: ${PROVIDER_ID}/${ctx.model}`);
+  log.dim(`   ${tr('العربية', 'Arabic')}: /ar ${tr('و', 'and')} /en ${ctx.arabic ? tr('· عربي افتراضياً ✓', '· Arabic by default ✓') : ''}`);
 }
 
 export function configureKilo(ctx) {
@@ -78,7 +118,8 @@ export const EH_AGENTS = {
 };
 
 export function configureEHCode(ctx) {
-  const file = path.join(HOME, '.config', 'ehcode', 'opencode.json');
+  const dir = path.join(HOME, '.config', 'ehcode');
+  const file = path.join(dir, 'opencode.json');
   // first run: seed from the user's OpenCode config so their agents carry over
   let cfg = readJson(file, null);
   if (!cfg) cfg = readJson(path.join(HOME, '.config', 'opencode', 'opencode.json'), {});
@@ -86,5 +127,7 @@ export function configureEHCode(ctx) {
   const out = buildOpenCodeV1(cfg, { ...ctx, smallModel: ALIASES.fast });
   out.agent = { ...EH_AGENTS, ...(out.agent || {}) };
   out.default_agent = out.default_agent || 'code';
+  applyArabic(out, { v2: false, arabicDefault: !!ctx.arabic, dir });
+  writeArabicFile(dir, !!ctx.arabic);
   writeJson(file, out);
 }
