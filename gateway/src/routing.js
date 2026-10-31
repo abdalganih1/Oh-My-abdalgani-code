@@ -37,10 +37,11 @@ export async function resolveModel(db, userId, requested) {
 
 export async function loadRoutes(db, modelId) {
   const { results } = await db.prepare(
-    `SELECT r.id AS route_id, r.upstream_model, r.priority, r.cost_in, r.cost_out, p.*
-       FROM model_routes r JOIN providers p ON p.id = r.provider_id
+    // order: the provider priority (your plan first, OpenRouter last) unless the model has its own order
+    `SELECT p.*, r.id AS route_id, r.upstream_model, r.priority AS route_priority, p.priority AS provider_priority, r.cost_in, r.cost_out
+       FROM model_routes r JOIN providers p ON p.id = r.provider_id JOIN models m ON m.id = r.model_id
       WHERE r.model_id = ? AND r.enabled = 1 AND p.enabled = 1 AND r.archived_at IS NULL AND p.archived_at IS NULL
-      ORDER BY r.priority ASC, r.id ASC`
+      ORDER BY CASE WHEN m.custom_order = 1 THEN r.priority ELSE p.priority END, r.priority, r.id`
   ).bind(modelId).all();
   return results || [];
 }

@@ -50,9 +50,15 @@ export async function handleAdmin(request, env, ctx, path) {
   }
 
   // ── providers & keys ──
+  if (a === 'providers' && b === 'order' && method === 'PUT') {
+    const { ids } = await readJson(request);
+    need(Array.isArray(ids) && ids.length && ids.length <= 200 && ids.every((x) => ID_RE.test(String(x))), 'ids: ordered provider ids');
+    await db.batch(ids.map((id, i) => db.prepare('UPDATE providers SET priority = ? WHERE id = ?').bind((i + 1) * 10, id)));
+    return json({ ok: true });
+  }
   if (a === 'providers') {
     if (!b && method === 'GET') {
-      const { results: providers } = await db.prepare('SELECT * FROM providers ORDER BY id').all();
+      const { results: providers } = await db.prepare('SELECT * FROM providers ORDER BY priority, id').all();
       const { results: keys } = await db.prepare('SELECT * FROM provider_keys ORDER BY provider_id, id').all();
       return json(providers.map((p) => ({ ...p, keys: keys.filter((k) => k.provider_id === p.id).map(maskKeyRow) })));
     }
@@ -71,12 +77,14 @@ export async function handleAdmin(request, env, ctx, path) {
         if (p[f]) { try { const v = JSON.parse(p[f]); need(v && typeof v === 'object' && !Array.isArray(v), `${f} must be a JSON object`); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, `${f} must be a JSON object`); } }
       }
       await db.prepare(
-        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, auto, enabled, billing, monthly_fee) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, auto, enabled, billing, monthly_fee, priority) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, openai_base_url=excluded.openai_base_url, anthropic_base_url=excluded.anthropic_base_url,
            auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, compat=excluded.compat, auto=excluded.auto, enabled=excluded.enabled,
-           billing=excluded.billing, monthly_fee=excluded.monthly_fee`
+           billing=excluded.billing, monthly_fee=excluded.monthly_fee, priority=COALESCE(?, providers.priority)`
       ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.compat || null, p.auto || null, p.enabled === false || p.enabled === 0 ? 0 : 1,
-        p.billing === 'subscription' ? 'subscription' : 'usage', toInt(p.monthly_fee, 0)).run();
+        p.billing === 'subscription' ? 'subscription' : 'usage', toInt(p.monthly_fee, 0),
+        p.priority != null && p.priority !== '' ? toInt(p.priority, 50) : (p.billing === 'subscription' ? 10 : 50),
+        p.priority != null && p.priority !== '' ? toInt(p.priority, 50) : null).run();
       return json({ ok: true });
     }
     if (b && !c && method === 'DELETE') {
@@ -251,7 +259,7 @@ export async function handleAdmin(request, env, ctx, path) {
     if (method === 'POST' && b && seg.at(-1) === 'restore') return json({ ok: await restoreModel(db, seg.slice(1, -1).join('/')) });
     if (method === 'GET') {
       const { results: models } = await db.prepare('SELECT * FROM models ORDER BY sort, id').all();
-      const { results: routes } = await db.prepare('SELECT * FROM model_routes ORDER BY model_id, priority, id').all();
+      const { results: routes } = await db.prepare(`SELECT r.*, p.priority AS provider_priority FROM model_routes r JOIN providers p ON p.id = r.provider_id JOIN models m ON m.id = r.model_id ORDER BY r.model_id, CASE WHEN m.custom_order = 1 THEN r.priority ELSE p.priority END, r.priority, r.id`).all();
       return json(models.map((m) => ({ ...m, routes: routes.filter((r) => r.model_id === m.id) })));
     }
     if (method === 'POST') {
@@ -262,15 +270,15 @@ export async function handleAdmin(request, env, ctx, path) {
       // a model the admin adds shows as "new" to students for the first days (the cron expires it)
       if (!(await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(m.id).first()) && (!m.status || m.status === 'active')) m.status = 'new';
       const stmts = [db.prepare(
-        `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort, vision, price_cache_write)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort, vision, price_cache_write, custom_order)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, group_id=excluded.group_id, context_length=excluded.context_length, max_output=excluded.max_output,
            reasoning=excluded.reasoning, vision=excluded.vision, pricing_mode=excluded.pricing_mode, price_in=excluded.price_in, price_out=excluded.price_out,
-           price_cache_read=excluded.price_cache_read, price_cache_write=excluded.price_cache_write, price_request=excluded.price_request, markup_pct=excluded.markup_pct,
+           price_cache_read=excluded.price_cache_read, price_cache_write=excluded.price_cache_write, price_request=excluded.price_request, markup_pct=excluded.markup_pct, custom_order=excluded.custom_order,
            status=excluded.status, description=excluded.description, sort=excluded.sort`
       ).bind(m.id, m.name || m.id, m.group_id || null, toInt(m.context_length, 128000), toInt(m.max_output, 8192), m.reasoning ? 1 : 0,
         m.pricing_mode || 'token', toInt(m.price_in), toInt(m.price_out), toInt(m.price_cache_read), toInt(m.price_request), toInt(m.markup_pct),
-        m.status || 'active', m.description || null, toInt(m.sort, 100), m.vision ? 1 : 0, toInt(m.price_cache_write))];
+        m.status || 'active', m.description || null, toInt(m.sort, 100), m.vision ? 1 : 0, toInt(m.price_cache_write), m.custom_order ? 1 : 0)];
       if (Array.isArray(m.routes)) {
         stmts.push(db.prepare('DELETE FROM model_routes WHERE model_id = ?').bind(m.id));
         m.routes.forEach((r, i) => {

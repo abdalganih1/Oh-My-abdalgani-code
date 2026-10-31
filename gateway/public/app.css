@@ -650,3 +650,15 @@ details.prov[open] .chev { transform: rotate(90deg); }
   table.stack .inbar-wrap { min-width: 0; }
   .table-wrap:has(> table.stack) { overflow-x: visible; margin-inline: 0; }
 }
+
+/* provider priority list + route order */
+.prov-order { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.prov-order li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--border); }
+.prov-order li.off { opacity: .6; }
+.po-n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--grad); color: #fff; flex-shrink: 0; }
+.prov-order li.off .po-n { background: var(--panel-3); color: var(--muted); }
+.po-name { flex: 1; min-width: 0; }
+.po-btns { display: inline-flex; gap: 2px; }
+.po-btns button { min-width: 36px; }
+#routeRows.fixed-order .route-move { display: none; }
+.route-move { display: inline-flex; gap: 2px; }

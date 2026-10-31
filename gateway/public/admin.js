@@ -245,7 +245,29 @@ async function loadProviders() {
   S.providers = await api('GET', '/api/admin/providers');
   renderProviders();
 }
+function renderOrder() {
+  const list = [...S.providers].sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50) || a.id.localeCompare(b.id));
+  $('#provOrder').innerHTML = list.map((p, i) => `
+    <li class="${p.enabled && !p.archived_at ? '' : 'off'}" data-pid="${esc(p.id)}">
+      <span class="po-n">${i + 1}</span>
+      <span class="po-name"><b>${esc(p.name)}</b> <span class="small muted">${p.billing === 'subscription' ? 'اشتراك ثابت' : 'حسب الاستخدام'}${!p.keys.length ? ' · بلا مفتاح' : ''}${!p.enabled ? ' · موقوف' : ''}</span></span>
+      ${i === 0 ? '<span class="badge ok">أول خيار</span>' : i === list.length - 1 ? '<span class="badge">آخر حل</span>' : ''}
+      <span class="po-btns"><button type="button" class="small ghost" data-move="-1" ${i === 0 ? 'disabled' : ''} aria-label="لفوق">↑</button><button type="button" class="small ghost" data-move="1" ${i === list.length - 1 ? 'disabled' : ''} aria-label="لتحت">↓</button></span>
+    </li>`).join('');
+}
+$('#provOrder').addEventListener('click', guard(async (e) => {
+  const b = e.target.closest('[data-move]'); if (!b) return;
+  const li = b.closest('li'), ids = $$('#provOrder li').map((x) => x.dataset.pid);
+  const i = ids.indexOf(li.dataset.pid), j = i + Number(b.dataset.move);
+  if (j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  await api('PUT', '/api/admin/providers/order', { ids });
+  ids.forEach((id, k) => { const p = S.providers.find((x) => x.id === id); if (p) p.priority = (k + 1) * 10; });
+  renderOrder(); toast(`الترتيب: ${ids.slice(0, 3).map((id) => S.providers.find((p) => p.id === id)?.name || id).join(' ← ')}…`);
+}));
+
 function renderProviders() {
+  renderOrder();
   const q = PV.q.toLowerCase();
   const list = S.providers.filter((p) => {
     if (q && ![p.id, p.name, p.openai_base_url, p.anthropic_base_url].some((v) => (v || '').toLowerCase().includes(q))) return false;
@@ -263,7 +285,7 @@ function renderProviders() {
     <details class="card prov ${st}" data-pid="${esc(p.id)}" ${PV.open.has(p.id) || q ? 'open' : ''}>
       <summary>
         <span class="prov-logo">${esc((p.name || p.id).trim().charAt(0).toUpperCase())}</span>
-        <span class="prov-name"><b>${esc(p.name)}</b><span class="mono ltr small muted">${esc(p.id)}</span></span>
+        <span class="prov-name"><b>${esc(p.name)}</b><span class="mono ltr small muted">${esc(p.id)} · أولوية #${[...S.providers].sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50) || a.id.localeCompare(b.id)).findIndex((x) => x.id === p.id) + 1}</span></span>
         ${badge}
         <span class="badge accent">${p.keys.length ? `${ready}/${p.keys.length} مفتاح` : '0 مفتاح'}</span>
         <span class="prov-url small muted ltr">${esc((p.openai_base_url || p.anthropic_base_url || '').replace(/^https:\/\//, ''))}</span>
@@ -491,7 +513,7 @@ async function loadModels() {
       <td><strong>${esc(m.name)}</strong><div class="mono ltr small muted">${esc(m.id)}</div></td>
       <td>${esc(groupName(m.group_id))}</td><td>${STATUS_BADGE[m.status] || esc(m.status)}</td>
       <td class="small">${esc(priceLabel(m))}${m.markup_pct ? ` +${m.markup_pct}%` : ''}${(m.pricing_mode === 'request' ? !m.price_request : !m.price_in && !m.price_out && m.pricing_mode !== 'provider') ? ' <span class="badge warn">مجاني!</span>' : ''}</td>
-      <td class="small ltr" style="text-align:start">${m.routes.map((r, i) => `${i + 1}. ${esc(r.provider_id)} → ${esc(r.upstream_model)}${r.enabled ? '' : ' (off)'}${r.archived_at ? ` <span class="badge bad" title="${esc(r.archived_reason || '')}">archived</span>` : r.first_fail_at ? ' <span class="badge warn">failing</span>' : ''}`).join('<br>') || '<span class="badge bad">لا مسار</span>'}${m.auto_source ? '<div class="muted">auto</div>' : ''}</td>
+      <td class="small ltr" style="text-align:start">${m.routes.map((r, i) => `${i + 1}. ${esc(r.provider_id)} → ${esc(r.upstream_model)}${r.enabled ? '' : ' (off)'}${r.archived_at ? ` <span class="badge bad" title="${esc(r.archived_reason || '')}">archived</span>` : r.first_fail_at ? ' <span class="badge warn">failing</span>' : ''}`).join('<br>') || '<span class="badge bad">لا مسار</span>'}${m.auto_source ? '<div class="muted">auto</div>' : ''}${m.custom_order ? '<div><span class="badge accent">ترتيب مخصص</span></div>' : ''}</td>
       <td class="num">${tokens(m.context_length)}</td>
       <td class="row" style="flex-wrap:nowrap">${m.status === 'archived' || m.routes.some((r) => r.archived_at) ? `<button class="small primary" data-restore="${esc(m.id)}" title="${esc(m.archived_reason || '')}">♻️</button>` : ''}<button class="small" data-edit="${esc(m.id)}">تعديل</button><button class="small danger" data-del="${esc(m.id)}">حذف</button></td></tr>`).join('');
 }
@@ -511,12 +533,25 @@ function routeRow(r = {}) {
     <input name="rci" type="number" step="any" min="0" placeholder="كلفتنا دخل $/1M" title="اختياري: كلفة المزوّد علينا لكل مليون توكن دخل (للمزوّدين حسب الاستخدام)" value="${r.cost_in != null ? r.cost_in / M : ''}" style="max-width:130px">
     <input name="rco" type="number" step="any" min="0" placeholder="خرج $/1M" value="${r.cost_out != null ? r.cost_out / M : ''}" style="max-width:100px">
     <label class="small row"><input type="checkbox" name="re" ${r.enabled === 0 ? '' : 'checked'}> مفعّل</label>
-    <button type="button" class="small" data-up>↑</button><button type="button" class="small danger" data-rm>✕</button>`;
+    <span class="route-move"><button type="button" class="small" data-up aria-label="لفوق">↑</button><button type="button" class="small" data-down aria-label="لتحت">↓</button></span><button type="button" class="small danger" data-rm>✕</button>`;
   div.querySelector('[data-rm]').onclick = () => div.remove();
   div.querySelector('[data-up]').onclick = () => div.previousElementSibling && div.parentNode.insertBefore(div, div.previousElementSibling);
+  div.querySelector('[data-down]').onclick = () => div.nextElementSibling && div.parentNode.insertBefore(div.nextElementSibling, div);
+  div.querySelector('[name=rp]').onchange = () => syncOrderUI();
   return div;
 }
-$('#addRoute').addEventListener('click', () => $('#routeRows').appendChild(routeRow()));
+$('#addRoute').addEventListener('click', () => { $('#routeRows').appendChild(routeRow()); syncOrderUI(); });
+// Without a custom order the rows follow the provider priority (what the gateway really does).
+const provRank = (id) => { const p = S.providers.find((x) => x.id === id); return p ? (p.priority ?? 50) : 999; };
+function syncOrderUI() {
+  const custom = $('#customOrder').checked, box = $('#routeRows');
+  box.classList.toggle('fixed-order', !custom);
+  if (!custom) [...box.children].sort((a, b) => provRank(a.querySelector('[name=rp]').value) - provRank(b.querySelector('[name=rp]').value)).forEach((r) => box.appendChild(r));
+  const names = [...box.children].map((r) => r.querySelector('[name=rp]').selectedOptions[0]?.textContent).filter(Boolean);
+  $('#orderNote').textContent = custom ? 'رتّب المسارات بالأسهم: الأول بيخدم، والباقي احتياط بالترتيب.'
+    : `الترتيب حسب أولوية المزوّدين (من صفحة المزوّدين): ${names.join(' ← ') || '—'}`;
+}
+$('#customOrder').addEventListener('change', syncOrderUI);
 $('#modelCancel').addEventListener('click', () => $('#modelDlg').close());
 
 function openModel(m, isNew = false) {
@@ -543,6 +578,8 @@ function openModel(m, isNew = false) {
   $('#routeRows').innerHTML = '';
   (m.routes || []).forEach((r) => $('#routeRows').appendChild(routeRow(r)));
   if (!(m.routes || []).length) $('#routeRows').appendChild(routeRow());
+  f.elements.custom_order.checked = !!m.custom_order;
+  syncOrderUI();
   $('#modelDlg').showModal();
 }
 
@@ -555,7 +592,7 @@ $('#modelForm').addEventListener('submit', guard(async (e) => {
     if (ex && !confirm(`في نموذج اسمه ${d.id} أصلاً، وعنده ${ex.routes.length} مسار. الحفظ رح يستبدل إعداداته ومساراته. متأكد؟`)) return;
   }
   const body = {
-    ...d, reasoning: f.elements.reasoning.checked, vision: f.elements.vision.checked,
+    ...d, reasoning: f.elements.reasoning.checked, vision: f.elements.vision.checked, custom_order: f.elements.custom_order.checked,
     price_in: Math.round((+d.price_in || 0) * M), price_out: Math.round((+d.price_out || 0) * M),
     price_cache_read: Math.round((+d.price_cache_read || 0) * M), price_cache_write: Math.round((+d.price_cache_write || 0) * M), price_request: Math.round((+d.price_request || 0) * M),
     routes: $$('#routeRows > div').map((row, i) => ({

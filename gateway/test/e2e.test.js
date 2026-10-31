@@ -585,3 +585,24 @@ test('playground: internal account, hidden from students list, can pin one route
   }), env, { waitUntil: () => {} });
   assert.equal(s.status, 200);
 });
+
+test('route order: provider priority first (plan before OpenRouter), per-model custom order opt-in', async () => {
+  // routes listed OpenRouter first on purpose
+  assert.equal((await admin('POST', '/models', { id: 'order-model', name: 'Order', status: 'active', pricing_mode: 'token', price_in: 1000, price_out: 1000,
+    routes: [{ provider_id: 'openrouter', upstream_model: 'z-ai/order' }, { provider_id: 'zai', upstream_model: 'order-zai' }] })).status, 200);
+  for (const k of [1, 2]) await admin('PATCH', `/keys/${k}`, { reset: true });
+  const via = async () => (await worker.fetch(new Request('https://api.abdalgani.com/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${userKey}` },
+    body: JSON.stringify({ model: 'order-model', messages: [{ role: 'user', content: `order ${Math.random()}` }] }),
+  }), env, { waitUntil: () => {} })).headers.get('x-abdalgani-upstream');
+  assert.equal(await via(), 'zai/order-zai', 'z.ai (priority 10) beats OpenRouter (100) whatever the route list says');
+  // admin moves OpenRouter to the top of the provider order
+  const ids = (await admin('GET', '/providers')).data.map((p) => p.id);
+  assert.equal((await admin('PUT', '/providers/order', { ids: ['openrouter', ...ids.filter((x) => x !== 'openrouter')] })).status, 200);
+  assert.equal(await via(), 'openrouter/z-ai/order');
+  assert.equal((await admin('PUT', '/providers/order', { ids: ['zai', ...ids.filter((x) => x !== 'zai')] })).status, 200);
+  // per-model custom order: route list order wins
+  const m = (await admin('GET', '/models')).data.find((x) => x.id === 'order-model');
+  assert.equal((await admin('POST', '/models', { ...m, custom_order: true, routes: [{ provider_id: 'openrouter', upstream_model: 'z-ai/order' }, { provider_id: 'zai', upstream_model: 'order-zai' }] })).status, 200);
+  assert.equal(await via(), 'openrouter/z-ai/order');
+});

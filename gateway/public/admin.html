@@ -278,6 +278,11 @@
         </div>
         <div class="small muted" id="provCount" style="margin-top:8px"></div>
       </div>
+      <div class="card" id="provOrderCard">
+        <div class="card-head"><h2 style="margin:0"><i data-i="list"></i>ترتيب الطلب</h2><span class="spacer"></span><span class="small muted">بينحفظ لحاله</span></div>
+        <p class="small muted" style="margin-top:-6px">لكل نموذج، البوابة بتجرّب المزوّدين <b>بهالترتيب</b>: الأول اللي عنده مسار للنموذج بيخدم، والباقي احتياط إذا وقع أو خلص حدّه. خلّي اشتراكك الثابت (z.ai coding plan) فوق، وOpenRouter تحت كآخر حل. أي نموذج بتقدر تعطيه ترتيب خاص من إعداداته.</p>
+        <ol id="provOrder" class="prov-order"></ol>
+      </div>
       <div id="providerList"></div>
     </div>
 
@@ -383,7 +388,9 @@
     <label class="f row"><input name="vision" type="checkbox"> يقبل صور</label>
   </div>
   <label class="f" style="margin-top:10px">الوصف<input name="description"></label>
-  <h3>التوجيه (بالترتيب — الأول أولاً، والباقي احتياط تلقائي)</h3>
+  <h3>التوجيه — مين بيخدم هالنموذج</h3>
+  <label class="row small" style="margin-bottom:8px"><span class="switch"><input type="checkbox" name="custom_order" id="customOrder"><i></i></span> ترتيب مخصص لهالنموذج (بدل ترتيب المزوّدين العام)</label>
+  <p class="small muted" id="orderNote" style="margin:0 0 8px"></p>
   <div id="routeRows"></div>
   <button type="button" class="small" id="addRoute">➕ مسار</button>
   <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" id="modelCancel">إلغاء</button><button class="primary" id="modelSave" value="save">حفظ</button></div>

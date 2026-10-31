@@ -42,9 +42,9 @@ export async function handleMe(request, env, ctx, path, sec = {}) {
       if (alt) { a.archived_model_id = a.model_id; a.model_id = alt; a.fallback = true; }
     }
     const { results: routes } = await db.prepare(
-      `SELECT r.model_id, r.upstream_model, p.name AS provider FROM model_routes r JOIN providers p ON p.id = r.provider_id
-       WHERE r.enabled = 1 AND p.enabled = 1 AND EXISTS (SELECT 1 FROM provider_keys k WHERE k.provider_id = p.id AND k.enabled = 1)
-       ORDER BY r.priority, r.id`
+      `SELECT r.model_id, r.upstream_model, p.name AS provider FROM model_routes r JOIN providers p ON p.id = r.provider_id JOIN models m ON m.id = r.model_id
+       WHERE r.enabled = 1 AND p.enabled = 1 AND r.archived_at IS NULL AND p.archived_at IS NULL AND EXISTS (SELECT 1 FROM provider_keys k WHERE k.provider_id = p.id AND k.enabled = 1)
+       ORDER BY CASE WHEN m.custom_order = 1 THEN r.priority ELSE p.priority END, r.priority, r.id`
     ).all();
     for (const a of aliases) {
       a.model_name = mods.find((x) => x.id === a.model_id)?.name || a.model_id;
