@@ -1,7 +1,7 @@
 # 📋 UserReport - Oh-My-abdalgani-code
 
 ## 🏗️ نظرة عامة
-سكربت `setup.js` هو أداة تفاعلية سطرية مبنية بـ Node.js لتسهيل إعداد أدوات الذكاء الاصطناعي المدعومة محلياً مثل OpenCode، KiloCLI، ClaudeCode ولاحقاً OpenClaw.
+المستودع يحتوي بوابة الذكاء الاصطناعي على Cloudflare (`gateway/`) وأداة `setup.js` التي تربط أدوات البرمجة (OpenCode 2، Claude Code، Hermes، Codex…) بها.
 
 ## 📝 سجل التغييرات
 
@@ -9,6 +9,7 @@
 |---------|---------|------------------|
 | 2026-03-19 | إضافة دعم إعداد OpenClaw تلقائيًا باستخدام مزود LiteLLM | setup.js |
 | 2026-04-04 | تعديل حدود السياق (context limit) لنموذج GLM-4.7 إلى 200 ألف لتوافق NVIDIA NIM | setup.js |
+| 2026-10-31 | v2: إعادة بناء كاملة — بوابة Cloudflare Workers + D1 بدل LiteLLM (توجيه متعدد المزوّدين، كوبونات دولار/توكنات بفئات، محاسبة request/token/provider، لوحة طالب ولوحة مدير، /v1/messages و /v1/responses)، وأداة setup معيارية تدعم OpenCode V2 و Codex (Responses) | gateway/, cli/, setup.js |
 
 ## 🐛 المشاكل والحلول
 

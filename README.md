@@ -1,97 +1,101 @@
-# 🚀 Oh-My-abdalgani-code
+# ⚡ Oh-My-abdalgani-code (v2)
 
-مرحباً بك في المستودع الرسمي لربط وتنصيب أدوات التطوير المعتمدة على الذكاء الاصطناعي (AI CLI)، مثل **OpenCode**، **KiloCLI**، **ClaudeCode** و **OpenClaw**، لتعمل بسلاسة مع البنية التحتية والمزود المخصص `api.abdalgani.com`.
+بوابة ذكاء اصطناعي خاصة على **Cloudflare Workers** (بديل LiteLLM) بنظام توجيه مثل OpenRouter، مع لوحة تحكم للطلاب ولوحة مدير، وأداة تثبيت تربط أدوات البرمجة (OpenCode 2، Claude Code، Hermes، Codex…) بالبوابة بأمر واحد.
 
----
+```
+الطالب (OpenCode / Claude Code / Hermes / Codex / SDK)
+        │  sk-abd-…
+        ▼
+api.abdalgani.com  ── Cloudflare Worker + D1
+  • /v1/chat/completions  (OpenAI)
+  • /v1/messages          (Anthropic — Claude Code)
+  • /v1/responses         (OpenAI Responses — Codex)
+  • التحقق من الاشتراك ← اختيار المسار ← مفتاح مزوّد (تدوير + احتياط) ← المحاسبة
+        │
+        ├── Z.AI Coding Plan   (OpenAI + Anthropic endpoints)
+        ├── OpenRouter          (OpenAI + Anthropic endpoints، الكلفة الفعلية من usage.cost)
+        ├── Anthropic           (Messages native، و OpenAI-compat)
+        └── OpenAI Platform     (Chat Completions؛ /v1/messages يُترجَم تلقائياً)
+```
 
-## 🛠️ أداة التثبيت التفاعلية (أفضل خيار للمطورين)
+## 📁 هيكل المستودع
 
-من خلال أداة التثبيت المتوفرة في هذا المستودع، لست بحاجة إلى نسخ ولصق الإعدادات يدوياً أو كتابة ملفات التكوين. ستظهر لك **قائمة تفاعلية** تتحكم بها عبر أسهم الكيبورد (أعلى/أسفل)، وتوفر المزايا التالية:
+| المسار | المحتوى |
+|---|---|
+| [`gateway/`](gateway/) | البوابة: Worker + قاعدة D1 + لوحة الطالب (`/`) + لوحة المدير (`/admin.html`) — [دليل النشر](gateway/README.md) |
+| [`cli/`](cli/) + `setup.js` | أداة التثبيت والربط للطلاب (تفاعلية أو headless للوكلاء) |
+| `test/` و `gateway/test/` | اختبارات (`npm test`) |
 
-1. التحقق من توافر ووجود (OpenCode, ClaudeCode, KiloCLI, OpenClaw) في جهازك، وتحميلها تلقائياً بضغطة زر إن لم تكن متوفرة.
-2. طلب مفتاح الوصول API Key الخاص بك لتأمينه برمجياً.
-3. التصفح والاختيار بين النماذج الصحيحة (Models) المحدثة لمزوداتنا:
-   - **عائلة NanoGPT** (مثل GLM-5، MiniMax) بخصائص السياق القصوى (Context + Output).
-   - **عائلة NVIDIA NIM** (مثل Nemotron، Qwen 3.5، DeepSeek-R1).
-   - **عائلة Ollama Cloud**.
-4. الحقن والدمج الذكي: يتم استهداف التكوين الأصلي ويُدمج مزود `abdalgani` ليدعم توافقية `@ai-sdk/openai-compatible` جنباً إلى جنب **دون حذف مزوداتك السابقة**.
+## 🎓 قواعد النظام (حسب الطلب)
 
-### 🚀 خطوات التشغيل (أمر سريع لمرة واحدة):
-انسخ الأمر المناسب للطرفية (Terminal) التي تستخدمها والصقه بالكامل.
-صُممت هذه الأوامر لتثبيت المتطلبات الناقصة (مثل Node.js أو Git) إن لم تكن متوفرة، وجلب التحديثات تلقائياً لمنع أي رسائل خطأ:
+- **لا تسجيل ذاتي، لا شراء، لا تجربة مجانية.** المدير ينشئ حساب الطالب ويعطيه مفتاح `sk-abd-…`.
+- **الرصيد فقط عبر كوبونات** يولّدها المدير: إما **رصيد دولار** (مثلاً 10$) أو **توكنات** (مثلاً 10M)، وممكن تنحصر **بفئة نماذج** (Coding / Premium / Cheap…). بدون اشتراك فعّال يغطي النموذج ← `402`.
+- **المحاسبة لكل نموذج** بأحد ثلاثة أوضاع: `request` سعر ثابت لكل طلب (كاش) · `token` جدول أسعارك لكل مليون توكن · `provider` الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) — مع نسبة إضافية اختيارية.
+- **الطالب يشوف** بلوحته: رصيده واشتراكاته، كل النماذج **الجديدة والقديمة** (المتاحة له والمقفولة)، سجل استهلاكه، ومفاتيحه.
+- **تبديل النماذج بدون إعادة تثبيت:** كل الأدوات مضبوطة على أسماء ثابتة `abd-main` / `abd-fast` / `abd-think`، والطالب يغيّر لوين بتشير من لوحته فوراً.
+- **المدير** يضيف/يبدّل/يوقف **مفاتيح المزوّدين** من اللوحة (مشفّرة AES-GCM بالقاعدة)، مع عدة مفاتيح لكل مزوّد: توزيع بالأوزان + تبريد تلقائي للمفتاح اللي بيرجع 429/401 + انتقال للمسار الاحتياطي.
 
-**1️⃣ لمستخدمي Windows PowerShell (الخيار الأفضل للويندوز):**
+## 🧰 للطالب: تثبيت الأدوات بأمر واحد
 
+> الأوامر الجاهزة مع مفتاحك موجودة بلوحتك ← تبويب **التثبيت والاستخدام**.
+
+**macOS / Linux / WSL / Git Bash**
+```bash
+curl -fsSL https://api.abdalgani.com/install.sh | bash
+```
+
+**Windows PowerShell**
 ```powershell
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force; if (!(Get-Command git -ea SilentlyContinue)) { Write-Host "جاري تثبيت Git..."; winget install Git.Git -e --silent; $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") }; if (!(Get-Command npm -ea SilentlyContinue)) { Write-Host "جاري تثبيت Node.js..."; winget install OpenJS.NodeJS -e --silent; $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") }; if (Test-Path "Oh-My-abdalgani-code") { cd Oh-My-abdalgani-code; git pull } else { git clone https://github.com/abdalganih1/Oh-My-abdalgani-code.git; cd Oh-My-abdalgani-code }; if (Test-Path "package.json") { npm install; npm start } else { Write-Host "حدث خطأ أثناء تحميل الملفات." }
+irm https://api.abdalgani.com/install.ps1 | iex; abdalgani-setup
 ```
 
-**2️⃣ لمستخدمي موجه الأوامر العادي (Windows CMD):**
-
-```cmd
-powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" && powershell -Command "if (!(Get-Command git -ea SilentlyContinue)) { winget install Git.Git -e --silent; $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') }; if (!(Get-Command npm -ea SilentlyContinue)) { winget install OpenJS.NodeJS -e --silent; $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') }" && if not exist Oh-My-abdalgani-code (git clone https://github.com/abdalganih1/Oh-My-abdalgani-code.git) else (cd Oh-My-abdalgani-code && git pull && cd ..) && cd Oh-My-abdalgani-code && npm install && npm start
-```
-
-**3️⃣ لمستخدمي موجه Git Bash (ويندوز) أو أجهزة (Mac / Linux):**
-
+أو يدوياً من المستودع:
 ```bash
-if ! command -v git &> /dev/null; then echo "جاري تثبيت Git..."; (command -v winget &> /dev/null && winget install Git.Git -e --silent) || (command -v apt-get &> /dev/null && sudo apt-get update && sudo apt-get install -y git) || (command -v brew &> /dev/null && brew install git); fi; if ! command -v npm &> /dev/null; then echo "جاري تثبيت Node.js..."; (command -v winget &> /dev/null && winget install OpenJS.NodeJS -e --silent) || (command -v apt-get &> /dev/null && sudo apt-get install -y nodejs npm) || (command -v brew &> /dev/null && brew install node) || echo "⚠️ تعذر التثبيت التلقائي."; fi; [ ! -d "Oh-My-abdalgani-code" ] && git clone https://github.com/abdalganih1/Oh-My-abdalgani-code.git; cd Oh-My-abdalgani-code && git pull && npm install && npm start
+git clone https://github.com/abdalganih1/Oh-My-abdalgani-code.git && cd Oh-My-abdalgani-code && npm install && npm start
 ```
 
-*سيبدأ بعدها العرض التفاعلي السلس لاختيار أدواتك وإتمام الربط كلياً.*
+### الأدوات المدعومة وطريقة تثبيتها (محدّثة أكتوبر 2026)
 
----
+| الأداة | التثبيت المعتمد | ملف الإعداد اللي بيكتبه الـ setup |
+|---|---|---|
+| **OpenCode 2** | `curl -fsSL https://opencode.ai/v2/install \| bash` · Windows: `npm i -g @opencode/cli` | `~/.config/opencode/opencode.json` بصيغة **V2** (`providers` + `settings` + `variants`)؛ لو V1 موجود بيعرض الترقية وإلا بيكتب صيغة V1 |
+| **Claude Code** | `curl -fsSL https://claude.ai/install.sh \| bash` · Windows: `irm https://claude.ai/install.ps1 \| iex` | `~/.claude/settings.json` (Opus→`abd-think`، Sonnet→`abd-main`، Haiku→`abd-fast`) |
+| **Hermes Agent** | `curl -fsSL https://hermes-agent.nousresearch.com/install.sh \| bash` · Windows: `iex (irm https://hermes-agent.nousresearch.com/install.ps1)` | `~/.hermes/config.yaml` (`custom_providers` باسم abdalgani) + `.env` |
+| **Codex CLI** | `npm i -g @openai/codex` | `~/.codex/config.toml` (`wire_api = "responses"`) + متغير `ABDALGANI_API_KEY` |
+| Kilo CLI · Pi · Qwen Code · Goose · Aider · OpenClaw · Kimi · EH Code | المثبّت الرسمي لكل أداة | كلٍّ بملفه — بدون حذف مزوّداتك الأخرى (ونسخة احتياطية `*.abdalgani.bak` أول مرة) |
 
-## 🤖 قسم وكلاء الذكاء الاصطناعي (AI Agents)
-
-أداة الإعداد تدعم **وضعاً غير تفاعلي (headless)** مصمّماً ليشغّله وكيل ذكي بدون أي تدخل بشري — لا أسئلة، ولا تشغيل واجهة TUI.
-
-### ⚙️ الاستخدام غير التفاعلي
-
-```bash
-# اكتشاف (للوكيل: لا تخمّن المعرّفات — اقرأها حيّة)
-node setup.js --help
-node setup.js --list-tools
-node setup.js --list-models
-
-# إعداد أداة بأمر واحد
-node setup.js --tool Hermes   --model nvidia/glm-4.7 --effort xhigh --api-key sk-xxx
-node setup.js --tool EHCode   --model zai/glm-5.2    --effort xhigh
-node setup.js --tool OpenCode --effort high
-```
-
-- **المفتاح:** `--api-key`، أو متغيّر البيئة `ABDALGANI_API_KEY`، أو مفتاح محفوظ سابقاً.
-- **`--effort`:** `none | high | xhigh` (xhigh = أقصى تفكير، موصى للبرمجة على z.ai).
-- **`--tool`** يفعّل الوضع غير التفاعلي تلقائياً. EH Code يُنزَّل تلقائياً من Cloudflare R2 (رابط ثابت).
-
-### 📩 رسالة جاهزة أرسلها لوكيلك الذكي
-
-انسخ الرسالة التالية وأعطها لأي وكيل (Claude Code / OpenCode / Hermes...) ليتولّى كل شيء بنفسه — عدّل السطر الأخير فقط:
+### استخدام مباشر (أي SDK)
 
 ```text
-You are operating the "Oh-My-abdalgani-code" repo: a setup tool that wires AI coding CLIs
-(OpenCode, Hermes, EH Code, Pi Code, KiloCLI, Aider, Goose, Qwen Code, Codex, ...) to the
-OpenAI-compatible gateway https://api.abdalgani.com/v1 . Configure things FULLY non-interactively.
-
-Steps:
-1. cd into the repo. Run `node setup.js --list-tools` and `node setup.js --list-models`
-   to discover the exact tool names and model ids. Do NOT guess ids — read them live.
-2. Configure with (this never launches a TUI):
-     node setup.js --tool <ToolName> --model <modelId> --effort <none|high|xhigh> --api-key <KEY>
-   Use the API key I give you, or the ABDALGANI_API_KEY env var.
-3. Confirm success from stdout. If the tool isn't installed the script installs it
-   automatically (EH Code auto-downloads from Cloudflare R2).
-
-Rules (read these BEFORE editing any models or the gateway config):
-- Repo agent guide:        ./Agent.md
-- Gateway model protocol:  ../projects/LiteLLMGateway/Agent.md   (only if present locally)
-- NEVER invent a model's context-window / output size — verify from the provider's /models
-  endpoint or official docs first.
-- When adding models: sweep the provider's FULL /models list, add all relevant ones, and keep
-  setup.js `models[]` in sync. Respect reasoning-effort per provider (z.ai = none/high/max).
-- Z.ai: use the coding-plan endpoint only; never leave a dead endpoint as a fallback target.
-
-My request: <write here: tool + model + effort, e.g. "set up Hermes with nvidia/glm-4.7 at xhigh effort">
+OpenAI-compatible:     base_url = https://api.abdalgani.com/v1     api_key = sk-abd-…   model = abd-main
+Anthropic-compatible:  ANTHROPIC_BASE_URL = https://api.abdalgani.com   ANTHROPIC_AUTH_TOKEN = sk-abd-…
 ```
 
-نرجو لكم أفضل تجربة برمجية وأداء سلس لعمليات التكويد الشاملة! 🚀
+## 🤖 الوضع غير التفاعلي (للوكلاء)
+
+```bash
+node setup.js --list-tools
+node setup.js --list-models --api-key sk-abd-…          # النماذج المسموحة لهذا المفتاح فعلياً
+node setup.js --tool OpenCode,ClaudeCode --model abd-main --effort high --api-key sk-abd-…
+node setup.js --tool Hermes --no-install                 # إعداد فقط بدون تثبيت
+```
+
+رسالة جاهزة لوكيل ذكي:
+
+```text
+You are operating the "Oh-My-abdalgani-code" repo. It wires AI coding CLIs to the gateway
+https://api.abdalgani.com (OpenAI /v1/chat/completions, Anthropic /v1/messages, Responses /v1/responses).
+1. Run `node setup.js --list-tools` and `node setup.js --list-models --api-key <KEY>`. Never guess ids.
+2. Configure: node setup.js --tool <Tool[,Tool]> --model abd-main --effort <none|low|medium|high> --api-key <KEY>
+3. Prefer the stable aliases abd-main / abd-fast / abd-think — the student re-maps them from the dashboard.
+Read ./Agent.md before editing code. Gateway code lives in ./gateway (see gateway/README.md).
+My request: <tool + model + effort>
+```
+
+## 🧪 التطوير
+
+```bash
+npm install && npm --prefix gateway install
+npm test                       # اختبارات الـ CLI + البوابة (وحدات + E2E على D1 محلية بـ node:sqlite)
+cd gateway && npm run dev      # wrangler dev على http://127.0.0.1:8787
+```

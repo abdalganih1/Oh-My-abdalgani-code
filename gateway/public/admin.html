@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>إدارة abdalgani</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<section id="login" class="login hidden">
+  <div class="card">
+    <h2>🛡️ لوحة المدير</h2>
+    <p class="muted small">ادخل <code>ADMIN_TOKEN</code> (السر المضبوط بـ wrangler secret).</p>
+    <form id="loginForm"><input id="tokenInput" type="password" placeholder="admin token" required><button class="primary" style="width:100%">دخول</button></form>
+  </div>
+</section>
+
+<section id="app" class="hidden">
+  <header class="top">
+    <h1>🛡️ إدارة البوابة</h1>
+    <div class="row"><a class="small" href="/" target="_blank">لوحة الطالب ↗</a><button class="small" id="logout">خروج</button></div>
+  </header>
+  <main>
+    <nav class="tabs">
+      <button data-tab="overview">نظرة عامة</button>
+      <button data-tab="providers">المزوّدون والمفاتيح</button>
+      <button data-tab="models">النماذج والتوجيه</button>
+      <button data-tab="users">الطلاب</button>
+      <button data-tab="coupons">الكوبونات</button>
+      <button data-tab="usage">السجل</button>
+      <button data-tab="settings">الفئات والأسماء الثابتة</button>
+    </nav>
+
+    <div data-panel="overview">
+      <div class="grid" id="stats"></div>
+      <div class="grid" style="margin-top:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+        <div class="card"><h2>المزوّدون (24 ساعة)</h2><table id="provStats"></table></div>
+        <div class="card"><h2>أكثر النماذج طلباً (7 أيام)</h2><table id="topModels"></table></div>
+      </div>
+    </div>
+
+    <div data-panel="providers">
+      <div id="providerList"></div>
+      <div class="card">
+        <h2>➕ مزوّد جديد / تعديل</h2>
+        <form id="providerForm" class="form">
+          <label class="f">المعرّف<input name="id" class="ltr" required placeholder="deepseek"></label>
+          <label class="f">الاسم<input name="name" placeholder="DeepSeek"></label>
+          <label class="f">OpenAI base URL<input name="openai_base_url" class="ltr" placeholder="https://api.x.com/v1"></label>
+          <label class="f">Anthropic base URL<input name="anthropic_base_url" class="ltr" placeholder="https://api.x.com/anthropic"></label>
+          <label class="f">المصادقة<select name="auth_style"><option value="bearer">Bearer</option><option value="x-api-key">x-api-key (Anthropic)</option></select></label>
+          <label class="f">Headers إضافية (JSON)<input name="extra_headers" class="ltr" placeholder='{"X-Title":"abd"}'></label>
+          <button class="primary">حفظ</button>
+        </form>
+      </div>
+    </div>
+
+    <div data-panel="models">
+      <div class="card">
+        <div class="row"><h2 style="margin:0">النماذج</h2><span class="spacer"></span><button class="primary" id="newModel">➕ نموذج</button></div>
+        <p class="muted small">الأسعار بالدولار. وضع التسعير: <b>token</b> = جدولك لكل مليون توكن · <b>request</b> = سعر ثابت لكل طلب · <b>provider</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك. النسبة الإضافية تنضاف فوق.</p>
+        <div class="table-wrap"><table id="modelTable"></table></div>
+      </div>
+    </div>
+
+    <div data-panel="users">
+      <div class="card">
+        <h2>➕ طالب جديد</h2>
+        <form id="userForm" class="form">
+          <label class="f">الاسم<input name="name" required></label>
+          <label class="f">الإيميل<input name="email" type="email" class="ltr"></label>
+          <label class="f">ملاحظة<input name="note"></label>
+          <button class="primary">إنشاء + مفتاح</button>
+        </form>
+        <div id="userSecret" class="secret hidden" style="margin-top:10px"></div>
+      </div>
+      <div class="card"><div class="row"><h2 style="margin:0">الطلاب</h2><span class="spacer"></span><input id="userSearch" placeholder="بحث..." style="max-width:200px"></div><div class="table-wrap"><table id="userTable"></table></div></div>
+    </div>
+
+    <div data-panel="coupons">
+      <div class="card">
+        <h2>🎟️ توليد كوبونات</h2>
+        <form id="couponForm" class="form">
+          <label class="f">النوع<select name="kind"><option value="usd">رصيد دولار</option><option value="tokens">توكنات</option></select></label>
+          <label class="f">القيمة (دولار أو مليون توكن)<input name="amount" type="number" step="0.01" min="0.01" required value="10"></label>
+          <label class="f">مخصص لفئة<select name="group_id" class="groupSel"></select></label>
+          <label class="f">صلاحية الاشتراك (يوم، 0=دائم)<input name="valid_days" type="number" value="30"></label>
+          <label class="f">العدد<input name="count" type="number" value="1" min="1" max="200"></label>
+          <label class="f">استخدامات لكل كوبون<input name="max_uses" type="number" value="1" min="1"></label>
+          <label class="f">ينتهي التفعيل بعد (يوم، 0=لا)<input name="expires_in_days" type="number" value="0"></label>
+          <label class="f">ملاحظة<input name="note" placeholder="دفعة 2026"></label>
+          <button class="primary">توليد</button>
+        </form>
+        <pre id="newCoupons" class="hidden"></pre>
+      </div>
+      <div class="card"><h2>الكوبونات</h2><div class="table-wrap"><table id="couponTable"></table></div></div>
+    </div>
+
+    <div data-panel="usage"><div class="card"><h2>آخر 300 طلب</h2><div class="table-wrap"><table id="usageTable"></table></div></div></div>
+
+    <div data-panel="settings">
+      <div class="card">
+        <h2>الفئات (Model groups)</h2>
+        <p class="muted small">الكوبون أو الاشتراك ممكن ينحصر بفئة. نموذج بلا فئة يغطيه فقط اشتراك "كل النماذج".</p>
+        <table id="groupTable"></table>
+        <form id="groupForm" class="form" style="margin-top:10px">
+          <label class="f">المعرّف<input name="id" class="ltr" required></label>
+          <label class="f">الاسم<input name="name"></label>
+          <label class="f">الوصف<input name="description"></label>
+          <button class="primary">حفظ</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>الأسماء الثابتة الافتراضية (aliases)</h2>
+        <p class="muted small">الأدوات بتنضبط على هالأسماء. كل طالب بيقدر يغيّرها لنفسه من لوحته. JSON: <code>{"abd-main": "glm-5.2"}</code></p>
+        <textarea id="aliasesJson" class="mono ltr" rows="6"></textarea>
+        <button class="primary" id="saveAliases" style="margin-top:8px">حفظ</button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<dialog id="modelDlg"><form id="modelForm" method="dialog">
+  <h2 id="modelDlgTitle">نموذج</h2>
+  <div class="form">
+    <label class="f">المعرّف العام<input name="id" class="ltr" required></label>
+    <label class="f">الاسم<input name="name"></label>
+    <label class="f">الفئة<select name="group_id" class="groupSel"></select></label>
+    <label class="f">الحالة<select name="status"><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option><option value="hidden">مخفي</option></select></label>
+    <label class="f">السياق<input name="context_length" type="number"></label>
+    <label class="f">أقصى خرج<input name="max_output" type="number"></label>
+    <label class="f">وضع التسعير<select name="pricing_mode"><option value="token">token</option><option value="request">request</option><option value="provider">provider</option></select></label>
+    <label class="f">$ دخل /1M<input name="price_in" type="number" step="any"></label>
+    <label class="f">$ خرج /1M<input name="price_out" type="number" step="any"></label>
+    <label class="f">$ كاش /1M<input name="price_cache_read" type="number" step="any"></label>
+    <label class="f">$ لكل طلب<input name="price_request" type="number" step="any"></label>
+    <label class="f">نسبة إضافية %<input name="markup_pct" type="number"></label>
+    <label class="f">الترتيب<input name="sort" type="number"></label>
+    <label class="f row"><input name="reasoning" type="checkbox"> يدعم التفكير</label>
+  </div>
+  <label class="f" style="margin-top:10px">الوصف<input name="description"></label>
+  <h3>التوجيه (بالترتيب — الأول أولاً، والباقي احتياط تلقائي)</h3>
+  <div id="routeRows"></div>
+  <button type="button" class="small" id="addRoute">➕ مسار</button>
+  <div class="row" style="margin-top:14px"><span class="spacer"></span><button type="button" id="modelCancel">إلغاء</button><button class="primary" id="modelSave" value="save">حفظ</button></div>
+</form></dialog>
+
+<dialog id="userDlg"><div id="userDlgBody"></div><div class="row" style="margin-top:12px"><span class="spacer"></span><button onclick="this.closest('dialog').close()">إغلاق</button></div></dialog>
+<dialog id="discoverDlg"><div id="discoverBody"></div><div class="row" style="margin-top:12px"><span class="spacer"></span><button onclick="this.closest('dialog').close()">إغلاق</button></div></dialog>
+
+<script type="module" src="/admin.js"></script>
+</body>
+</html>

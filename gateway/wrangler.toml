@@ -1,0 +1,25 @@
+name = "abdalgani-gateway"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain (DNS for abdalgani.com must be on Cloudflare). Comment out to use *.workers.dev.
+routes = [{ pattern = "api.abdalgani.com", custom_domain = true }]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/v1/*", "/api/*", "/chat/*", "/messages", "/responses", "/models", "/health"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "abdalgani-gateway"
+database_id = "REPLACE_WITH_D1_ID"   # npx wrangler d1 create abdalgani-gateway
+migrations_dir = "migrations"
+
+[observability]
+enabled = true
+
+# Secrets (never commit):
+#   npx wrangler secret put ADMIN_TOKEN       # admin panel login
+#   npx wrangler secret put ENCRYPTION_KEY    # encrypts provider keys stored in D1

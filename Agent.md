@@ -1,79 +1,60 @@
-# 🧠 Agent.md - Oh-My-abdalgani-code
+# 🧠 Agent.md — Oh-My-abdalgani-code (v2)
 
 ## 📊 نظرة عامة
-- **نوع المشروع:** CLI Tool Setup Script
-- **اللغة:** JavaScript (Node.js)
-- **الإطار:** Inquirer.js
-- **الإصدار:** N/A
-- **نقطة الدخول:** `setup.js`
+- **جزآن:** (1) `gateway/` بوابة AI على Cloudflare Workers + D1 (بديل LiteLLM)، (2) `cli/` + `setup.js` أداة ربط أدوات البرمجة بالبوابة.
+- **اللغة:** JavaScript ESM خالص، Node ≥ 20. البوابة بدون أي dependency تشغيل.
+- **الدومين:** `https://api.abdalgani.com` (القيمة قابلة للتغيير بـ `ABDALGANI_BASE_URL` في الـ CLI).
 
 ## 🌲 المخطط الشجري
-Oh-My-abdalgani-code/
-├── setup.js               # سكريبت إعداد بيئة أدوات الذكاء الاصطناعي (OpenCode, KiloCLI, ClaudeCode, OpenClaw)
-├── package.json           # ملف إدارة التبعيات
+```
+setup.js                  نقطة الدخول (npm start) → cli/main.js
+cli/
+  main.js                 الوسائط، القوائم التفاعلية، الوضع headless
+  core.js                 ثوابت (BASE_URL, ALIASES)، ملفات، مفتاح محفوظ، persistEnv
+  gateway.js              /v1/models + /api/me للتحقق من المفتاح وجلب نماذج الطالب
+  install.js              وصفات التثبيت الرسمية لكل أداة + كشف OpenCode V1/V2 + تنزيل EH Code
+  tools/*.js              كاتب إعداد لكل أداة (build* دوال نقية مُختبرة + configure* تكتب الملف)
+gateway/
+  wrangler.toml           D1 + Assets + الدومين
+  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة
+  src/index.js            الراوتر
+  src/proxy.js            /v1/chat/completions، /v1/messages، /v1/responses، /v1/models + البث والمحاسبة
+  src/routing.js          حلّ النموذج، المسارات، مفاتيح موزونة + تبريد، الترويسات
+  src/billing.js          حساب الكلفة واختيار الاشتراك والتسوية
+  src/translate.js        Anthropic ⇄ OpenAI (طلب، رد، بث)
+  src/responses.js        Responses ⇄ Chat Completions (لـ Codex)
+  src/api/admin.js        API المدير    src/api/user.js  API الطالب
+  public/                 لوحة الطالب index.html/me.js، لوحة المدير admin.html/admin.js، install.sh/ps1
+  test/                   d1-shim (node:sqlite) + units + e2e
+test/cli.test.js          اختبارات كتّاب الإعداد
+```
 
-## 🛠️ أوامر التشغيل
+## 🛠️ أوامر
 | الأمر | الوظيفة |
-|-------|---------|
-| `node setup.js` | تشغيل أداة الإعداد |
+|---|---|
+| `npm test` | كل الاختبارات (CLI + البوابة) |
+| `node setup.js --help` | مساعدة الـ CLI |
+| `cd gateway && npm run dev` | تشغيل محلي (wrangler) |
+| `cd gateway && npm run db:migrate && npm run deploy` | نشر |
 
-## 📦 التبعيات الرئيسية
-| المكتبة | الإصدار | الوظيفة |
-|---------|---------|---------|
-| `@inquirer/prompts` | N/A | واجهة المستخدم التفاعلية |
-| `chalk` | N/A | تلوين المخرجات |
+## ✅ قواعد يجب احترامها
+- **لا مفاتيح بالكود أو بالـ SQL أبداً.** مفاتيح المزوّدين تُدخل من لوحة المدير وتُخزن مشفّرة (`ENCRYPTION_KEY`). أسرار Worker عبر `wrangler secret put`.
+- **الطالب لا يملك أي طريق للرصيد إلا الكوبون أو منح المدير.** لا تضف تسجيل ذاتي/تجربة.
+- **المال بالـ micro-USD أعداد صحيحة.** لا تخزن floats.
+- **لا تخترع أحجام سياق أو أسعار.** استخدم زر "استعراض نماذج المزوّد" (يقرأ `/models` الحقيقي) أو وثائق المزوّد.
+- **الأدوات تُضبط على الأسماء الثابتة** `abd-main/abd-fast/abd-think` حتى يبدّل الطالب من اللوحة بدون إعادة إعداد.
+- **OpenCode V2** يستخدم `providers` (جمع) + `package` + `settings` + `variants`، و V1/Kilo/EH Code يستخدمون `provider` + `npm` + `options`. `opencodeMajor()` يقرر.
+- **Codex** يدعم `wire_api = "responses"` فقط → البوابة تخدم `/v1/responses`.
+- كتّاب الإعداد يدمجون ولا يحذفون مزوّدات المستخدم الأخرى، ويأخذون نسخة `*.abdalgani.bak` أول مرة.
+- أي تعديل على البوابة: أضف/حدّث اختبار في `gateway/test/` وشغّل `npm test`.
 
-## ✅ أفضل الممارسات المكتشفة
-- تخصيص إعدادات أدوات الذكاء الاصطناعي بناءً على المزود (api.abdalgani.com).
-- استخدام `multi_replace_file_content` لتعديل ملفات JavaScript بطريقة آمنة.
+## 🧩 EH Code
+- نواة OpenCode (V1) كـ `ehcode.exe` على Cloudflare R2: `EHCODE_DOWNLOAD_URL` في `cli/install.js` (رابط ثابت؛ التحديث = رفع لنفس المفتاح `ehcode/ehcode.exe`).
+- سكربت الرفع ومفاتيح R2 خارج المستودع (`cloudflare_worker/.dev.vars`) — لا تنسخها هنا.
 
-## ⚠️ المشاكل المعروفة والحلول
-| المشكلة | السبب | الحل | التاريخ |
-|---------|-------|------|---------|
-| إضافة OpenClaw | الحاجة لإعداد مزود LiteLLM في OpenClaw | إضافة كود ينشئ ملف `openclaw.json` ويمسح كاش النماذج ويعيد تشغيل Gateway | 2026-03-19 |
-
-## 🚫 أنماط يجب تجنبها
-- استخدام أوامر صدفية لكتابة ملفات (مثل `cat`).
-
-## 🔗 ملاحظات البيئة
-- الأداة مصممة للعمل على أنظمة متعددة مع تركيز خاص على بيئة Windows التي تدعم Node.js.
-
-## 🤖 الوضع غير التفاعلي (للوكلاء — بدون أسئلة)
-
-`setup.js` يدعم تشغيلاً headless. لا يطرح أي سؤال ولا يشغّل TUI:
-
-```bash
-node setup.js --list-tools          # أسماء الأدوات المدعومة
-node setup.js --list-models         # كل المعرّفات (+ نماذج البوابة الحيّة)
-node setup.js --tool <Name> --model <id> --effort <none|high|xhigh> --api-key <key>
-```
-
-- يُفعّل تلقائياً عند تمرير `--tool`. المفتاح من `--api-key` أو `ABDALGANI_API_KEY` أو مفتاح محفوظ.
-- منطق الكود: `configureTool(toolName, { nonInteractive, model, effort, apiKey })` — الأسئلة محروسة بـ `!nonInteractive`، و`launchAfterSetup` يتخطّى التشغيل في هذا الوضع.
-- **للوكيل:** لا تخمّن معرّفات النماذج — استخرجها من `--list-models`. ولا تخترع أحجام سياق (راجع بروتوكول `projects/LiteLLMGateway/Agent.md`).
-
-## 🧩 توزيع EH Code (ehcode) عبر Cloudflare R2
-
-- EH Code = نواة OpenCode مبنية كـ `ehcode.exe` مستقل (~150MB) — **لا يُرفع داخل الريبو** (كبير جداً).
-- `setup.js` ينزّله تلقائياً من Cloudflare R2 عبر الثابت `EHCODE_DOWNLOAD_URL`.
-- ترتيب مصادر التنصيب في `installEHCode()`: (1) نسخة محلية `EHCODE_DIST_DIR` → (2) `EHCODE_DOWNLOAD_URL` → (3) `EHCODE_RELEASE_REPO`.
-- مفتاح R2 الثابت: `ehcode/ehcode.exe` (bucket عام) — الرابط ثابت لا يتغيّر مع التحديثات.
-- سكربت الرفع + المفاتيح في: `C:\Users\Abdalgani\Desktop\Hiba\pr1\cloudflare_worker\`
-  (المفاتيح داخل `.dev.vars` — gitignored، **لا تنسخها إلى هنا أو إلى setup.js أبداً**).
-
-### 🔄 عند إعطاء تحديث جديد لـ ehcode (مهم)
-
-ارفع الـ exe الجديد إلى **نفس المفتاح بالضبط** حتى يبقى الرابط ثابتاً (overwrite في المكان):
-
-```bash
-cd C:\Users\Abdalgani\Desktop\Hiba\pr1\cloudflare_worker
-node upload_to_r2.mjs "<مسار ehcode.exe الجديد>" ehcode/ehcode.exe application/octet-stream
-```
-
-- النتيجة: نفس `EHCODE_DOWNLOAD_URL` بدون أي تعديل على `setup.js` — أي مستخدم يختار EH Code يأخذ البناء الجديد تلقائياً.
-- السكربت يقرأ مفاتيح R2 من `.dev.vars` وقت التشغيل (لا تضع مفاتيح في الكود).
-- الرفع لملف كبير على وصلة بطيئة: مهلات undici معطّلة داخل `upload_to_r2.mjs`، وشغّله بالخلفية.
-- تحقّق بعد الرفع: `curl -I <EHCODE_DOWNLOAD_URL>` يجب أن يرجع `200` مع `Content-Length` الجديد.
-
-## 📚 مراجع مفيدة
-- [وثائق OpenClaw Gateway]
+## ⚠️ مشاكل معروفة
+| المشكلة | الحل |
+|---|---|
+| workerd محلياً لا يمر عبر بروكسي الشبكة | للاختبار الحقيقي ضد مزوّد من بيئة فيها بروكسي استخدم Node مع `NODE_USE_ENV_PROXY=1` |
+| Claude Code لا يعرف نافذة سياق `abd-*` | الـ setup يضبط `CLAUDE_CODE_MAX_CONTEXT_TOKENS` لأصغر نافذة بين الأسماء المستخدمة |
+| مخطط opencode.ai/config.json المنشور ما زال V1 | تحذير المحرر من `providers` متوقع؛ OpenCode V2 يقرأه |

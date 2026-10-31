@@ -1,0 +1,17 @@
+{
+  "name": "abdalgani-gateway",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenRouter-style AI gateway on Cloudflare Workers + D1 (coupons, wallets, multi-provider routing)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply abdalgani-gateway --local",
+    "db:migrate": "wrangler d1 migrations apply abdalgani-gateway --remote",
+    "test": "node --test --no-warnings test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

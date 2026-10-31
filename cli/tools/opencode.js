@@ -1,0 +1,90 @@
+// OpenCode (V1 + V2 schemas), KiloCLI and EH Code (both on the V1 schema).
+import path from 'node:path';
+import { HOME, API_URL, PROVIDER_ID, ALIASES, readJson, writeJson, log, tr } from '../core.js';
+
+const EFFORTS = ['low', 'medium', 'high'];
+
+/** OpenCode V2 — `providers` map, settings/headers/body split, model variants, provider/model#variant. */
+export function buildOpenCodeV2(config, { apiKey, models, model, effort }) {
+  const out = { $schema: 'https://opencode.ai/config.json', ...config };
+  // a stale V1 entry for our provider would shadow / confuse the V2 one
+  if (out.provider?.[PROVIDER_ID]) {
+    delete out.provider[PROVIDER_ID];
+    if (!Object.keys(out.provider).length) delete out.provider;
+  }
+  const entries = {};
+  for (const m of models) {
+    entries[m.id] = {
+      name: m.name,
+      limit: { context: m.context, output: m.output },
+      ...(m.reasoning ? { variants: EFFORTS.map((e) => ({ id: e, settings: { reasoningEffort: e } })) } : {}),
+    };
+  }
+  out.providers = {
+    ...(out.providers || {}),
+    [PROVIDER_ID]: {
+      name: 'abdalgani',
+      package: '@opencode/ai/providers/openai-compatible',
+      settings: { baseURL: API_URL, apiKey },
+      models: entries,
+    },
+  };
+  const variant = effort && effort !== 'none' && EFFORTS.includes(effort) ? `#${effort}` : '';
+  out.model = `${PROVIDER_ID}/${model}${variant}`;
+  return out;
+}
+
+/** OpenCode V1 / Kilo / EH Code — `provider` map with @ai-sdk/openai-compatible. */
+export function buildOpenCodeV1(config, { apiKey, models, model, effort, smallModel }) {
+  const out = { $schema: 'https://opencode.ai/config.json', ...config };
+  const entries = {};
+  for (const m of models) {
+    entries[m.id] = { name: m.name, limit: { context: m.context, output: m.output } };
+    if (effort && m.reasoning) entries[m.id].options = { reasoningEffort: effort };
+  }
+  out.provider = {
+    ...(out.provider || {}),
+    [PROVIDER_ID]: { name: 'abdalgani', npm: '@ai-sdk/openai-compatible', options: { baseURL: API_URL, apiKey }, models: entries },
+  };
+  out.model = `${PROVIDER_ID}/${model}`;
+  if (smallModel) out.small_model = `${PROVIDER_ID}/${smallModel}`;
+  return out;
+}
+
+export function configureOpenCode(ctx) {
+  const file = path.join(HOME, '.config', 'opencode', 'opencode.json');
+  const v2 = ctx.opencodeMajor !== 1;
+  const cfg = readJson(file, {});
+  writeJson(file, v2 ? buildOpenCodeV2(cfg, ctx) : buildOpenCodeV1(cfg, { ...ctx, smallModel: ALIASES.fast }));
+  log.dim(`   ${tr('صيغة الإعداد', 'Config schema')}: OpenCode V${v2 ? 2 : 1} · ${tr('النموذج', 'model')}: ${PROVIDER_ID}/${ctx.model}`);
+}
+
+export function configureKilo(ctx) {
+  const file = path.join(HOME, '.config', 'kilo', 'kilo.json');
+  writeJson(file, buildOpenCodeV1(readJson(file, {}), { ...ctx, smallModel: ALIASES.fast }));
+}
+
+// EH Code ships curated agents (models resolve through the gateway's stable aliases).
+export const EH_AGENTS = {
+  plan: { description: 'Analyzes and plans only — never edits files', mode: 'primary', color: '#0ea5e9', permission: { edit: 'deny' }, model: `${PROVIDER_ID}/${ALIASES.think}`,
+    prompt: 'You are the Plan agent. You ONLY analyze and plan — never modify files. Explore the codebase, then produce a clear step-by-step implementation plan with file paths, risks, and alternatives.' },
+  code: { description: 'Implements features and fixes code', mode: 'primary', color: '#7c3aed', permission: {}, model: `${PROVIDER_ID}/${ALIASES.main}`,
+    prompt: 'You are the Code agent. Implement features and fix code directly. Write clean, idiomatic code that matches the existing style of the project. Prefer minimal, focused changes and verify your work when possible.' },
+  debug: { description: 'Diagnoses bugs and applies minimal fixes', mode: 'primary', color: '#f59e0b', permission: {}, model: `${PROVIDER_ID}/${ALIASES.main}`,
+    prompt: 'You are the Debug agent. Diagnose bugs systematically: reproduce the issue, read the relevant code, form hypotheses, add targeted logging or tests when needed, and propose the minimal fix. Always explain the root cause before fixing.' },
+  ask: { description: 'Answers questions — read-only', mode: 'primary', color: '#10b981', permission: { edit: 'deny', bash: 'ask' }, model: `${PROVIDER_ID}/${ALIASES.fast}`,
+    prompt: 'You are the Ask agent. Answer questions about the codebase and general programming concisely and accurately. You do not modify files; you explain, summarize, and point to the relevant code locations.' },
+  build: { disable: true },
+};
+
+export function configureEHCode(ctx) {
+  const file = path.join(HOME, '.config', 'ehcode', 'opencode.json');
+  // first run: seed from the user's OpenCode config so their agents carry over
+  let cfg = readJson(file, null);
+  if (!cfg) cfg = readJson(path.join(HOME, '.config', 'opencode', 'opencode.json'), {});
+  delete cfg.providers; // EH Code is built on the V1 core
+  const out = buildOpenCodeV1(cfg, { ...ctx, smallModel: ALIASES.fast });
+  out.agent = { ...EH_AGENTS, ...(out.agent || {}) };
+  out.default_agent = out.default_agent || 'code';
+  writeJson(file, out);
+}

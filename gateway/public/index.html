@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>لوحة abdalgani</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<section id="login" class="login hidden">
+  <div class="card">
+    <h2>🔐 دخول الطالب</h2>
+    <p class="muted small">ادخل مفتاح API اللي أعطاك ياه المدرّس (يبدأ بـ <code>sk-abd-</code>). ما في تسجيل ذاتي ولا تجربة مجانية — الرصيد بيجي فقط من كوبونات المدير.</p>
+    <form id="loginForm"><input id="keyInput" placeholder="sk-abd-..." autocomplete="off" required><button class="primary" style="width:100%">دخول</button></form>
+  </div>
+</section>
+
+<section id="app" class="hidden">
+  <header class="top">
+    <h1>⚡ abdalgani AI</h1>
+    <div class="row"><span class="who" id="who"></span><button class="small" id="logout">خروج</button></div>
+  </header>
+  <main>
+    <nav class="tabs">
+      <button data-tab="overview">الرصيد والاشتراكات</button>
+      <button data-tab="models">النماذج</button>
+      <button data-tab="switch">تبديل النماذج</button>
+      <button data-tab="setup">التثبيت والاستخدام</button>
+      <button data-tab="usage">السجل</button>
+      <button data-tab="keys">المفاتيح</button>
+    </nav>
+
+    <div data-panel="overview">
+      <div class="grid" id="stats"></div>
+      <div class="card" style="margin-top:16px">
+        <h2>🎟️ تفعيل كوبون</h2>
+        <form id="redeemForm" class="row"><input id="couponInput" class="ltr" placeholder="ABD-XXXX-XXXX-XXXX" required style="flex:1;min-width:200px"><button class="primary">تفعيل</button></form>
+      </div>
+      <div class="card"><h2>اشتراكاتي</h2><div class="table-wrap"><table id="subsTable"></table></div></div>
+    </div>
+
+    <div data-panel="models">
+      <div class="card">
+        <div class="row">
+          <select id="fStatus"><option value="">كل الحالات</option><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option></select>
+          <select id="fGroup"><option value="">كل الفئات</option></select>
+          <label class="row small"><input type="checkbox" id="fAvail"> المتاح لي فقط</label>
+          <span class="spacer"></span><input id="fSearch" placeholder="بحث..." style="max-width:200px">
+        </div>
+      </div>
+      <div class="grid" id="modelGrid"></div>
+    </div>
+
+    <div data-panel="switch">
+      <div class="card">
+        <h2>🔀 تبديل النماذج بدون إعادة تثبيت</h2>
+        <p class="muted small">أدواتك (OpenCode, Hermes, Claude Code…) مضبوطة على أسماء ثابتة مثل <code>abd-main</code> و<code>abd-fast</code>. غيّر هون لأي نموذج مسموح لك يشتغل فوراً بكل الأدوات.</p>
+        <div class="table-wrap"><table id="aliasTable"></table></div>
+        <h3>اسم مخصص جديد</h3>
+        <form id="aliasForm" class="row"><input id="aliasName" class="ltr" placeholder="my-model" required><select id="aliasModel"></select><button class="primary">حفظ</button></form>
+      </div>
+    </div>
+
+    <div data-panel="setup">
+      <div class="card">
+        <h2>🧰 تثبيت أدوات البرمجة (أمر واحد)</h2>
+        <p class="muted small">بيثبّت الأداة إذا مش موجودة ويربطها بالبوابة مع مفتاحك. اختر الأداة:</p>
+        <div class="row"><select id="toolSel"></select><select id="osSel"><option value="unix">macOS / Linux / Git Bash</option><option value="win">Windows PowerShell</option></select></div>
+        <pre id="installCmd"></pre><button class="small" data-copy="installCmd">نسخ</button>
+      </div>
+      <div class="card">
+        <h2>🔌 استخدام مباشر (أي أداة/SDK متوافق)</h2>
+        <h3>OpenAI-compatible</h3>
+        <pre id="oaSnippet"></pre>
+        <h3>Anthropic-compatible (Claude Code)</h3>
+        <pre id="anSnippet"></pre>
+      </div>
+    </div>
+
+    <div data-panel="usage"><div class="card"><h2>آخر الطلبات</h2><div class="table-wrap"><table id="usageTable"></table></div></div></div>
+
+    <div data-panel="keys">
+      <div class="card">
+        <h2>🔑 مفاتيحي</h2>
+        <div class="table-wrap"><table id="keysTable"></table></div>
+        <form id="keyForm" class="row" style="margin-top:12px"><input id="keyName" placeholder="اسم الجهاز (laptop)"><button class="primary">مفتاح جديد</button></form>
+        <div id="newKey" class="secret hidden"></div>
+      </div>
+    </div>
+  </main>
+</section>
+<script type="module" src="/me.js"></script>
+</body>
+</html>
