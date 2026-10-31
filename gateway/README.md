@@ -58,7 +58,7 @@ npm run deploy
 | نماذج بسعر صفر | سقف **توكنات** يومي لكل طالب (سقف الدولار لا يحميها) + تنبيه أحمر بالنماذج غير المسعّرة |
 | هجوم يفضي حساباتك عند المزوّدين | **ميزانية يومية كلية**: عند الوصول إليها تتوقف الخدمة حتى اليوم التالي |
 | تسريب تفاصيل حسابات المزوّدين | أخطاء المزوّد لا تصل للطالب (تُحفظ بسجلك)، وتُنظّف أي مقاطع تشبه مفاتيح؛ مفاتيح المزوّدين مشفّرة AES-GCM |
-| XSS / clickjacking على اللوحات | CSP صارم بدون سكربتات inline، `frame-ancestors 'none'`، `nosniff`، `no-referrer` (`public/_headers`) |
+| XSS / clickjacking على اللوحات | CSP صارم بدون سكربتات inline، `frame-ancestors 'none'`، `nosniff`، `no-referrer` (`web/public/_headers`) |
 
 > معرّف الجهاز (أو حتى MAC) يمكن نسخه ممن يملك المفتاح وملفات الإعداد — لذلك الحماية الحقيقية هي الحجز المسبق + السقوف + الحدود، وربط الأجهزة طبقة إضافية تمنع المشاركة السهلة وتسمح بالحظر.
 
@@ -105,5 +105,7 @@ npm run deploy
 
 ```bash
 npm test     # وحدات (الفوترة، الترجمة، التشفير) + E2E كامل على D1 محلية (node:sqlite) مع مزوّدين وهميين
-npm run dev  # wrangler dev — يحتاج .dev.vars (انسخ .dev.vars.example) و npm run db:migrate:local
+npm run dev      # يبني الواجهات (web/ → public/) ويشغّل wrangler dev — يحتاج .dev.vars (انسخ .dev.vars.example) و npm run db:migrate:local
+npm run dev:web  # واجهات React مع HMR على :5173 (API من wrangler dev على :8799)
+# الواجهات: React 19 + Vite + Tailwind v4 بـ web/ — `npm run deploy` بيبنيها قبل النشر
 ```

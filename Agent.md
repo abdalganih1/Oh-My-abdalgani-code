@@ -26,7 +26,11 @@ gateway/
   src/translate.js        Anthropic ⇄ OpenAI (طلب، رد، بث)
   src/responses.js        Responses ⇄ Chat Completions (لـ Codex)
   src/api/admin.js        API المدير    src/api/user.js  API الطالب
-  public/                 لوحة الطالب index.html/me.js، لوحة المدير admin.html/admin.js، install.sh/ps1
+  web/                    الواجهات (React 19 + Vite + Tailwind v4) — بتنبني لـ public/ (مولّد، مش بالـ git)
+    src/ui/               مكتبة المكوّنات: core (Button/Card/Badge/…)، overlay (Select بحث/Modal/Confirm/Sheet)، table، shell، charts
+    src/lib/              api/format/hooks/store
+    src/admin/            لوحة المدير (panels/* lazy)        src/student/  موقع الطالب
+    public/               _headers (CSP) + install.sh/ps1 (بتنسخ كما هي)
   test/                   d1-shim (node:sqlite) + units + e2e
 test/cli.test.js          اختبارات كتّاب الإعداد
 ```
@@ -37,7 +41,8 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 | `npm test` | كل الاختبارات (CLI + البوابة) |
 | `node setup.js --help` | مساعدة الـ CLI |
 | `node setup.js --status` / `--sync` | النموذج الحقيقي والرصيد / تحديث كل الأدوات المضبوطة |
-| `cd gateway && npm run dev` | تشغيل محلي (wrangler) |
+| `cd gateway && npm run dev` | يبني الواجهات ويشغّل wrangler محلياً |
+| `cd gateway && npm run dev:web` | Vite مع HMR (بيحوّل /api و/v1 لـ wrangler dev على 8799، أو `API=…`) |
 | `cd gateway && npm run db:migrate && npm run deploy` | نشر |
 
 ## ✅ قواعد يجب احترامها
@@ -55,7 +60,7 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 - **دورة الحياة** (`gateway/src/lifecycle.js`): Cron كل 30د. لا تؤرشف إلا بفشل متواصل ≥ 6 ساعات بلا نجاح (ليميت 5 ساعات شائع). دوال تقبل `now` للاختبار — اختبر أي تعديل بـ `gateway/test/lifecycle.test.js`.
 - **حزمة العربي** (`cli/arabic.js`): العرض عبر WezTerm (bidi + shaping) + أوامر `<tool>-ar`، والردود بـ /ar /en. Claude Code مستثنى. لا تكتب فوق إعداد WezTerm خاص بالمستخدم.
 - **التحديث التلقائي عند الطالب** (`cli/schedule.js`): Task Scheduler (ويندوز) / cron أو systemd timer (لينكس/ماك) ← `--sync --quiet` يكتب فقط عند تغيّر الكتالوج.
-- **التقارير** (`gateway/src/reports.js` + `public/charts.js`): SVG بدون مكتبات، حسب قواعد مهارة dataviz (محور واحد، tooltip لكل علامة، جدول مع كل رسم، ألوان مُتحقق منها فاتح/داكن). أي رقم مالي = µ$ صحيح. التواريخ داخل نص عربي تُعزل بـ LRI/PDI.
+- **التقارير** (`gateway/src/reports.js` + `web/src/ui/charts.jsx`): SVG بدون مكتبات، حسب قواعد مهارة dataviz (محور واحد، tooltip لكل علامة، جدول مع كل رسم، ألوان مُتحقق منها فاتح/داكن). أي رقم مالي = µ$ صحيح. التواريخ داخل نص عربي تُعزل بـ LRI/PDI.
 - **الأمان** (`gateway/src/security.js`): كل طلب ← `preflight` (حظر IP، حجم، RL_IP) ← auth (فشل 401 يعدّ للحظر) ← `afterAuth` (RL_USER، الأجهزة) ← `checkSpendCaps` ← حجز ذرّي من الرصيد. لا تُرجع نص خطأ المزوّد للطالب بدون `scrub`. لا تجمع معرّفات عتادية — معرّف الجهاز عشوائي لكل تثبيت. لا inline scripts (CSP).
 - **الحسابات** (`gateway/src/accounts.js`): جلسات `abd_ses_` للوحة فقط (ممنوعة على /v1). **الكشف** (`gateway/src/detect.js`): أي قاعدة جديدة = استعلام مجمّع محدود + `raiseAlert` (مكرر-ممنوع بـ UNIQUE مع '' بدل NULL). أي polling بالواجهة = setTimeout متسلسل + توقف عند الإخفاء/الخمول + backoff.
 - **OpenCode Go** لا يُضاف كمزوّد مشترك (شروطه: workspace بعضو واحد). المعتمد: OpenCode Zen.
