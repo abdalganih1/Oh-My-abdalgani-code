@@ -79,7 +79,11 @@ async function fetchUpstreamList(env, provider) {
   let secret;
   try { secret = await decryptSecret(key.key_enc, env.ENCRYPTION_KEY); } catch { return { ok: false, status: 0, error: 'cannot decrypt key' }; }
   try {
-    const res = await fetch(`${provider.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(provider, secret, 'openai') });
+    // Anthropic-style providers list models on their native endpoint (x-api-key + anthropic-version)
+    const native = provider.auth_style === 'x-api-key' && provider.anthropic_base_url;
+    const res = native || !provider.openai_base_url
+      ? await fetch(`${provider.anthropic_base_url.replace(/\/$/, '')}/v1/models?limit=1000`, { headers: upstreamHeaders(provider, secret, 'anthropic') })
+      : await fetch(`${provider.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(provider, secret, 'openai') });
     const text = await res.text();
     if (!res.ok) return { ok: false, status: res.status, error: text.slice(0, 200) };
     const body = JSON.parse(text);

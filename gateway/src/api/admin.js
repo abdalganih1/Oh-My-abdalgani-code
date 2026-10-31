@@ -100,11 +100,14 @@ export async function handleAdmin(request, env, ctx, path) {
     if (b && c === 'discover' && method === 'POST') {
       // List the upstream catalog with the first working key (helps adding models).
       const provider = await db.prepare('SELECT * FROM providers WHERE id = ?').bind(b).first();
-      need(provider?.openai_base_url, 'provider has no OpenAI-compatible base URL');
+      need(provider?.openai_base_url || provider?.anthropic_base_url, 'provider has no base URL');
       const key = await db.prepare('SELECT * FROM provider_keys WHERE provider_id = ? AND enabled = 1 ORDER BY id LIMIT 1').bind(b).first();
       need(key, 'add a key to this provider first');
       const secret = await decryptSecret(key.key_enc, env.ENCRYPTION_KEY);
-      const res = await fetch(`${provider.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(provider, secret, 'openai') });
+      const native = provider.auth_style === 'x-api-key' && provider.anthropic_base_url;
+      const res = native || !provider.openai_base_url
+        ? await fetch(`${provider.anthropic_base_url.replace(/\/$/, '')}/v1/models?limit=1000`, { headers: upstreamHeaders(provider, secret, 'anthropic') })
+        : await fetch(`${provider.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(provider, secret, 'openai') });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new HttpError(502, `upstream ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
       const list = (body.data || []).filter((m) => m && m.id).map((m) => {
@@ -143,7 +146,9 @@ export async function handleAdmin(request, env, ctx, path) {
       const secret = await decryptSecret(row.key_enc, env.ENCRYPTION_KEY);
       const started = Date.now();
       let res;
-      if (row.openai_base_url) {
+      // x-api-key providers (Anthropic, Zen) are checked on their native endpoint: Anthropic's
+      // /v1/models needs x-api-key + anthropic-version, which the OpenAI-style probe doesn't send
+      if (row.openai_base_url && !(row.auth_style === 'x-api-key' && row.anthropic_base_url)) {
         res = await fetch(`${row.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(row, secret, 'openai') });
       } else {
         res = await fetch(`${row.anthropic_base_url.replace(/\/$/, '')}/v1/models`, { headers: upstreamHeaders(row, secret, 'anthropic') });
