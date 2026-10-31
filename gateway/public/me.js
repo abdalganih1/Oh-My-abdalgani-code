@@ -265,7 +265,7 @@ $('#aliasForm').addEventListener('submit', (e) => { e.preventDefault(); setAlias
 
 function renderSetup() {
   const sel = $('#toolSel');
-  if (!sel.options.length) sel.innerHTML = TOOLS.map((t) => `<option>${t}</option>`).join('');
+  if (![...sel.options].some((o) => o.text)) sel.innerHTML = TOOLS.map((t) => `<option>${t}</option>`).join('');
   const key = isSession() ? (store.get('abd:lastApiKey') || 'sk-abd-…(اعمل مفتاح من تبويب المفاتيح)') : store.get(KEY);
   const base = me.base_url;
   const tool = sel.value, win = $('#osSel').value === 'win';

@@ -9,9 +9,11 @@
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply abdalgani-gateway --local",
     "db:migrate": "wrangler d1 migrations apply abdalgani-gateway --remote",
-    "test": "node --test --no-warnings test/*.test.js"
+    "test": "node --test --no-warnings test/*.test.js",
+    "vendor": "cp node_modules/tom-select/dist/js/tom-select.complete.min.js public/vendor/ && cp node_modules/tom-select/dist/css/tom-select.min.css public/vendor/tom-select.css && sed -i -E 's@(//|/\\*)# sourceMappingURL=[^ ]*( \\*/)?@@' public/vendor/tom-select.complete.min.js public/vendor/tom-select.css"
   },
   "devDependencies": {
+    "tom-select": "2.4.3",
     "wrangler": "^4.40.0"
   }
 }

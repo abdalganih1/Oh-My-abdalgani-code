@@ -179,3 +179,98 @@ new MutationObserver((muts) => {
   if (labelQueued || !muts.some((m) => m.target.closest?.('table.stack') || [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches?.('table.stack') || n.querySelector?.('table.stack'))))) return;
   labelQueued = true; requestAnimationFrame(labelAll);
 }).observe(document.documentElement, { childList: true, subtree: true });
+
+// ── pretty, searchable dropdowns: every <select> becomes a Tom Select (self-hosted in /vendor).
+// The original <select> stays in the DOM as the source of truth (forms, FormData, .value reads and
+// 'change' listeners keep working); this layer only keeps the two in sync:
+//   • options rebuilt with innerHTML  → MutationObserver re-reads them
+//   • code sets sel.value = x         → per-element value setter updates the widget
+//   • sel.disabled / form.reset()     → mirrored
+// Opt out with <select data-native>. Short lists keep type-to-filter but hide the search box.
+const TS = new WeakMap();
+const FEW = 7;
+const NATIVE_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+// sorted: Tom Select moves the selected <option> to the end of the list, which is not a real change
+const optSig = (s) => [...s.options].map((o) => `${o.value}\u0001${o.text}\u0001${o.disabled ? 1 : 0}`).sort().join('\u0002');
+
+function fewToggle(ts) {
+  const few = Object.keys(ts.options).length <= FEW;
+  ts.wrapper.classList.toggle('ts-few', few); ts.dropdown.classList.toggle('ts-few', few);
+  ts.control_input.setAttribute('inputmode', few ? 'none' : 'search'); // no phone keyboard for 3-item lists
+}
+function resync(sel) {
+  const ts = TS.get(sel); if (!ts) return;
+  const sig = optSig(sel);
+  if (sig !== ts.abdSig) {
+    ts.abdSig = sig;
+    // not ts.sync(): it re-parses without our settings and drops the "" option ("كل الطلاب")
+    ts.clearOptions(() => false);
+    // $option: reuse the real <option> (without it Tom Select appends a duplicate element on select)
+    for (const o of sel.options) if (o.value !== "" || o.text) ts.addOption({ value: o.value, text: o.text, disabled: o.disabled, $option: o });
+    ts.setValue(NATIVE_VALUE.get.call(sel), true);
+    if (ts.isOpen) ts.refreshOptions(false);
+    fewToggle(ts);
+  } else if (ts.getValue() !== NATIVE_VALUE.get.call(sel)) ts.setValue(NATIVE_VALUE.get.call(sel), true);
+}
+
+export function enhanceSelect(sel) {
+  const TomSelect = window.TomSelect;
+  if (!TomSelect || TS.has(sel) || sel.multiple || sel.hidden || sel.closest('[data-native]')) return;
+  const inDialog = !!sel.closest('dialog');
+  const ts = new TomSelect(sel, {
+    plugins: { dropdown_input: {} },
+    allowEmptyOption: true, maxOptions: null, create: false, closeAfterSelect: true,
+    searchField: ['text', 'value'],
+    // body-level dropdowns escape scrolling tables; inside a modal <dialog> (top layer) stay inline
+    dropdownParent: inDialog ? null : 'body',
+    render: { no_results: () => '<div class="no-results">ما في نتائج</div>' },
+    onDropdownOpen() { this.control_input.value = ''; },
+  });
+  TS.set(sel, ts);
+  // wrapping part of an Arabic word in <span> breaks letter joining — highlight Latin queries only
+  ts.hook('before', 'refreshOptions', () => { ts.settings.highlight = !/[\u0600-\u06FF]/.test(ts.inputValue()); });
+  ts.abdSig = optSig(sel);
+  ts.control_input.placeholder = 'ابحث…';
+  ts.control_input.setAttribute('aria-label', 'بحث');
+  if (sel.style.cssText) ts.wrapper.style.cssText = sel.style.cssText;
+  if (sel.disabled) ts.disable();
+  fewToggle(ts);
+  // programmatic sel.value = x must move the widget too
+  Object.defineProperty(sel, 'value', {
+    configurable: true,
+    get() { return NATIVE_VALUE.get.call(this); },
+    set(v) { NATIVE_VALUE.set.call(this, v); const t = TS.get(this); if (t) t.setValue(NATIVE_VALUE.get.call(this), true); },
+  });
+  // a wrapping <label> would "activate" the hidden select and steal focus from the widget
+  const label = sel.closest('label');
+  if (label) label.addEventListener('click', (e) => { e.preventDefault(); if (!ts.wrapper.contains(e.target) && !ts.dropdown.contains(e.target)) ts.focus(); });
+}
+
+export function enhanceSelects(root = document) {
+  if (root.matches?.('select')) enhanceSelect(root);
+  root.querySelectorAll?.('select').forEach(enhanceSelect);
+}
+
+let tsQueued = new Set(), tsScan = false;
+function tsFlush() {
+  if (tsScan) { tsScan = false; enhanceSelects(document); }
+  for (const s of tsQueued) if (s.isConnected) resync(s);
+  tsQueued = new Set();
+}
+new MutationObserver((muts) => {
+  let any = false;
+  for (const m of muts) {
+    const t = m.target;
+    if (m.type === 'attributes') {
+      const ts = TS.get(t); if (ts) { if (m.attributeName === 'disabled') { if (t.disabled) ts.disable(); else ts.enable(); } else if (m.attributeName === 'hidden') ts.wrapper.hidden = t.hidden; }
+      continue;
+    }
+    const sel = t.nodeName === 'SELECT' ? t : t.nodeName === 'OPTGROUP' ? t.parentNode : null;
+    if (sel && TS.has(sel)) { tsQueued.add(sel); any = true; continue; }
+    if (t.closest?.('.ts-wrapper, .ts-dropdown')) continue; // the widget's own re-renders
+    for (const n of m.addedNodes) if (n.nodeType === 1 && (n.nodeName === 'SELECT' || n.querySelector?.('select'))) { tsScan = true; any = true; }
+  }
+  if (any) queueMicrotask(tsFlush);
+}).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'hidden'] });
+document.addEventListener('reset', (e) => setTimeout(() => e.target.querySelectorAll?.('select').forEach(resync)), true);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => enhanceSelects()); else enhanceSelects();

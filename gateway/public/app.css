@@ -689,3 +689,61 @@ details.prov[open] .chev { transform: rotate(90deg); }
   .lg-table tr[data-lg] td:first-child { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
   .lg-table tr.lg-err { border-inline-start: 3px solid var(--bad, #e5484d); padding-inline-start: 8px; }
 }
+
+/* ── dropdowns (Tom Select, themed with the site tokens) ── */
+.ts-wrapper { min-width: 0; position: relative; }
+.ts-wrapper.single .ts-control, .ts-wrapper.single .ts-control input { cursor: pointer; }
+.ts-control {
+  font: 14px/1.4 var(--font); color: var(--text); background: var(--panel-solid); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 9px 12px; padding-inline-end: 34px; min-height: 40px; box-shadow: none; display: flex; align-items: center; flex-wrap: nowrap;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ts-wrapper .ts-control, .ts-wrapper.full .ts-control, .ts-wrapper.single.input-active .ts-control { background: var(--panel-solid); color: var(--text); cursor: pointer; }
+.ts-wrapper:not(.disabled):hover .ts-control { border-color: color-mix(in srgb, var(--accent) 40%, var(--border-strong)); }
+.ts-wrapper.focus .ts-control, .ts-wrapper.dropdown-active .ts-control { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-2); }
+.ts-control .item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--text); }
+.ts-wrapper .ts-control::after {
+  content: ""; position: absolute; inset-inline-end: 13px; top: 50%; width: 8px; height: 8px; margin-top: -6px;
+  border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform .2s, margin .2s; pointer-events: none;
+}
+.ts-wrapper.dropdown-active .ts-control::after { transform: rotate(-135deg); margin-top: -2px; border-color: var(--accent); }
+.ts-control .items-placeholder { border: 0; background: transparent; padding: 0; color: var(--muted); font: inherit; width: 100%; box-shadow: none; }
+.ts-wrapper.has-items .items-placeholder { display: none; }
+.ts-wrapper.disabled .ts-control, .ts-wrapper.disabled.full .ts-control { opacity: .55; cursor: not-allowed; background: var(--panel-2); }
+
+.ts-dropdown {
+  z-index: 1200; margin-top: 6px; border: 1px solid var(--border-strong); border-radius: 14px; overflow: hidden;
+  background: var(--panel-solid); color: var(--text); box-shadow: var(--shadow-lg); font: 14px/1.45 var(--font);
+  animation: tsIn .14s ease-out;
+}
+@keyframes tsIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ts-dropdown { animation: none; } }
+.ts-dropdown .dropdown-input-wrap { padding: 8px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+.ts-dropdown .dropdown-input {
+  width: 100%; border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 12px; padding-inline-start: 34px; background: var(--panel-solid);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b8fa8' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center; box-shadow: none; font-size: 14px;
+}
+.ts-dropdown.ltr .dropdown-input { background-position: left 11px center; }
+.ts-dropdown .dropdown-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-2); }
+.ts-dropdown.ts-few .dropdown-input-wrap { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+.ts-dropdown .ts-dropdown-content { max-height: min(320px, 50vh); padding: 6px; scroll-padding: 6px; overscroll-behavior: contain; }
+.ts-dropdown .option {
+  padding: 8px 11px; border-radius: 9px; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 36px;
+  overflow-wrap: anywhere; color: var(--text-2, var(--text));
+}
+.ts-dropdown .option.active { background: var(--accent-2); color: var(--text); }
+.ts-dropdown .option.selected { font-weight: 600; color: var(--accent-ink); }
+.ts-dropdown .option.selected::after { content: ""; margin-inline-start: auto; width: 5px; height: 10px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); flex: none; }
+.ts-dropdown .option[data-disabled], .ts-dropdown .option.disabled { opacity: .45; cursor: not-allowed; }
+.ts-dropdown .no-results { padding: 14px; text-align: center; color: var(--muted); font-size: 13px; }
+.ts-dropdown .highlight { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 3px; }
+.ts-dropdown .optgroup-header { padding: 8px 11px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); background: transparent; }
+.ltr.ts-wrapper .ts-control, .ts-dropdown.ltr .option { font-family: var(--font-mono); font-size: 13px; }
+td .ts-wrapper { width: 100%; }
+@media (max-width: 720px) {
+  .ts-control { min-height: 42px; font-size: 16px; }
+  .ts-dropdown { font-size: 15px; }
+  .ts-dropdown .option { min-height: 42px; }
+  .ts-dropdown .dropdown-input { font-size: 16px; } /* 16px stops iOS zoom-on-focus */
+}

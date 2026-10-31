@@ -351,7 +351,7 @@ const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a
 function openProviderDialog(prov) {
   const f = $('#providerForm'); f.reset();
   const sel = $('#provPreset');
-  if (!sel.options.length) sel.innerHTML = PRESETS.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.openai || x.anthropic ? ` — ${esc((x.openai || x.anthropic).replace(/^https:\/\//, ''))}` : ''}</option>`).join('');
+  if (!sel.querySelector("option:not([value=\"\"])")) sel.innerHTML = PRESETS.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.openai || x.anthropic ? ` — ${esc((x.openai || x.anthropic).replace(/^https:\/\//, ''))}` : ''}</option>`).join('');
   f.dataset.editing = prov ? prov.id : '';
   $('#provDlgTitle').lastChild.textContent = prov ? `تعديل ${prov.name}` : 'مزوّد جديد';
   $('#presetWrap').classList.toggle('hidden', !!prov);
