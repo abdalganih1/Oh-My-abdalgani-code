@@ -39,9 +39,20 @@ function renderOverview() {
     ['آخر 30 يوم', `${me.stats_30d.req} طلب`, `${tokens(me.stats_30d.tokens)} توكن · ${usd(me.stats_30d.cost)}`],
   ].map(([l, v, s]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join('');
 
+  const nowS = Date.now() / 1000;
+  const fresh = catalog.models.filter((m) => m.status === 'new');
+  const gone = catalog.models.filter((m) => m.status === 'archived' && m.archived_at && nowS - m.archived_at < 14 * 86400);
+  $('#newsCard').classList.toggle('hidden', !fresh.length && !gone.length);
+  $('#news').innerHTML = [
+    ...fresh.map((m) => `<div class="row small" style="margin-bottom:6px">${STATUS_BADGE.new}<strong>${esc(m.name)}</strong><span class="mono ltr muted">${esc(m.id)}</span><span class="muted">· أُضيف ${day(m.created_at)}</span>${m.available ? `<button class="small" data-use="${esc(m.id)}">جرّبه كـ abd-main</button>` : '<span class="badge">🔒 خارج اشتراكك</span>'}</div>`),
+    ...gone.map((m) => `<div class="row small" style="margin-bottom:6px">${STATUS_BADGE.archived}<span>${esc(m.name)}</span><span class="muted">· توقف ${day(m.archived_at)}</span></div>`),
+  ].join('');
+
   $('#realTable').innerHTML = '<tr><th>الاسم بأدواتك</th><th>النموذج الحقيقي</th><th>المزوّد · المعرّف عنده</th></tr>' + me.aliases.map((a) => {
     const t = catalog.models.find((m) => m.id === a.model_id);
-    return `<tr><td class="mono ltr">${esc(a.alias)}</td><td><strong>${esc(a.model_name)}</strong> <span class="muted mono small ltr">${esc(a.model_id)}</span> ${t ? STATUS_BADGE[t.status] || '' : ''}${t && !t.available ? ' <span class="badge bad">🔒 خارج اشتراكك</span>' : ''}</td>
+    const was = a.fallback ? catalog.models.find((m) => m.id === a.archived_model_id) : null;
+    return `<tr><td class="mono ltr">${esc(a.alias)}</td><td><strong>${esc(t?.name || a.model_name)}</strong> <span class="muted mono small ltr">${esc(a.model_id)}</span> ${t ? STATUS_BADGE[t.status] || '' : ''}${t && !t.available && t.status !== 'archived' ? ' <span class="badge bad">🔒 خارج اشتراكك</span>' : ''}
+      ${was ? `<div class="small" style="color:var(--warn)">بدلاً من ${esc(was.name)} (مؤرشف)</div>` : ''}</td>
       <td class="small muted ltr" style="text-align:start">${esc(a.served_by || '—')}</td></tr>`;
   }).join('');
 
@@ -73,7 +84,7 @@ function renderModels() {
   const sel = $('#fGroup');
   if (sel.options.length === 1) catalog.groups.forEach((g) => sel.insertAdjacentHTML('beforeend', `<option value="${esc(g.id)}">${esc(g.name)}</option>`));
   const st = $('#fStatus').value, gr = $('#fGroup').value, av = $('#fAvail').checked, q = $('#fSearch').value.toLowerCase();
-  const list = catalog.models.filter((m) => (!st || m.status === st) && (!gr || m.group_id === gr) && (!av || m.available)
+  const list = catalog.models.filter((m) => (st ? m.status === st : m.status !== 'archived') && (!gr || m.group_id === gr) && (!av || m.available)
     && (!q || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)));
   $('#modelGrid').innerHTML = list.map((m) => `
     <div class="model-card ${m.available ? '' : 'locked'}">
@@ -84,10 +95,12 @@ function renderModels() {
       <div class="small muted">سياق ${tokens(m.context_length)} · خرج ${tokens(m.max_output)}</div>
       <div class="small">${esc(priceLabel(m))}</div>
       ${m.description ? `<div class="small muted">${esc(m.description)}</div>` : ''}
+      ${m.status === 'archived' ? `<div class="small" style="color:var(--bad)">توقف ${day(m.archived_at)}</div>` : ''}
       ${m.available ? `<button class="small" data-use="${esc(m.id)}">اجعله abd-main</button>` : ''}
     </div>`).join('') || '<p class="muted">لا نتائج</p>';
 }
 ['#fStatus', '#fGroup', '#fAvail'].forEach((s) => $(s).addEventListener('change', renderModels));
+$('#news').addEventListener('click', async (e) => { const id = e.target.dataset?.use; if (id) await setAlias('abd-main', id); });
 $('#fSearch').addEventListener('input', renderModels);
 $('#modelGrid').addEventListener('click', async (e) => {
   const id = e.target.dataset?.use; if (!id) return;
@@ -100,7 +113,7 @@ async function setAlias(alias, model_id) {
 }
 
 function modelOptions(selected) {
-  return catalog.models.filter((m) => m.available).map((m) =>
+  return catalog.models.filter((m) => m.available && m.status !== 'archived').map((m) =>
     `<option value="${esc(m.id)}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)} (${esc(m.id)})${m.status === 'legacy' ? ' — قديم' : m.status === 'new' ? ' — جديد' : ''}</option>`).join('');
 }
 

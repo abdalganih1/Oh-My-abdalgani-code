@@ -26,6 +26,7 @@
   <main>
     <nav class="tabs">
       <button data-tab="overview">نظرة عامة</button>
+      <button data-tab="updates">التحديثات <span id="unreadBadge" class="badge new hidden"></span></button>
       <button data-tab="providers">المزوّدون والمفاتيح</button>
       <button data-tab="models">النماذج والتوجيه</button>
       <button data-tab="users">الطلاب</button>
@@ -42,6 +43,28 @@
       </div>
     </div>
 
+    <div data-panel="updates">
+      <div class="card">
+        <div class="row"><h2 style="margin:0">🔔 تحديثات المزوّدين</h2><span class="spacer"></span>
+          <button id="runNow" class="primary">🔄 افحص الآن</button><button id="markRead">تعليم الكل كمقروء</button></div>
+        <p class="muted small">كل 30 دقيقة البوابة بتسحب قائمة نماذج كل مزوّد: الجديد بينشر تلقائياً (حسب سياسة المزوّد) كـ <b>جديد</b> لمدة الأيام المحددة، والمحذوف عند المزوّد بيتأرشف، وأي مزوّد/نموذج ما رد بنجاح طول المدة المحددة (مع إنو إجتو طلبات) بيتأرشف. للتنبيهات على Discord/Slack/Telegram: <code class="ltr">wrangler secret put NOTIFY_WEBHOOK</code></p>
+        <div class="table-wrap" style="max-height:420px;overflow:auto"><table id="eventTable"></table></div>
+      </div>
+      <div class="card">
+        <h2>🆕 نماذج جديدة عند المزوّدين بانتظار قرارك</h2>
+        <div class="table-wrap"><table id="pendingTable"></table></div>
+      </div>
+      <div class="card">
+        <h2>⚙️ إعدادات الأرشفة</h2>
+        <form id="lifecycleForm" class="form">
+          <label class="f">أرشفة بعد فشل متواصل (ساعات)<input name="archive_after_hours" type="number" min="1"></label>
+          <label class="f">مدة شارة "جديد" (أيام)<input name="new_days" type="number" min="0"></label>
+          <label class="f">أرشفة نموذج اختفى من قائمة المزوّد بعد (ساعات)<input name="missing_hours" type="number" min="1"></label>
+          <button class="primary">حفظ</button>
+        </form>
+      </div>
+    </div>
+
     <div data-panel="providers">
       <div id="providerList"></div>
       <div class="card">
@@ -53,6 +76,7 @@
           <label class="f">Anthropic base URL<input name="anthropic_base_url" class="ltr" placeholder="https://api.x.com/anthropic"></label>
           <label class="f">المصادقة<select name="auth_style"><option value="bearer">Bearer</option><option value="x-api-key">x-api-key (Anthropic)</option></select></label>
           <label class="f">Headers إضافية (JSON)<input name="extra_headers" class="ltr" placeholder='{"X-Title":"abd"}'></label>
+          <label class="f" style="grid-column:1/-1">سياسة النماذج الجديدة auto (JSON)<input name="auto" class="ltr" placeholder='{"publish":true,"free_only":false,"group":"coding","pricing_mode":"request","price_request":0,"markup_pct":0}'></label>
           <label class="f" style="grid-column:1/-1">توافق الطلبات compat (JSON)<input name="compat" class="ltr" placeholder='{"max_tokens_field":"max_tokens","developer_role":false,"efforts":["low","medium","high"]}'></label>
           <button class="primary">حفظ</button>
         </form>
@@ -130,7 +154,7 @@
     <label class="f">المعرّف العام<input name="id" class="ltr" required></label>
     <label class="f">الاسم<input name="name"></label>
     <label class="f">الفئة<select name="group_id" class="groupSel"></select></label>
-    <label class="f">الحالة<select name="status"><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option><option value="hidden">مخفي</option></select></label>
+    <label class="f">الحالة<select name="status"><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option><option value="hidden">مخفي</option><option value="archived">مؤرشف</option></select></label>
     <label class="f">السياق<input name="context_length" type="number"></label>
     <label class="f">أقصى خرج<input name="max_output" type="number"></label>
     <label class="f">وضع التسعير<select name="pricing_mode"><option value="token">token</option><option value="request">request</option><option value="provider">provider</option></select></label>

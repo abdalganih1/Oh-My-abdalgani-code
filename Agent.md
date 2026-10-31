@@ -9,14 +9,16 @@
 ```
 setup.js                  نقطة الدخول (npm start) → cli/main.js
 cli/
-  main.js                 الوسائط، القوائم التفاعلية، الوضع headless
+  main.js                 الوسائط، القوائم التفاعلية، الوضع headless، --status/--sync
+  arabic.js               حزمة العربي (WezTerm + launchers + /ar)
+  schedule.js             التحديث التلقائي (schtasks / cron / systemd)
   core.js                 ثوابت (BASE_URL, ALIASES)، ملفات، مفتاح محفوظ، persistEnv
   gateway.js              /v1/models + /api/me للتحقق من المفتاح وجلب نماذج الطالب
   install.js              وصفات التثبيت الرسمية لكل أداة + كشف OpenCode V1/V2 + تنزيل EH Code
   tools/*.js              كاتب إعداد لكل أداة (build* دوال نقية مُختبرة + configure* تكتب الملف)
 gateway/
   wrangler.toml           D1 + Assets + الدومين
-  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة، 0003 compat/vision/NVIDIA/Zen/أعمدة النموذج الحقيقي
+  migrations/             0001 الجداول، 0002 المزوّدون/الفئات/نماذج GLM/الأسماء الثابتة، 0003 compat/vision/NVIDIA/Zen، 0004 دورة الحياة/Nous
   src/index.js            الراوتر
   src/proxy.js            /v1/chat/completions، /v1/messages، /v1/responses، /v1/models + البث والمحاسبة
   src/routing.js          حلّ النموذج، المسارات، مفاتيح موزونة + تبريد، الترويسات
@@ -50,6 +52,9 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 - **الشفافية:** لا ترجع الاسم المستعار بحقل `model` — دائماً النموذج الحقيقي + ترويسات `x-abdalgani-*`.
 - **compat لكل مزوّد** بدل حالات خاصة بالكود: أي مزوّد جديد يرفض بارامتر ← عدّل `providers.compat` (أو أضف مفتاح جديد لـ `applyCompat` مع اختبار).
 - **OpenCode بالعربي:** أوامر `/ar` و `/en` (`commands` بـ V2، `command` بـ V1) + ملف `abdalgani-arabic.md` بـ `instructions` عند اختيار "عربي افتراضياً".
+- **دورة الحياة** (`gateway/src/lifecycle.js`): Cron كل 30د. لا تؤرشف إلا بفشل متواصل ≥ 6 ساعات بلا نجاح (ليميت 5 ساعات شائع). دوال تقبل `now` للاختبار — اختبر أي تعديل بـ `gateway/test/lifecycle.test.js`.
+- **حزمة العربي** (`cli/arabic.js`): العرض عبر WezTerm (bidi + shaping) + أوامر `<tool>-ar`، والردود بـ /ar /en. Claude Code مستثنى. لا تكتب فوق إعداد WezTerm خاص بالمستخدم.
+- **التحديث التلقائي عند الطالب** (`cli/schedule.js`): Task Scheduler (ويندوز) / cron أو systemd timer (لينكس/ماك) ← `--sync --quiet` يكتب فقط عند تغيّر الكتالوج.
 - **OpenCode Go** لا يُضاف كمزوّد مشترك (شروطه: workspace بعضو واحد). المعتمد: OpenCode Zen.
 - كتّاب الإعداد يدمجون ولا يحذفون مزوّدات المستخدم الأخرى، ويأخذون نسخة `*.abdalgani.bak` أول مرة.
 - أي تعديل على البوابة: أضف/حدّث اختبار في `gateway/test/` وشغّل `npm test`.

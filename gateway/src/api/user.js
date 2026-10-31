@@ -30,7 +30,14 @@ export async function handleMe(request, env, ctx, path) {
       if (ex) { ex.model_id = m.model_id; ex.custom = true; } else aliases.push({ alias: m.alias, model_id: m.model_id, default_model_id: null, custom: true });
     }
     // the real model + where it is served from, so the student always knows what abd-main really is
-    const { results: mods } = await db.prepare("SELECT id, name FROM models WHERE status != 'hidden'").all();
+    const { results: mods } = await db.prepare("SELECT id, name, status FROM models WHERE status != 'hidden'").all();
+    // mirror resolveModel's fallback so the table shows what will really answer
+    const live = (id) => { const m = mods.find((x) => x.id === id); return m && m.status !== 'archived' ? m : null; };
+    for (const a of aliases) {
+      if (live(a.model_id)) continue;
+      const alt = (a.custom && a.default_model_id && live(a.default_model_id)) ? a.default_model_id : (a.alias !== 'abd-main' && live(globals['abd-main']) ? globals['abd-main'] : null);
+      if (alt) { a.archived_model_id = a.model_id; a.model_id = alt; a.fallback = true; }
+    }
     const { results: routes } = await db.prepare(
       `SELECT r.model_id, r.upstream_model, p.name AS provider FROM model_routes r JOIN providers p ON p.id = r.provider_id
        WHERE r.enabled = 1 AND p.enabled = 1 AND EXISTS (SELECT 1 FROM provider_keys k WHERE k.provider_id = p.id AND k.enabled = 1)
@@ -62,8 +69,8 @@ export async function handleMe(request, env, ctx, path) {
       id: m.id, name: m.name, group_id: m.group_id, status: m.status, description: m.description,
       context_length: m.context_length, max_output: m.max_output, reasoning: !!m.reasoning, vision: !!m.vision,
       pricing_mode: m.pricing_mode, price_in: m.price_in, price_out: m.price_out, price_request: m.price_request, markup_pct: m.markup_pct,
-      created_at: m.created_at,
-      available: subs.some((s) => isSubUsable(s, m)),
+      created_at: m.created_at, archived_at: m.archived_at, archived_reason: m.archived_reason,
+      available: m.status !== 'archived' && subs.some((s) => isSubUsable(s, m)),
     }));
     return json({ models, groups });
   }
@@ -103,6 +110,7 @@ export async function handleMe(request, env, ctx, path) {
       if (!ALIAS_RE.test(alias || '')) throw new HttpError(400, 'Alias must be lowercase letters/digits/.-_ (max 41 chars)');
       const model = await db.prepare("SELECT * FROM models WHERE id = ? AND status != 'hidden'").bind(model_id).first();
       if (!model) throw new HttpError(404, 'Unknown model');
+    if (model.status === 'archived') throw new HttpError(410, 'This model is archived');
       if (await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(alias).first()) throw new HttpError(400, 'Alias cannot be the name of an existing model');
       const subs = await loadSubscriptions(db, user.id);
       if (!subs.some((s) => isSubUsable(s, model))) throw new HttpError(402, 'Your subscriptions do not cover this model', 'insufficient_quota');

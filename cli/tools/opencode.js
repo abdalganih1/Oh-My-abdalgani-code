@@ -2,22 +2,12 @@
 import path from 'node:path';
 import { HOME, API_URL, PROVIDER_ID, ALIASES, readJson, writeJson, writeText, log, tr } from '../core.js';
 
-// ── Arabic mode (only for students who install through this tool) ──
-// /ar and /en slash commands + an optional always-Arabic instructions file.
-export const ARABIC_RULE = `تكلّم مع المستخدم دائماً باللغة العربية بأسلوب واضح وبسيط.
-- اترك الكود، وأسماء الملفات والدوال والمتغيرات، وأوامر الطرفية، والمصطلحات التقنية بالإنجليزية كما هي.
-- تعليقات الكود ورسائل الـ commit بالإنجليزية إلا إذا طلب المستخدم غير ذلك.
-- اشرح الأخطاء والخطوات بالعربية، وضع المصطلح الإنجليزي بين قوسين عند الحاجة.`;
-
+// ── Arabic mode (only for students who install through this tool): /ar + /en + optional default ──
+import { ARABIC_RULE, AR_TEMPLATE, EN_TEMPLATE } from '../arabic.js';
+export { ARABIC_RULE };
 export const ARABIC_COMMANDS = {
-  ar: {
-    description: 'تحدّث بالعربية من الآن (Arabic mode)',
-    template: `${ARABIC_RULE}\n\nطبّق هذا من الآن حتى نهاية الجلسة. إذا لم يُكتب طلب بعد هذا السطر، أكّد بجملة عربية قصيرة واحدة فقط.\n\n$ARGUMENTS`,
-  },
-  en: {
-    description: 'Switch replies back to English',
-    template: 'From now on reply in English for the rest of this session. If no request follows, confirm in one short sentence.\n\n$ARGUMENTS',
-  },
+  ar: { description: 'تحدّث بالعربية من الآن (Arabic mode)', template: AR_TEMPLATE },
+  en: { description: 'Switch replies back to English', template: EN_TEMPLATE },
 };
 
 const ARABIC_FILE = (dir) => path.join(dir, 'abdalgani-arabic.md');
@@ -34,7 +24,7 @@ export function applyArabic(config, { v2, arabicDefault, dir }) {
 }
 
 function writeArabicFile(dir, enabled) {
-  if (enabled) writeText(ARABIC_FILE(dir), `# Language\n\n${ARABIC_RULE}\n`);
+  if (enabled) writeText(ARABIC_FILE(dir), `# Language\n\n${ARABIC_RULE}\n`, { backup: false });
 }
 
 const EFFORTS = ['low', 'medium', 'high'];

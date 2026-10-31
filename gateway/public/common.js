@@ -51,6 +51,7 @@ export const STATUS_BADGE = {
   active: '<span class="badge ok">متاح</span>',
   legacy: '<span class="badge warn">قديم</span>',
   hidden: '<span class="badge">مخفي</span>',
+  archived: '<span class="badge bad">مؤرشف</span>',
 };
 
 export function priceLabel(m) {

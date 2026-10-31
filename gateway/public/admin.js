@@ -27,6 +27,7 @@ let booted = false;
 // ── overview ──
 async function loadOverview() {
   const s = await api('GET', '/api/admin/stats');
+  setUnread(s.unread_events);
   $('#stats').innerHTML = [
     ['الطلاب', s.users, ''],
     ['مفاتيح المزوّدين', `${s.provider_keys.enabled || 0} / ${s.provider_keys.n}`, 'مفعّل / الكل'],
@@ -41,19 +42,64 @@ async function loadOverview() {
     s.top_models.map((m) => `<tr><td class="mono ltr">${esc(m.model_id)}</td><td class="num">${m.req}</td><td class="num">${usd(m.cost)}</td></tr>`).join('');
 }
 
+// ── updates (lifecycle) ──
+function setUnread(n) { const b = $('#unreadBadge'); b.textContent = n || ''; b.classList.toggle('hidden', !n); }
+const EVENT_ICON = { model_discovered: '🆕', model_published: '✅', model_archived: '📦', model_restored: '♻️', provider_archived: '⛔', provider_restored: '♻️', sync_error: '⚠️' };
+let pendingList = [];
+async function loadUpdates() {
+  const [ev, pending, lc] = await Promise.all([api('GET', '/api/admin/events?limit=300'), api('GET', '/api/admin/catalog?pending=1'), api('GET', '/api/admin/lifecycle')]);
+  if (!S.providers.length) S.providers = await api('GET', '/api/admin/providers');
+  if (!S.models.length) S.models = await api('GET', '/api/admin/models');
+  pendingList = pending;
+  setUnread(ev.filter((e) => !e.read).length);
+  $('#eventTable').innerHTML = '<tr><th>الوقت</th><th></th><th>الحدث</th></tr>' + (ev.map((e) =>
+    `<tr style="${e.read ? '' : 'font-weight:600'}"><td class="small" style="white-space:nowrap">${date(e.created_at)}</td><td>${EVENT_ICON[e.kind] || '•'}</td><td>${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">لا أحداث بعد — اضغط "افحص الآن"</td></tr>');
+  $('#pendingTable').innerHTML = '<tr><th>المزوّد</th><th>المعرّف</th><th class="num">سياق</th><th>السعر</th><th>ظهر</th><th></th></tr>' + (pending.map((m, i) =>
+    `<tr><td>${esc(m.provider_name)}</td><td><span class="mono ltr small">${esc(m.upstream_id)}</span> ${m.free ? '<span class="badge ok">مجاني</span>' : ''}</td><td class="num">${m.context_length ? tokens(m.context_length) : '—'}</td>
+     <td class="small">${m.price_in != null ? `$${(m.price_in / M).toFixed(3)} / $${(m.price_out / M).toFixed(3)}` : '—'}</td><td class="small">${date(m.first_seen)}</td>
+     <td class="row" style="flex-wrap:nowrap"><button class="small primary" data-pub="${i}">نشر</button><button class="small" data-dis="${i}">تجاهل</button></td></tr>`).join('') || '<tr><td class="muted">لا شيء معلّق</td></tr>');
+  const f = $('#lifecycleForm'); for (const k of ['archive_after_hours', 'new_days', 'missing_hours']) f.elements[k].value = lc[k] ?? '';
+}
+$('#runNow').addEventListener('click', guard(async (e) => {
+  e.target.disabled = true;
+  try {
+    const r = await api('POST', '/api/admin/maintenance');
+    const found = r.sync.reduce((a, x) => a + (x.discovered || 0), 0);
+    toast(`تم الفحص: ${r.sync.filter((x) => x.models).length} مزوّد · ${found} نموذج جديد · ${r.models.archived.length} أُرشف · ${r.models.promoted} انتهت شارة جديد`);
+  } finally { e.target.disabled = false; }
+  await loadUpdates();
+}));
+$('#markRead').addEventListener('click', guard(async () => { await api('POST', '/api/admin/events/read'); await loadUpdates(); }));
+$('#pendingTable').addEventListener('click', guard(async (e) => {
+  const { pub, dis } = e.target.dataset || {};
+  if (dis != null) { const m = pendingList[+dis]; await api('POST', '/api/admin/catalog/dismiss', { provider_id: m.provider_id, upstream_id: m.upstream_id }); await loadUpdates(); }
+  if (pub != null) {
+    const m = pendingList[+pub];
+    openModel({ id: m.upstream_id.split('/').pop().replace(/[:]/g, '-').toLowerCase(), name: m.name, context_length: m.context_length || 128000, max_output: m.max_output || 16384,
+      pricing_mode: m.free ? 'token' : m.provider_id === 'openrouter' ? 'provider' : 'token', price_in: m.free ? 0 : m.price_in || 0, price_out: m.free ? 0 : m.price_out || 0,
+      reasoning: m.reasoning ?? 1, vision: !!m.vision, status: 'new', routes: [{ provider_id: m.provider_id, upstream_model: m.upstream_id }] }, true);
+  }
+}));
+$('#lifecycleForm').addEventListener('submit', guard(async (e) => {
+  e.preventDefault(); const d = formData(e.target);
+  await api('PUT', '/api/admin/lifecycle', Object.fromEntries(Object.entries(d).map(([k, v]) => [k, Number(v)]))); toast('تم الحفظ');
+}));
+
 // ── providers & keys ──
 async function loadProviders() {
   S.providers = await api('GET', '/api/admin/providers');
   $('#providerList').innerHTML = S.providers.map((p) => `
     <div class="card">
       <div class="row"><h2 style="margin:0">${esc(p.name)} <span class="muted mono small ltr">${esc(p.id)}</span></h2>
-        ${p.enabled ? '<span class="badge ok">مفعّل</span>' : '<span class="badge bad">موقوف</span>'}
+        ${p.archived_at ? `<span class="badge bad" title="${esc(p.archived_reason || '')}">مؤرشف</span>` : p.enabled ? '<span class="badge ok">مفعّل</span>' : '<span class="badge bad">موقوف</span>'}
         <span class="spacer"></span>
+        ${p.archived_at ? `<button class="small primary" data-act="restore-provider" data-p="${esc(p.id)}">♻️ استعادة</button>` : `<button class="small" data-act="archive-provider" data-p="${esc(p.id)}">📦 أرشفة</button>`}
         <button class="small" data-act="discover" data-p="${esc(p.id)}">📥 استعراض نماذج المزوّد</button>
         <button class="small" data-act="edit-provider" data-p="${esc(p.id)}">تعديل</button>
         <button class="small" data-act="toggle-provider" data-p="${esc(p.id)}">${p.enabled ? 'إيقاف' : 'تفعيل'}</button>
       </div>
-      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}${p.compat ? ` · compat: ${esc(p.compat)}` : ''}</div>
+      <div class="small muted ltr" style="text-align:start">OpenAI: ${esc(p.openai_base_url || '—')} · Anthropic: ${esc(p.anthropic_base_url || '—')} · auth: ${esc(p.auth_style)}${p.compat ? ` · compat: ${esc(p.compat)}` : ''}${p.auto ? ` · auto: ${esc(p.auto)}` : ''}</div>
+      <div class="small muted">${p.last_sync_at ? `آخر مزامنة للنماذج: ${date(p.last_sync_at)}` : 'لم تتم مزامنة النماذج بعد'}${p.sync_error ? ` · <span style="color:var(--bad)">${esc(p.sync_error)}</span>` : ''}${p.archived_reason ? ` · ${esc(p.archived_reason)}` : ''}${p.first_fail_at && !p.archived_at ? ` · <span style="color:var(--warn)">يفشل منذ ${date(p.first_fail_at)}</span>` : ''}</div>
       <div class="table-wrap"><table>
         <tr><th>الاسم</th><th>المفتاح</th><th class="num">الوزن</th><th class="num">استخدام</th><th>الحالة</th><th>آخر خطأ</th><th></th></tr>
         ${p.keys.map((k) => `<tr>
@@ -103,11 +149,16 @@ $('#providerList').addEventListener('click', guard(async (e) => {
   } else if (act === 'del-key') {
     if (!confirm('حذف المفتاح نهائياً؟')) return;
     await api('DELETE', `/api/admin/keys/${k}`); await loadProviders();
+  } else if (act === 'restore-provider') {
+    await api('POST', `/api/admin/providers/${p}/restore`); toast('رجع للخدمة'); await loadProviders();
+  } else if (act === 'archive-provider') {
+    if (!confirm('أرشفة المزوّد؟ مساراته رح تتوقف (والنماذج اللي ما إلها غيره رح تتأرشف بالفحص الجاي).')) return;
+    await api('POST', `/api/admin/providers/${p}/archive`); await loadProviders();
   } else if (act === 'toggle-provider') {
     await api('POST', '/api/admin/providers', { ...prov, enabled: !prov.enabled }); await loadProviders();
   } else if (act === 'edit-provider') {
     const f = $('#providerForm');
-    for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers', 'compat']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
+    for (const n of ['id', 'name', 'openai_base_url', 'anthropic_base_url', 'auth_style', 'extra_headers', 'compat', 'auto']) f.elements[n].value = prov[n] || (n === 'auth_style' ? 'bearer' : '');
     f.scrollIntoView({ behavior: 'smooth' });
   } else if (act === 'discover') {
     b.disabled = true;
@@ -177,12 +228,13 @@ async function loadModels() {
       <td><strong>${esc(m.name)}</strong><div class="mono ltr small muted">${esc(m.id)}</div></td>
       <td>${esc(groupName(m.group_id))}</td><td>${STATUS_BADGE[m.status] || esc(m.status)}</td>
       <td class="small">${esc(priceLabel(m))}${m.markup_pct ? ` +${m.markup_pct}%` : ''}${(m.pricing_mode === 'request' ? !m.price_request : !m.price_in && !m.price_out && m.pricing_mode !== 'provider') ? ' <span class="badge warn">مجاني!</span>' : ''}</td>
-      <td class="small ltr" style="text-align:start">${m.routes.map((r, i) => `${i + 1}. ${esc(r.provider_id)} → ${esc(r.upstream_model)}${r.enabled ? '' : ' (off)'}`).join('<br>') || '<span class="badge bad">لا مسار</span>'}</td>
+      <td class="small ltr" style="text-align:start">${m.routes.map((r, i) => `${i + 1}. ${esc(r.provider_id)} → ${esc(r.upstream_model)}${r.enabled ? '' : ' (off)'}${r.archived_at ? ` <span class="badge bad" title="${esc(r.archived_reason || '')}">archived</span>` : r.first_fail_at ? ' <span class="badge warn">failing</span>' : ''}`).join('<br>') || '<span class="badge bad">لا مسار</span>'}${m.auto_source ? '<div class="muted">auto</div>' : ''}</td>
       <td class="num">${tokens(m.context_length)}</td>
-      <td class="row" style="flex-wrap:nowrap"><button class="small" data-edit="${esc(m.id)}">تعديل</button><button class="small danger" data-del="${esc(m.id)}">حذف</button></td></tr>`).join('');
+      <td class="row" style="flex-wrap:nowrap">${m.status === 'archived' || m.routes.some((r) => r.archived_at) ? `<button class="small primary" data-restore="${esc(m.id)}" title="${esc(m.archived_reason || '')}">♻️</button>` : ''}<button class="small" data-edit="${esc(m.id)}">تعديل</button><button class="small danger" data-del="${esc(m.id)}">حذف</button></td></tr>`).join('');
 }
 $('#modelTable').addEventListener('click', guard(async (e) => {
-  const { edit, del } = e.target.dataset || {};
+  const { edit, del, restore } = e.target.dataset || {};
+  if (restore) { await api('POST', `/api/admin/models/${encodeURIComponent(restore)}/restore`); toast('رجع للخدمة'); await loadModels(); }
   if (edit) openModel(S.models.find((m) => m.id === edit));
   if (del && confirm(`حذف ${del}؟ (الأفضل تحويله لـ "قديم" أو "مخفي")`)) { await api('DELETE', `/api/admin/models/${encodeURIComponent(del)}`); await loadModels(); }
 }));
@@ -355,6 +407,6 @@ async function loadUsage() {
       <td title="${esc(r.error || '')}">${r.status < 400 ? `<span class="badge ok">${r.status}</span>` : `<span class="badge bad">${r.status}</span>`}</td></tr>`).join('');
 }
 
-const LOADERS = { overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
+const LOADERS = { updates: loadUpdates, overview: loadOverview, providers: loadProviders, models: loadModels, users: loadUsers, coupons: loadCoupons, usage: loadUsage, settings: loadSettings };
 
 if (store.get(KEY)) boot().catch(() => showLogin()); else showLogin();

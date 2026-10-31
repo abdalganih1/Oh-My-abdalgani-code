@@ -5,6 +5,7 @@ import {
   encryptSecret, decryptSecret,
 } from '../util.js';
 import { upstreamHeaders } from '../routing.js';
+import { runMaintenance, restoreProvider, restoreModel, normalizeUpstreamModel } from '../lifecycle.js';
 
 const ID_RE = /^[a-z0-9][a-z0-9._:/-]{0,80}$/i;
 const need = (cond, msg) => { if (!cond) throw new HttpError(400, msg); };
@@ -40,7 +41,8 @@ export async function handleAdmin(request, env, ctx, path) {
       db.prepare('SELECT provider_id, COUNT(*) req, COALESCE(SUM(cost),0) cost, SUM(status>=400) errors FROM usage_logs WHERE created_at > ? GROUP BY provider_id').bind(t - 86400).all(),
     ]);
     const topModels = await db.prepare('SELECT model_id, COUNT(*) req, COALESCE(SUM(cost),0) cost FROM usage_logs WHERE created_at > ? GROUP BY model_id ORDER BY req DESC LIMIT 10').bind(t - 7 * 86400).all();
-    return json({ users: users.n, provider_keys: keys, day, month, providers: providers.results, top_models: topModels.results });
+    const unread = await q('SELECT COUNT(*) n FROM events WHERE read = 0');
+    return json({ users: users.n, provider_keys: keys, day, month, providers: providers.results, top_models: topModels.results, unread_events: unread.n });
   }
 
   // ── providers & keys ──
@@ -54,18 +56,23 @@ export async function handleAdmin(request, env, ctx, path) {
       const p = await readJson(request);
       need(ID_RE.test(p.id || ''), 'invalid provider id');
       need(p.openai_base_url || p.anthropic_base_url, 'at least one base URL is required');
-      for (const f of ['extra_headers', 'compat']) {
+      for (const f of ['extra_headers', 'compat', 'auto']) {
         if (p[f]) { try { const v = JSON.parse(p[f]); need(v && typeof v === 'object' && !Array.isArray(v), `${f} must be a JSON object`); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, `${f} must be a JSON object`); } }
       }
       await db.prepare(
-        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, enabled) VALUES (?,?,?,?,?,?,?,?)
+        `INSERT INTO providers (id, name, openai_base_url, anthropic_base_url, auth_style, extra_headers, compat, auto, enabled) VALUES (?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, openai_base_url=excluded.openai_base_url, anthropic_base_url=excluded.anthropic_base_url,
-           auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, compat=excluded.compat, enabled=excluded.enabled`
-      ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.compat || null, p.enabled === false || p.enabled === 0 ? 0 : 1).run();
+           auth_style=excluded.auth_style, extra_headers=excluded.extra_headers, compat=excluded.compat, auto=excluded.auto, enabled=excluded.enabled`
+      ).bind(p.id, p.name || p.id, p.openai_base_url || null, p.anthropic_base_url || null, p.auth_style === 'x-api-key' ? 'x-api-key' : 'bearer', p.extra_headers || null, p.compat || null, p.auto || null, p.enabled === false || p.enabled === 0 ? 0 : 1).run();
       return json({ ok: true });
     }
     if (b && !c && method === 'DELETE') {
       await db.prepare('DELETE FROM providers WHERE id = ?').bind(b).run();
+      return json({ ok: true });
+    }
+    if (b && c === 'restore' && method === 'POST') return json({ ok: await restoreProvider(db, b, 'admin') });
+    if (b && c === 'archive' && method === 'POST') {
+      await db.prepare("UPDATE providers SET archived_at = ?, archived_reason = 'admin' WHERE id = ?").bind(now(), b).run();
       return json({ ok: true });
     }
     if (b && c === 'keys' && method === 'POST') {
@@ -74,7 +81,8 @@ export async function handleAdmin(request, env, ctx, path) {
       const key = k.key.trim();
       await db.prepare('INSERT INTO provider_keys (provider_id, label, key_enc, key_hint, weight) VALUES (?,?,?,?,?)')
         .bind(b, k.label || 'key', await encryptSecret(key, env.ENCRYPTION_KEY), key.slice(-4), Math.max(1, toInt(k.weight, 1))).run();
-      return json({ ok: true });
+      const restored = await restoreProvider(db, b, 'new key added');
+      return json({ ok: true, restored });
     }
     if (b && c === 'discover' && method === 'POST') {
       // List the upstream catalog with the first working key (helps adding models).
@@ -86,18 +94,10 @@ export async function handleAdmin(request, env, ctx, path) {
       const res = await fetch(`${provider.openai_base_url.replace(/\/$/, '')}/models`, { headers: upstreamHeaders(provider, secret, 'openai') });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new HttpError(502, `upstream ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
-      const list = (body.data || []).map((m) => ({
-        id: m.id,
-        name: m.name || m.display_name || m.id,
-        context_length: m.context_length || m.top_provider?.context_length || null,
-        max_output: m.top_provider?.max_completion_tokens || null,
-        // OpenRouter pricing is USD per token (string) → micro-USD per 1M tokens
-        price_in: m.pricing?.prompt != null ? Math.round(Number(m.pricing.prompt) * 1e12) : null,
-        price_out: m.pricing?.completion != null ? Math.round(Number(m.pricing.completion) * 1e12) : null,
-        price_cache_read: m.pricing?.input_cache_read != null ? Math.round(Number(m.pricing.input_cache_read) * 1e12) : null,
-        vision: Array.isArray(m.architecture?.input_modalities) ? m.architecture.input_modalities.includes('image') : null,
-        reasoning: Array.isArray(m.supported_parameters) ? m.supported_parameters.includes('reasoning') || m.supported_parameters.includes('include_reasoning') : null,
-      }));
+      const list = (body.data || []).filter((m) => m && m.id).map((m) => {
+        const n = normalizeUpstreamModel(m);
+        return { id: n.upstream_id, name: n.name, context_length: n.context_length, max_output: n.max_output, price_in: n.price_in, price_out: n.price_out, price_cache_read: n.price_cache_read, vision: n.vision, reasoning: n.reasoning, free: !!n.free };
+      });
       return json(list);
     }
   }
@@ -136,7 +136,10 @@ export async function handleAdmin(request, env, ctx, path) {
         res = await fetch(`${row.anthropic_base_url.replace(/\/$/, '')}/v1/models`, { headers: upstreamHeaders(row, secret, 'anthropic') });
       }
       const text = await res.text();
-      if (res.ok) await db.prepare('UPDATE provider_keys SET last_error = NULL, cooldown_until = 0, fail_count = 0 WHERE id = ?').bind(id).run();
+      if (res.ok) {
+        await db.prepare('UPDATE provider_keys SET last_error = NULL, cooldown_until = 0, fail_count = 0 WHERE id = ?').bind(id).run();
+        await restoreProvider(db, row.provider_id, 'key test passed');
+      }
       else await db.prepare('UPDATE provider_keys SET last_error = ? WHERE id = ?').bind(`test ${res.status}: ${text.slice(0, 200)}`, id).run();
       return json({ ok: res.ok, status: res.status, latency_ms: Date.now() - started, sample: text.slice(0, 300) });
     }
@@ -157,6 +160,7 @@ export async function handleAdmin(request, env, ctx, path) {
 
   // ── models + routes ──
   if (a === 'models') {
+    if (method === 'POST' && b && seg.at(-1) === 'restore') return json({ ok: await restoreModel(db, seg.slice(1, -1).join('/')) });
     if (method === 'GET') {
       const { results: models } = await db.prepare('SELECT * FROM models ORDER BY sort, id').all();
       const { results: routes } = await db.prepare('SELECT * FROM model_routes ORDER BY model_id, priority, id').all();
@@ -166,7 +170,9 @@ export async function handleAdmin(request, env, ctx, path) {
       const m = await readJson(request);
       need(ID_RE.test(m.id || ''), 'invalid model id');
       need(['token', 'request', 'provider'].includes(m.pricing_mode || 'token'), 'pricing_mode must be token|request|provider');
-      need(['new', 'active', 'legacy', 'hidden'].includes(m.status || 'active'), 'status must be new|active|legacy|hidden');
+      need(['new', 'active', 'legacy', 'hidden', 'archived'].includes(m.status || 'active'), 'status must be new|active|legacy|hidden|archived');
+      // a model the admin adds shows as "new" to students for the first days (the cron expires it)
+      if (!(await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(m.id).first()) && (!m.status || m.status === 'active')) m.status = 'new';
       const stmts = [db.prepare(
         `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort, vision)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -189,6 +195,41 @@ export async function handleAdmin(request, env, ctx, path) {
       return json({ ok: true });
     }
     if (method === 'DELETE' && b) { await db.prepare('DELETE FROM models WHERE id = ?').bind(seg.slice(1).join('/')).run(); return json({ ok: true }); }
+  }
+
+  // ── lifecycle: update feed, upstream catalogs, run-now ──
+  if (a === 'events') {
+    if (method === 'GET') {
+      const limit = Math.min(500, toInt(new URL(request.url).searchParams.get('limit'), 200));
+      return json((await db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').bind(limit).all()).results);
+    }
+    if (method === 'POST' && b === 'read') { await db.prepare('UPDATE events SET read = 1 WHERE read = 0').run(); return json({ ok: true }); }
+  }
+  if (a === 'catalog' && method === 'GET') {
+    const url = new URL(request.url);
+    const pid = url.searchParams.get('provider');
+    const onlyPending = url.searchParams.get('pending') === '1';
+    const { results } = await db.prepare(
+      `SELECT pm.*, p.name AS provider_name,
+         (SELECT GROUP_CONCAT(r.model_id) FROM model_routes r WHERE r.provider_id = pm.provider_id AND r.upstream_model = pm.upstream_id) AS published_as
+       FROM provider_models pm JOIN providers p ON p.id = pm.provider_id
+       WHERE (? IS NULL OR pm.provider_id = ?) ORDER BY pm.first_seen DESC, pm.upstream_id LIMIT 2000`
+    ).bind(pid, pid).all();
+    return json(onlyPending ? results.filter((r) => !r.published_as && !r.baseline && !r.dismissed && r.missing_since == null) : results);
+  }
+  if (a === 'catalog' && b === 'dismiss' && method === 'POST') {
+    const body = await readJson(request);
+    await db.prepare('UPDATE provider_models SET dismissed = 1 WHERE provider_id = ? AND upstream_id = ?').bind(body.provider_id, body.upstream_id).run();
+    return json({ ok: true });
+  }
+  if (a === 'maintenance' && method === 'POST') return json(await runMaintenance(env));
+  if (a === 'lifecycle') {
+    if (method === 'GET') { const r = await db.prepare("SELECT value FROM settings WHERE key='lifecycle'").first(); return json(r ? JSON.parse(r.value) : {}); }
+    if (method === 'PUT') {
+      const body = await readJson(request);
+      await db.prepare("INSERT INTO settings (key, value) VALUES ('lifecycle', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(JSON.stringify(body)).run();
+      return json({ ok: true });
+    }
   }
 
   // ── users ──

@@ -11,6 +11,7 @@ npx wrangler login
 npx wrangler d1 create abdalgani-gateway        # انسخ database_id إلى wrangler.toml
 npx wrangler secret put ADMIN_TOKEN             # كلمة سر لوحة المدير (طويلة وعشوائية)
 npx wrangler secret put ENCRYPTION_KEY          # مفتاح تشفير مفاتيح المزوّدين — لا تغيّره بعدين
+npx wrangler secret put NOTIFY_WEBHOOK          # اختياري: تنبيهات (Discord/Slack webhook، أو Telegram: https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>)
 npm run db:migrate                              # الجداول + المزوّدون (zai, openrouter, anthropic, openai, nvidia, opencode-zen) + فئات + نماذج GLM
 npm run deploy
 ```
@@ -45,6 +46,16 @@ npm run deploy
 - **شفافية النموذج الحقيقي:** كل رد يرجع `model` = المعرّف الحقيقي + ترويسات `x-abdalgani-model` و `x-abdalgani-upstream` (مزوّد/معرّف) و `x-abdalgani-alias`، والسجل يحفظ `requested_model` و `upstream_model`.
 - كل الطلبات للمزوّدين تحمل `User-Agent: abdalgani-gateway/2.1` (OpenCode يطلب تعريف العميل).
 
+## ⏱ دورة حياة النماذج (Cron كل 30 دقيقة — `[triggers]` بـ wrangler.toml)
+
+1. **مزامنة الكتالوج:** لكل مزوّد عنده مفتاح: `GET /models` ومقارنة بآخر مرة (`provider_models`). أول مزامنة = خط أساس صامت. الجديد ← حدث + نشر تلقائي حسب `providers.auto`:
+   `{"publish":true,"free_only":false,"group":"coding","pricing_mode":"request","price_request":0,"markup_pct":0,"match":"^glm-"}`
+2. **الغائب:** نموذج اختفى من قائمة المزوّد ≥ `missing_hours` (6) ← مساره مؤرشف؛ يرجع لو رجع.
+3. **الصحة:** كل محاولة تسجّل نجاح/فشل للمزوّد والمسار. فشل متواصل (أول فشل ← آخر فشل) ≥ `archive_after_hours` (6) بدون أي نجاح ← أرشفة المزوّد، أو المسار فقط إذا المزوّد نفسه نجح لنماذج تانية بنفس الفترة. (429 ليميت 5 ساعات ما بيوصل للعتبة.) أخطاء 400 (غلط العميل) ما بتنحسب.
+4. **النماذج:** نموذج بلا أي مسار حي ← `archived`؛ يرجع لحاله لما يرجع مسار. شارة `new` تنتهي بعد `new_days` (7). الاسم الثابت اللي هدفه مؤرشف ← يتحول لـ `abd-main`.
+5. **التنبيهات:** الأحداث الجديدة ← `NOTIFY_WEBHOOK`. وبلوحة المدير تبويب **التحديثات** (+ "افحص الآن"، نشر/تجاهل المعلّق، إعدادات العتبات).
+6. **الاستعادة:** إضافة مفتاح أو نجاح "اختبار" لمزوّد مؤرشف ← يرجع فوراً؛ أو زر ♻️.
+
 ## 📚 الـ API
 
 | المسار | المصادقة | الوظيفة |
@@ -54,7 +65,7 @@ npm run deploy
 | `POST /v1/responses` | `sk-abd-…` | OpenAI Responses (Codex) |
 | `GET /v1/models` | `sk-abd-…` | النماذج المتاحة لهذا الطالب + أسماؤه الثابتة |
 | `/api/me/*` | `sk-abd-…` | لوحة الطالب: الرصيد، تفعيل كوبون، النماذج، تبديل الأسماء، السجل، المفاتيح |
-| `/api/admin/*` | `ADMIN_TOKEN` | المزوّدون، المفاتيح، النماذج، الفئات، الطلاب، الكوبونات، السجل، الإحصائيات |
+| `/api/admin/*` | `ADMIN_TOKEN` | المزوّدون، المفاتيح، النماذج، الفئات، الطلاب، الكوبونات، السجل، الإحصائيات، `events`، `catalog`، `maintenance`، `lifecycle` |
 | `/install.sh` · `/install.ps1` | — | مثبّت الأدوات بأمر واحد |
 
 ## 🧪 الاختبارات

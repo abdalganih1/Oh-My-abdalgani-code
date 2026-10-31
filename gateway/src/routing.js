@@ -2,6 +2,7 @@
 import { decryptSecret, now, HttpError } from './util.js';
 
 export const MODEL_PREFIXES = ['abdalgani/', 'abd/'];
+export const MAIN_ALIAS = 'abd-main';
 
 export async function getGlobalAliases(db) {
   const row = await db.prepare("SELECT value FROM settings WHERE key = 'aliases'").first();
@@ -13,14 +14,24 @@ export async function resolveModel(db, userId, requested) {
   if (!requested || typeof requested !== 'string') throw new HttpError(400, '`model` is required');
   let name = requested.trim();
   for (const p of MODEL_PREFIXES) if (name.startsWith(p)) name = name.slice(p.length);
+  const get = (id) => db.prepare("SELECT * FROM models WHERE id = ? AND status != 'hidden'").bind(id).first();
+  const globals = await getGlobalAliases(db);
   const alias = await db.prepare('SELECT model_id FROM user_aliases WHERE user_id = ? AND alias = ?').bind(userId, name).first();
-  if (alias) name = alias.model_id;
-  else {
-    const globals = await getGlobalAliases(db);
-    if (globals[name]) name = globals[name];
+  let model;
+  const dead = (m) => !m || m.status === 'archived';
+  if (alias) {
+    model = await get(alias.model_id);
+    // the student's pick got archived → fall back to the admin's default for that alias
+    if (dead(model) && globals[name]) model = await get(globals[name]);
+  } else {
+    model = await get(globals[name] || name);
   }
-  const model = await db.prepare("SELECT * FROM models WHERE id = ? AND status != 'hidden'").bind(name).first();
+  // an alias must never break because its target was archived: last resort = abd-main's target
+  if ((alias || globals[name]) && dead(model) && name !== MAIN_ALIAS && globals[MAIN_ALIAS]) model = await get(globals[MAIN_ALIAS]);
   if (!model) throw new HttpError(404, `Model "${requested}" does not exist. See GET /v1/models`, 'not_found_error');
+  if (model.status === 'archived') {
+    throw new HttpError(410, `Model "${model.id}" is archived (${model.archived_reason || 'no longer served'}). Pick another model in the dashboard or use abd-main.`, 'model_archived');
+  }
   return model;
 }
 
@@ -28,7 +39,7 @@ export async function loadRoutes(db, modelId) {
   const { results } = await db.prepare(
     `SELECT r.id AS route_id, r.upstream_model, r.priority, p.*
        FROM model_routes r JOIN providers p ON p.id = r.provider_id
-      WHERE r.model_id = ? AND r.enabled = 1 AND p.enabled = 1
+      WHERE r.model_id = ? AND r.enabled = 1 AND p.enabled = 1 AND r.archived_at IS NULL AND p.archived_at IS NULL
       ORDER BY r.priority ASC, r.id ASC`
   ).bind(modelId).all();
   return results || [];

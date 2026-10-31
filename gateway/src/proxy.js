@@ -8,6 +8,7 @@ import {
 import { anthropicToOpenAIRequest, openAIToAnthropicResponse, OpenAIToAnthropicStream, SSEParser } from './translate.js';
 import { responsesToChatRequest, chatToResponsesResponse, ChatToResponsesStream } from './responses.js';
 import { json, apiError, readJson, HttpError } from './util.js';
+import { recordOk, recordFail, countsAsFailure } from './lifecycle.js';
 
 // ── usage extraction ──
 export function usageFromOpenAI(u) {
@@ -109,12 +110,14 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
     } catch (e) {
       lastStatus = 502; lastError = `network error: ${e.message}`;
       ctx.waitUntil(markKeyFailure(env.DB, key.id, 0, lastError));
+      ctx.waitUntil(recordFail(env.DB, route.id, route.route_id, 0, lastError));
       continue;
     }
 
     if (!upstream.ok) {
       const text = await upstream.text();
       lastStatus = upstream.status; lastError = text.slice(0, 1000);
+      if (countsAsFailure(upstream.status)) ctx.waitUntil(recordFail(env.DB, route.id, route.route_id, upstream.status, text));
       if (isRetryable(upstream.status)) {
         ctx.waitUntil(markKeyFailure(env.DB, key.id, upstream.status, text));
         continue;
@@ -125,6 +128,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
     }
 
     ctx.waitUntil(markKeySuccess(env.DB, key.id));
+    ctx.waitUntil(recordOk(env.DB, route.id, route.route_id));
     const ctype = upstream.headers.get('content-type') || '';
     const isStream = !!body.stream && ctype.includes('text/event-stream');
 
@@ -198,7 +202,7 @@ export async function handleCompletion(request, env, ctx, clientFormat) {
 /** Models the caller can actually use right now + their stable aliases. */
 export async function handleModels(request, env, ctx) {
   const { user } = await authUser(request, env, ctx);
-  const { results: models } = await env.DB.prepare("SELECT * FROM models WHERE status != 'hidden' ORDER BY sort, id").all();
+  const { results: models } = await env.DB.prepare("SELECT * FROM models WHERE status NOT IN ('hidden','archived') ORDER BY sort, id").all();
   const subs = await loadSubscriptions(env.DB, user.id);
   const usable = models.filter((m) => subs.some((s) => isSubUsable(s, m)));
   const created = (m) => m.created_at;

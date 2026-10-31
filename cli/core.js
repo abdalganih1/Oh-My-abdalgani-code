@@ -21,13 +21,17 @@ export const getLang = () => lang;
 /** tr('عربي', 'English') */
 export const tr = (ar, en) => (lang === 'en' ? en : ar);
 
+let quiet = false;
+export const setQuiet = (q) => { quiet = !!q; };
+export const isQuiet = () => quiet;
+const out = (fn) => (m) => { if (!quiet) console.log(fn(m)); };
 export const log = {
-  info: (m) => console.log(chalk.cyan(m)),
-  ok: (m) => console.log(chalk.green(m)),
-  warn: (m) => console.log(chalk.yellow(m)),
+  info: out(chalk.cyan),
+  ok: out(chalk.green),
+  warn: out(chalk.yellow),
   err: (m) => console.log(chalk.red(m)),
-  dim: (m) => console.log(chalk.gray(m)),
-  wrote: (f) => console.log(chalk.green(`✅ ${tr('تم الكتابة', 'Written')}: ${f}`)),
+  dim: out(chalk.gray),
+  wrote: (f) => { if (!quiet) console.log(chalk.green(`✅ ${tr('تم الكتابة', 'Written')}: ${f}`)); },
 };
 
 // ── files ──
@@ -57,9 +61,9 @@ export function writeJson(file, data) {
   log.wrote(file);
 }
 
-export function writeText(file, text) {
+export function writeText(file, text, { backup = true } = {}) {
   ensureDir(path.dirname(file));
-  backupOnce(file);
+  if (backup) backupOnce(file);
   fs.writeFileSync(file, text);
   log.wrote(file);
 }

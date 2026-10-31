@@ -7,6 +7,7 @@ import { handleCompletion, handleModels, handleCountTokens } from './proxy.js';
 import { handleAdmin } from './api/admin.js';
 import { handleMe } from './api/user.js';
 import { apiError, HttpError, json } from './util.js';
+import { runMaintenance } from './lifecycle.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -63,5 +64,10 @@ export default {
       console.error(e);
       return withCors(apiError(500, `Internal error: ${e.message}`, 'server_error'));
     }
+  },
+
+  // Cron Trigger (wrangler.toml [triggers]) — discovery, health archiving, "new" expiry, alerts.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runMaintenance(env).then((s) => console.log('maintenance', JSON.stringify(s))).catch((e) => console.error('maintenance failed', e)));
   },
 };

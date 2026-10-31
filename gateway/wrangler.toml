@@ -17,9 +17,14 @@ database_name = "abdalgani-gateway"
 database_id = "REPLACE_WITH_D1_ID"   # npx wrangler d1 create abdalgani-gateway
 migrations_dir = "migrations"
 
+# Every 30 min: discover new provider models, archive dead ones (≥6h failing), expire "new" after 7 days.
+[triggers]
+crons = ["*/30 * * * *"]
+
 [observability]
 enabled = true
 
 # Secrets (never commit):
 #   npx wrangler secret put ADMIN_TOKEN       # admin panel login
 #   npx wrangler secret put ENCRYPTION_KEY    # encrypts provider keys stored in D1
+#   npx wrangler secret put NOTIFY_WEBHOOK    # optional: Discord/Slack webhook or Telegram sendMessage?chat_id=… URL

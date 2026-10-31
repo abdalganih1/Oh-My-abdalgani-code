@@ -17,5 +17,5 @@ export const TOOLS = {
   Aider: { label: 'Aider', configure: configureAider },
   OpenClaw: { label: 'OpenClaw', configure: configureOpenClaw },
   KimiCode: { label: 'Kimi Code', configure: configureKimi },
-  EHCode: { label: 'EH Code (Windows)', configure: configureEHCode, effort: true },
+  EHCode: { label: 'EH Code (Windows · legacy — OpenCode + Arabic pack replaces it)', configure: configureEHCode, effort: true },
 };

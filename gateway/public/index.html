@@ -34,6 +34,7 @@
 
     <div data-panel="overview">
       <div class="grid" id="stats"></div>
+      <div class="card hidden" id="newsCard" style="margin-top:16px"><h2>✨ ما الجديد</h2><div id="news"></div></div>
       <div class="card" style="margin-top:16px">
         <h2>🎯 النماذج الحقيقية اللي عم تستخدمها هلق</h2>
         <div class="table-wrap"><table id="realTable"></table></div>
@@ -49,7 +50,7 @@
     <div data-panel="models">
       <div class="card">
         <div class="row">
-          <select id="fStatus"><option value="">كل الحالات</option><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option></select>
+          <select id="fStatus"><option value="">كل الحالات</option><option value="new">جديد</option><option value="active">متاح</option><option value="legacy">قديم</option><option value="archived">مؤرشف</option></select>
           <select id="fGroup"><option value="">كل الفئات</option></select>
           <label class="row small"><input type="checkbox" id="fAvail"> المتاح لي فقط</label>
           <span class="spacer"></span><input id="fSearch" placeholder="بحث..." style="max-width:200px">

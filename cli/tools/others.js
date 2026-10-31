@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import { writePiArabicPrompts } from '../arabic.js';
 import { HOME, API_URL, PROVIDER_ID, KEY_ENV, readJson, writeJson, writeText, run, log, tr, persistEnv } from '../core.js';
 
 export function configurePi(ctx) {
@@ -23,6 +24,7 @@ export function configurePi(ctx) {
   cfg.providers = { ...(cfg.providers && typeof cfg.providers === 'object' ? cfg.providers : {}), [PROVIDER_ID]: entry };
   delete cfg[PROVIDER_ID]; // pre-2026 layout written by old versions of this tool
   writeJson(file, cfg);
+  writePiArabicPrompts();
   log.dim(`   pi --provider ${PROVIDER_ID} --model ${ctx.model}   (${tr('أو /model داخل pi', 'or /model inside pi')})`);
 }
 
