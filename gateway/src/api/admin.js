@@ -148,13 +148,21 @@ export async function handleAdmin(request, env, ctx, path) {
       // Many /models lists are public (OpenRouter, NVIDIA, Nous), so listing proves nothing about the key.
       // Send a real 1-token request to a model this provider serves for us: it checks auth AND balance/plan.
       const native = !row.openai_base_url || (row.auth_style === 'x-api-key' && row.anthropic_base_url);
-      const route = await db.prepare('SELECT upstream_model FROM model_routes WHERE provider_id = ? AND enabled = 1 AND archived_at IS NULL ORDER BY priority, id LIMIT 1').bind(row.provider_id).first();
+      // prefer a model that answered recently (a slow/hanging one would make the key look broken)
+      const route = await db.prepare('SELECT upstream_model FROM model_routes WHERE provider_id = ? AND enabled = 1 AND archived_at IS NULL ORDER BY (last_ok_at IS NULL), last_ok_at DESC, (first_fail_at IS NOT NULL), priority, id LIMIT 1').bind(row.provider_id).first();
       const model = route?.upstream_model || '__abd_auth_probe__';
       const msg = { model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] };
-      const res = native
-        ? await fetch(`${row.anthropic_base_url.replace(/\/$/, '')}/v1/messages`, { method: 'POST', headers: upstreamHeaders(row, secret, 'anthropic'), body: JSON.stringify(msg) })
-        : await fetch(`${row.openai_base_url.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: upstreamHeaders(row, secret, 'openai'), body: JSON.stringify(msg) });
-      const text = await res.text();
+      let res, text;
+      try {
+        const signal = AbortSignal.timeout(30_000);
+        res = native
+          ? await fetch(`${row.anthropic_base_url.replace(/\/$/, '')}/v1/messages`, { method: 'POST', headers: upstreamHeaders(row, secret, 'anthropic'), body: JSON.stringify(msg), signal })
+          : await fetch(`${row.openai_base_url.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: upstreamHeaders(row, secret, 'openai'), body: JSON.stringify(msg), signal });
+        text = await res.text();
+      } catch (e) {
+        const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+        return json({ ok: false, verdict: timedOut ? 'timeout' : 'error', status: 0, model: route ? model : null, latency_ms: Date.now() - started, sample: timedOut ? `no answer from ${model} within 30s (provider queue?)` : String(e?.message || e) });
+      }
       const low = text.toLowerCase();
       let verdict, ok;
       if (res.ok) { ok = true; verdict = 'works'; }

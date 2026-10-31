@@ -383,6 +383,7 @@ $('#providerList').addEventListener('click', guard(async (e) => {
       key_ok_model_rejected: `🟡 المفتاح مقبول، بس المزوّد رفض النموذج ${r.model} — راجع اسم النموذج بالمسار`,
       bad_key: '❌ المفتاح غلط أو ملغي (401/403)',
       no_balance: '❌ المفتاح صحيح بس ما في رصيد أو اشتراك فعّال عند المزوّد',
+      timeout: `🟡 المزوّد ما رد خلال 30 ثانية على ${r.model || 'النموذج'} — غالباً زحمة عنده، جرّب نموذج تاني`,
     };
     toast(`${V[r.verdict] || (r.ok ? '✅ يعمل' : `❌ ${r.status}`)}${r.ok ? '' : ` — ${String(r.sample || '').slice(0, 140)}`}`, !r.ok);
     await loadProviders();
