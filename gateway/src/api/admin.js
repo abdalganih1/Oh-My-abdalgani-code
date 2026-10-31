@@ -112,7 +112,7 @@ export async function handleAdmin(request, env, ctx, path) {
       if (!res.ok) throw new HttpError(502, `upstream ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
       const list = (body.data || []).filter((m) => m && m.id).map((m) => {
         const n = normalizeUpstreamModel(m);
-        return { id: n.upstream_id, name: n.name, context_length: n.context_length, max_output: n.max_output, price_in: n.price_in, price_out: n.price_out, price_cache_read: n.price_cache_read, vision: n.vision, reasoning: n.reasoning, free: !!n.free };
+        return { id: n.upstream_id, name: n.name, context_length: n.context_length, max_output: n.max_output, price_in: n.price_in, price_out: n.price_out, price_cache_read: n.price_cache_read, price_cache_write: n.price_cache_write, vision: n.vision, reasoning: n.reasoning, free: !!n.free };
       });
       return json(list);
     }
@@ -216,13 +216,13 @@ export async function handleAdmin(request, env, ctx, path) {
     if (!res.ok) throw new HttpError(502, `openrouter ${res.status}`);
     const catalog = ((await res.json()).data || []).filter((m) => m?.id && m.pricing).map((m) => {
       const n = normalizeUpstreamModel(m);
-      return { id: n.upstream_id, name: n.name, price_in: n.price_in ?? 0, price_out: n.price_out ?? 0, price_cache_read: n.price_cache_read ?? 0, free: n.free };
+      return { id: n.upstream_id, name: n.name, price_in: n.price_in ?? 0, price_out: n.price_out ?? 0, price_cache_read: n.price_cache_read ?? 0, price_cache_write: n.price_cache_write ?? 0, free: n.free };
     }).filter((m) => m.price_in >= 0 && m.price_out >= 0); // OpenRouter uses -1 for "variable" (routers)
     const byId = new Map(catalog.map((m) => [m.id.toLowerCase(), m]));
     const tail = (x) => String(x || '').toLowerCase().split('/').pop().replace(/:(free|thinking|beta|extended|nitro|floor)$/, '');
     const byTail = new Map();
     for (const m of catalog) { const t = tail(m.id); const prev = byTail.get(t); if (!prev || (prev.free && !m.free)) byTail.set(t, m); }
-    const { results: models } = await db.prepare("SELECT id, name, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status FROM models WHERE status != 'archived' ORDER BY sort, id").all();
+    const { results: models } = await db.prepare("SELECT id, name, pricing_mode, price_in, price_out, price_cache_read, price_cache_write, price_request, markup_pct, status FROM models WHERE status != 'archived' ORDER BY sort, id").all();
     const { results: routes } = await db.prepare('SELECT model_id, provider_id, upstream_model FROM model_routes ORDER BY priority, id').all();
     const out = models.map((m) => {
       const rs = routes.filter((r) => r.model_id === m.id);
@@ -232,7 +232,7 @@ export async function handleAdmin(request, env, ctx, path) {
       for (const cand of [m.id, ...rs.map((r) => r.upstream_model)]) { if (hit) break; const h = byTail.get(tail(cand)); if (h) { hit = h; how = 'name'; } }
       return { ...m, match: hit ? { ...hit, how } : null };
     });
-    return json({ models: out, catalog: catalog.map(({ id, name, price_in, price_out, price_cache_read }) => ({ id, name, price_in, price_out, price_cache_read })) });
+    return json({ models: out, catalog: catalog.map(({ id, name, price_in, price_out, price_cache_read, price_cache_write }) => ({ id, name, price_in, price_out, price_cache_read, price_cache_write })) });
   }
   if (a === 'pricing' && b === 'apply' && method === 'POST') {
     const body = await readJson(request);
@@ -240,8 +240,8 @@ export async function handleAdmin(request, env, ctx, path) {
     const markup = body.markup_pct === undefined || body.markup_pct === null || body.markup_pct === '' ? null : Math.max(0, Math.min(1000, toInt(body.markup_pct)));
     const stmts = body.items.map((it) => {
       need(ID_RE.test(it.id || ''), 'invalid model id');
-      const [pi, po, pc] = [it.price_in, it.price_out, it.price_cache_read ?? 0].map((v) => Math.max(0, toInt(v)));
-      return db.prepare("UPDATE models SET pricing_mode = 'token', price_in = ?, price_out = ?, price_cache_read = ?, markup_pct = COALESCE(?, markup_pct) WHERE id = ?").bind(pi, po, pc, markup, it.id);
+      const [pi, po, pc, pw] = [it.price_in, it.price_out, it.price_cache_read ?? 0, it.price_cache_write ?? 0].map((v) => Math.max(0, toInt(v)));
+      return db.prepare("UPDATE models SET pricing_mode = 'token', price_in = ?, price_out = ?, price_cache_read = ?, price_cache_write = ?, markup_pct = COALESCE(?, markup_pct) WHERE id = ?").bind(pi, po, pc, pw, markup, it.id);
     });
     await db.batch(stmts);
     return json({ ok: true, updated: stmts.length });
@@ -262,15 +262,15 @@ export async function handleAdmin(request, env, ctx, path) {
       // a model the admin adds shows as "new" to students for the first days (the cron expires it)
       if (!(await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(m.id).first()) && (!m.status || m.status === 'active')) m.status = 'new';
       const stmts = [db.prepare(
-        `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort, vision)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, sort, vision, price_cache_write)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, group_id=excluded.group_id, context_length=excluded.context_length, max_output=excluded.max_output,
            reasoning=excluded.reasoning, vision=excluded.vision, pricing_mode=excluded.pricing_mode, price_in=excluded.price_in, price_out=excluded.price_out,
-           price_cache_read=excluded.price_cache_read, price_request=excluded.price_request, markup_pct=excluded.markup_pct,
+           price_cache_read=excluded.price_cache_read, price_cache_write=excluded.price_cache_write, price_request=excluded.price_request, markup_pct=excluded.markup_pct,
            status=excluded.status, description=excluded.description, sort=excluded.sort`
       ).bind(m.id, m.name || m.id, m.group_id || null, toInt(m.context_length, 128000), toInt(m.max_output, 8192), m.reasoning ? 1 : 0,
         m.pricing_mode || 'token', toInt(m.price_in), toInt(m.price_out), toInt(m.price_cache_read), toInt(m.price_request), toInt(m.markup_pct),
-        m.status || 'active', m.description || null, toInt(m.sort, 100), m.vision ? 1 : 0)];
+        m.status || 'active', m.description || null, toInt(m.sort, 100), m.vision ? 1 : 0, toInt(m.price_cache_write))];
       if (Array.isArray(m.routes)) {
         stmts.push(db.prepare('DELETE FROM model_routes WHERE model_id = ?').bind(m.id));
         m.routes.forEach((r, i) => {

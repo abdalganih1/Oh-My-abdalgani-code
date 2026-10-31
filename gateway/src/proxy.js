@@ -19,13 +19,14 @@ export function usageFromOpenAI(u) {
     prompt: u.prompt_tokens || 0,
     completion: u.completion_tokens || 0,
     cached: u.prompt_tokens_details?.cached_tokens || 0,
+    cacheWrite: u.prompt_tokens_details?.cache_write_tokens || u.cache_creation_input_tokens || 0,
     providerCost: typeof u.cost === 'number' ? u.cost : null,
   };
 }
 export function usageFromAnthropic(u, prev = null) {
   if (!u && !prev) return null;
   u = u || {};
-  const base = prev || { prompt: 0, completion: 0, cached: 0, providerCost: null };
+  const base = prev || { prompt: 0, completion: 0, cached: 0, cacheWrite: 0, providerCost: null };
   const cacheRead = u.cache_read_input_tokens ?? 0;
   const cacheWrite = u.cache_creation_input_tokens ?? 0;
   const prompt = u.input_tokens != null ? u.input_tokens + cacheRead + cacheWrite : base.prompt;
@@ -33,15 +34,16 @@ export function usageFromAnthropic(u, prev = null) {
     prompt: Math.max(prompt, base.prompt),
     completion: Math.max(u.output_tokens || 0, base.completion),
     cached: Math.max(cacheRead, base.cached),
+    cacheWrite: Math.max(cacheWrite, base.cacheWrite || 0),
     providerCost: typeof u.cost === 'number' ? u.cost : base.providerCost,
   };
 }
-const ZERO = { prompt: 0, completion: 0, cached: 0, providerCost: null };
+const ZERO = { prompt: 0, completion: 0, cached: 0, cacheWrite: 0, providerCost: null };
 
 function buildUpstreamBody(clientFormat, m, body, route, model) {
   let out;
   if (clientFormat === 'responses') out = responsesToChatRequest(body, route.upstream_model).chat;
-  else if (m.mode === 'translate') out = anthropicToOpenAIRequest(body, route.upstream_model);
+  else if (m.mode === 'translate') out = anthropicToOpenAIRequest(body, route.upstream_model, { keepCache: keepsCacheControl(route) });
   else {
     out = { ...body, model: route.upstream_model };
     if (clientFormat === 'openai' && out.stream) out.stream_options = { ...(out.stream_options || {}), include_usage: true };
@@ -52,6 +54,13 @@ function buildUpstreamBody(clientFormat, m, body, route, model) {
   if (!model.reasoning) { delete out.reasoning_effort; delete out.reasoning; if (m.format === 'anthropic') delete out.thinking; }
   if (m.format === 'openai') applyCompat(out, route);
   return out;
+}
+
+/** Does this upstream accept Anthropic-style `cache_control` parts in OpenAI format? (compat.cache_control overrides) */
+function keepsCacheControl(route) {
+  let c = null; try { c = route.compat ? JSON.parse(route.compat).cache_control : null; } catch { /* bad JSON */ }
+  if (typeof c === 'boolean') return c;
+  return route.id === 'openrouter' || /claude|anthropic|gemini/i.test(route.upstream_model || '');
 }
 
 /** Pick how to talk to a route for the client's format; null = route can't serve it. */
@@ -113,7 +122,8 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
 
   let lastStatus = 503, lastError = 'No provider key available for this model';
   let tried = 0;
-  for await (const { route, key, secret } of attempts(env, routes)) {
+  // same student → same key (provider prompt caches are per account), different students spread by weight
+  for await (const { route, key, secret } of attempts(env, routes, { seed: user.id })) {
     const m = modeFor(clientFormat, route);
     if (!m) continue;
     tried++;

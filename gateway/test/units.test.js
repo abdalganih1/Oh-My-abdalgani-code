@@ -180,3 +180,55 @@ test('applyCompat: max tokens field, developer role, effort', () => {
   assert.deepEqual(applyCompat({ reasoning_effort: 'none' }, zai), {});
   assert.deepEqual(applyCompat({ a: 1 }, { compat: 'not json' }), { a: 1 });
 });
+
+test('cache: Anthropic cache_control survives translation only where the upstream understands it', async () => {
+  const { anthropicToOpenAIRequest } = await import('../src/translate.js');
+  const body = {
+    system: [{ type: 'text', text: 'big system prompt', cache_control: { type: 'ephemeral' } }],
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'file contents…', cache_control: { type: 'ephemeral' } }] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'read', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'result', cache_control: { type: 'ephemeral' } }] },
+    ],
+  };
+  const keep = anthropicToOpenAIRequest(body, 'anthropic/claude-x', { keepCache: true });
+  assert.deepEqual(keep.messages[0].content, [{ type: 'text', text: 'big system prompt', cache_control: { type: 'ephemeral' } }]);
+  assert.equal(keep.messages[1].content[0].cache_control.type, 'ephemeral');
+  assert.equal(keep.messages[3].content[0].cache_control.type, 'ephemeral', 'tool result keeps its breakpoint');
+  const plain = anthropicToOpenAIRequest(body, 'gpt-x');
+  assert.equal(plain.messages[0].content, 'big system prompt');
+  assert.equal(plain.messages[1].content, 'file contents…');
+  assert.equal(plain.messages[3].content, 'result');
+});
+
+test('cache: each student sticks to one key (provider caches are per account), students spread by weight', async () => {
+  const { weightedOrder, stableRand } = await import('../src/routing.js');
+  const keys = [{ id: 1, weight: 1 }, { id: 2, weight: 1 }, { id: 3, weight: 1 }];
+  const orderFor = (seed) => weightedOrder(keys, ((ks) => { let i = 0; return () => stableRand(`${seed}:${ks[i++].id}`); })(keys)).map((k) => k.id);
+  assert.deepEqual(orderFor(42), orderFor(42), 'same student → same order every request');
+  const firsts = new Set(Array.from({ length: 60 }, (_, u) => orderFor(u)[0]));
+  assert.equal(firsts.size, 3, 'different students land on different keys');
+});
+
+test('cache: provider-cost estimate prices cached prompt tokens at the cache rate', async () => {
+  const { computeUpstreamCost } = await import('../src/billing.js');
+  const model = { price_in: 1_000_000, price_out: 2_000_000, price_cache_read: 100_000 };
+  const route = { billing: 'usage', cost_in: null, cost_out: null };
+  // 1M prompt (900k cached) + 0 completion → 100k×$1 + 900k×$0.10 = $0.19
+  assert.equal(computeUpstreamCost(model, route, { prompt: 1_000_000, cached: 900_000, completion: 0 }), 190_000);
+});
+
+test('cache: Anthropic-style cache writes billed at the cache-write price (not under-charged)', async () => {
+  const { computeCost, computeUpstreamCost } = await import('../src/billing.js');
+  const { usageFromOpenAI, usageFromAnthropic } = await import('../src/proxy.js');
+  // OpenRouter/Nous usage for a Claude request that wrote 5,951 tokens to the cache
+  const u = usageFromOpenAI({ prompt_tokens: 5963, completion_tokens: 4, prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 5951 } });
+  assert.equal(u.cacheWrite, 5951);
+  assert.equal(usageFromAnthropic({ input_tokens: 12, cache_creation_input_tokens: 5951, cache_read_input_tokens: 0, output_tokens: 4 }).cacheWrite, 5951);
+  const sonnet = { pricing_mode: 'token', price_in: 2_000_000, price_out: 10_000_000, price_cache_read: 200_000, price_cache_write: 2_500_000, markup_pct: 0 };
+  // 12 × $2 + 5951 × $2.50 + 4 × $10 per 1M = $0.014942 — matches the provider's bill
+  assert.equal(computeCost(sonnet, u), 14_942);
+  assert.equal(computeUpstreamCost(sonnet, { billing: 'usage', cost_in: null, cost_out: null }, u), 14_942);
+  // no write price set → falls back to the input price (old behaviour)
+  assert.equal(computeCost({ ...sonnet, price_cache_write: 0 }, u), 11_966);
+});

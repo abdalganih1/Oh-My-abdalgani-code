@@ -11,6 +11,7 @@ export function computeCost(model, usage, providerCostUsd = null) {
   const p = Math.max(0, usage.prompt || 0);
   const c = Math.max(0, usage.completion || 0);
   const cached = Math.min(p, Math.max(0, usage.cached || 0));
+  const written = Math.min(p - cached, Math.max(0, usage.cacheWrite || 0));
   let cost;
   if (model.pricing_mode === 'request') {
     cost = model.price_request || 0;
@@ -18,7 +19,8 @@ export function computeCost(model, usage, providerCostUsd = null) {
     cost = providerCostUsd * MICRO;
   } else {
     const cacheRate = model.price_cache_read || model.price_in || 0;
-    cost = ((p - cached) * (model.price_in || 0) + cached * cacheRate + c * (model.price_out || 0)) / MICRO;
+    const writeRate = model.price_cache_write || model.price_in || 0; // Anthropic: ~1.25× input
+    cost = ((p - cached - written) * (model.price_in || 0) + cached * cacheRate + written * writeRate + c * (model.price_out || 0)) / MICRO;
   }
   cost = cost * (1 + (model.markup_pct || 0) / 100);
   return Math.ceil(Math.round(cost * 1000) / 1000); // round away float noise, then never under-charge
@@ -29,8 +31,13 @@ export function computeUpstreamCost(model, route, usage, providerCostUsd = null)
   if (!route || route.billing === 'subscription') return 0;
   if (typeof providerCostUsd === 'number' && providerCostUsd >= 0) return Math.ceil(providerCostUsd * MICRO);
   const p = Math.max(0, usage.prompt || 0), c = Math.max(0, usage.completion || 0);
+  const cached = Math.min(p, Math.max(0, usage.cached || 0));
+  const written = Math.min(p - cached, Math.max(0, usage.cacheWrite || 0));
   const inRate = route.cost_in ?? model.price_in ?? 0, outRate = route.cost_out ?? model.price_out ?? 0;
-  return Math.ceil((p * inRate + c * outRate) / MICRO);
+  // cache reads are discounted upstream and writes may cost extra; use the model's cache prices when known
+  const cacheRate = route.cost_in != null ? inRate : (model.price_cache_read || inRate);
+  const writeRate = route.cost_in != null ? inRate : (model.price_cache_write || inRate);
+  return Math.ceil(((p - cached - written) * inRate + cached * cacheRate + written * writeRate + c * outRate) / MICRO);
 }
 
 /** Units a subscription is charged: tokens for token wallets, micro-USD for USD wallets. */
@@ -112,11 +119,11 @@ export async function settle(db, { user, keyId, model, routeInfo, endpoint, stat
   }
   stmts.push(db.prepare(
     `INSERT INTO usage_logs (user_id, api_key_id, model_id, provider_id, provider_key_id, endpoint, status,
-       prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, error, requested_model, upstream_model, upstream_cost, ip, device_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       prompt_tokens, completion_tokens, cached_tokens, cost, subscription_id, charged, latency_ms, error, requested_model, upstream_model, upstream_cost, ip, device_id, cache_write_tokens)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(user.id, keyId ?? null, model.id, routeInfo?.provider_id ?? null, routeInfo?.key_id ?? null, endpoint, status,
     usage.prompt || 0, usage.completion || 0, usage.cached || 0, cost, subId, charged, latency ?? null,
-    error ? String(error).slice(0, 500) : null, requestedModel ? String(requestedModel).slice(0, 120) : null, routeInfo?.upstream_model ?? null, upstreamCost, ip, deviceId));
+    error ? String(error).slice(0, 500) : null, requestedModel ? String(requestedModel).slice(0, 120) : null, routeInfo?.upstream_model ?? null, upstreamCost, ip, deviceId, usage.cacheWrite || 0));
   await db.batch(stmts);
   return { cost, charged, upstreamCost };
 }

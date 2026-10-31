@@ -13,9 +13,15 @@ function imagePart(block) {
   return { type: 'image_url', image_url: { url } };
 }
 
-export function anthropicToOpenAIRequest(body, upstreamModel) {
+// Prompt caching: Claude Code marks cache breakpoints with `cache_control` on system/text/tool_result
+// blocks. Upstreams that understand it in OpenAI format (OpenRouter → Anthropic/Gemini) get it as
+// content parts; everyone else gets plain strings (unknown fields can be rejected).
+const hasCC = (blocks) => Array.isArray(blocks) && blocks.some((b) => b?.cache_control);
+const ccParts = (blocks) => blocks.filter((b) => b.type === 'text').map((b) => ({ type: 'text', text: b.text, ...(b.cache_control ? { cache_control: b.cache_control } : {}) }));
+
+export function anthropicToOpenAIRequest(body, upstreamModel, { keepCache = false } = {}) {
   const messages = [];
-  if (body.system) messages.push({ role: 'system', content: textOf(body.system) });
+  if (body.system) messages.push({ role: 'system', content: keepCache && hasCC(body.system) ? ccParts(body.system) : textOf(body.system) });
 
   for (const m of body.messages || []) {
     if (typeof m.content === 'string') { messages.push({ role: m.role, content: m.content }); continue; }
@@ -25,21 +31,22 @@ export function anthropicToOpenAIRequest(body, upstreamModel) {
       const toolCalls = blocks.filter((b) => b.type === 'tool_use').map((b) => ({
         id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) },
       }));
-      const msg = { role: 'assistant', content: text || null };
+      const msg = { role: 'assistant', content: keepCache && hasCC(blocks) && text ? ccParts(blocks) : text || null };
       if (toolCalls.length) msg.tool_calls = toolCalls;
       messages.push(msg);
     } else {
       // tool results first (they must directly follow the assistant tool_calls), then user content
       for (const b of blocks.filter((x) => x.type === 'tool_result')) {
-        const c = typeof b.content === 'string' ? b.content : textOf(b.content);
-        messages.push({ role: 'tool', tool_call_id: b.tool_use_id, content: (b.is_error ? '[error] ' : '') + (c || '') });
+        const c = (b.is_error ? '[error] ' : '') + ((typeof b.content === 'string' ? b.content : textOf(b.content)) || '');
+        const cc = b.cache_control || (Array.isArray(b.content) ? b.content.find((x) => x?.cache_control)?.cache_control : null);
+        messages.push({ role: 'tool', tool_call_id: b.tool_use_id, content: keepCache && cc ? [{ type: 'text', text: c, cache_control: cc }] : c });
       }
       const parts = [];
       for (const b of blocks) {
-        if (b.type === 'text') parts.push({ type: 'text', text: b.text });
+        if (b.type === 'text') parts.push({ type: 'text', text: b.text, ...(keepCache && b.cache_control ? { cache_control: b.cache_control } : {}) });
         else if (b.type === 'image') parts.push(imagePart(b));
       }
-      if (parts.length) messages.push({ role: 'user', content: parts.length === 1 && parts[0].type === 'text' ? parts[0].text : parts });
+      if (parts.length) messages.push({ role: 'user', content: parts.length === 1 && parts[0].type === 'text' && !parts[0].cache_control ? parts[0].text : parts });
     }
   }
 

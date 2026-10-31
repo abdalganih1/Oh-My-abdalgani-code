@@ -59,9 +59,18 @@ export function weightedOrder(keys, rnd = Math.random) {
 }
 
 /** Async generator of {route, key, secret} attempts in failover order. */
-export async function* attempts(env, routes, { maxKeysPerRoute = 3 } = {}) {
+/** Deterministic 0..1 from a string (FNV-1a) — a stable "random" key order per student. */
+export function stableRand(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return ((h >>> 0) + 0.5) / 4294967296;
+}
+
+export async function* attempts(env, routes, { maxKeysPerRoute = 3, seed = null } = {}) {
   for (const route of routes) {
-    const keys = weightedOrder(await loadKeys(env.DB, route.id)).slice(0, maxKeysPerRoute);
+    const loaded = await loadKeys(env.DB, route.id);
+    // with a seed every key gets a fixed per-student draw, still weighted → sticky but balanced
+    const keys = (seed == null ? weightedOrder(loaded) : weightedOrder(loaded, ((ks) => { let i = 0; return () => stableRand(`${seed}:${ks[i++]?.id}`); })(loaded))).slice(0, maxKeysPerRoute);
     for (const key of keys) {
       let secret;
       try { secret = await decryptSecret(key.key_enc, env.ENCRYPTION_KEY); }

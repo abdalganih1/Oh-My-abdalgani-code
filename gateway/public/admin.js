@@ -66,7 +66,7 @@ async function loadOverview() {
   const tile = (label, value, sub = '', cls = '') => `<div class="stat"><div class="label">${label}</div><div class="value ${cls}">${value}</div><div class="sub">${sub}</div></div>`;
   $('#kpiUse').innerHTML = [
     tile('الطلبات', t.requests.toLocaleString('en'), `${t.errors} فشل (${pct(t.errors, t.requests)})`),
-    tile('التوكنات الإجمالية', tokens(t.tokens), `دخل ${tokens(t.prompt_tokens)} · خرج ${tokens(t.completion_tokens)}${t.cached_tokens ? ` · كاش ${tokens(t.cached_tokens)}` : ''}`),
+    tile('التوكنات الإجمالية', tokens(t.tokens), `دخل ${tokens(t.prompt_tokens)} · خرج ${tokens(t.completion_tokens)}${t.cached_tokens ? ` · من الكاش ${tokens(t.cached_tokens)} (${Math.round((t.cached_tokens / Math.max(1, t.prompt_tokens)) * 100)}% من الدخل)` : ''}`),
     tile('طلاب نشطين', t.active_users, 'أرسلوا طلب واحد على الأقل'),
     tile('متوسط زمن الرد', t.avg_latency ? `${(t.avg_latency / 1000).toFixed(1)} ث` : '—', 'للطلبات الناجحة'),
   ].join('');
@@ -203,7 +203,7 @@ $('#pendingTable').addEventListener('click', guard(async (e) => {
   if (pub != null) {
     const m = pendingList[+pub];
     openModel({ id: m.upstream_id.split('/').pop().replace(/[:]/g, '-').toLowerCase(), name: m.name, context_length: m.context_length || 128000, max_output: m.max_output || 16384,
-      pricing_mode: m.free ? 'token' : m.provider_id === 'openrouter' ? 'provider' : 'token', price_in: m.free ? 0 : m.price_in || 0, price_out: m.free ? 0 : m.price_out || 0,
+      pricing_mode: m.free ? 'token' : m.provider_id === 'openrouter' ? 'provider' : 'token', price_in: m.free ? 0 : m.price_in || 0, price_out: m.free ? 0 : m.price_out || 0, price_cache_read: m.free ? 0 : m.price_cache_read || 0, price_cache_write: m.free ? 0 : m.price_cache_write || 0,
       reasoning: m.reasoning ?? 1, vision: !!m.vision, status: 'new', routes: [{ provider_id: m.provider_id, upstream_model: m.upstream_id }] }, true);
   }
 }));
@@ -434,7 +434,7 @@ function showDiscover(providerId, list) {
     $('#discoverDlg').close();
     openModel({
       id: m.id.split('/').pop().replace(/[:]/g, '-'), name: m.name, context_length: m.context_length || 128000, max_output: m.max_output || 16384,
-      pricing_mode: providerId === 'openrouter' ? 'provider' : 'token', price_in: m.price_in || 0, price_out: m.price_out || 0, price_cache_read: m.price_cache_read || 0,
+      pricing_mode: providerId === 'openrouter' ? 'provider' : 'token', price_in: m.price_in || 0, price_out: m.price_out || 0, price_cache_read: m.price_cache_read || 0, price_cache_write: m.price_cache_write || 0,
       status: 'new', reasoning: m.reasoning ?? true, vision: !!m.vision, routes: [{ provider_id: providerId, upstream_model: m.id }],
     }, true);
   });
@@ -532,7 +532,7 @@ function openModel(m, isNew = false) {
   f.reset();
   $('#modelDlgTitle').textContent = isNew ? 'نموذج جديد' : `تعديل ${m.id}`;
   f.elements.id.readOnly = !isNew && !!m.id;
-  const usdFields = ['price_in', 'price_out', 'price_cache_read', 'price_request'];
+  const usdFields = ['price_in', 'price_out', 'price_cache_read', 'price_cache_write', 'price_request'];
   for (const el of f.elements) {
     if (!el.name || ['rp', 'rm', 're', 'rci', 'rco'].includes(el.name)) continue;
     const v = m[el.name];
@@ -557,7 +557,7 @@ $('#modelForm').addEventListener('submit', guard(async (e) => {
   const body = {
     ...d, reasoning: f.elements.reasoning.checked, vision: f.elements.vision.checked,
     price_in: Math.round((+d.price_in || 0) * M), price_out: Math.round((+d.price_out || 0) * M),
-    price_cache_read: Math.round((+d.price_cache_read || 0) * M), price_request: Math.round((+d.price_request || 0) * M),
+    price_cache_read: Math.round((+d.price_cache_read || 0) * M), price_cache_write: Math.round((+d.price_cache_write || 0) * M), price_request: Math.round((+d.price_request || 0) * M),
     routes: $$('#routeRows > div').map((row, i) => ({
       provider_id: row.querySelector('[name=rp]').value, upstream_model: row.querySelector('[name=rm]').value.trim(),
       enabled: row.querySelector('[name=re]').checked, priority: i,
@@ -834,7 +834,7 @@ document.addEventListener('click', (e) => { if (e.target.closest('.dlg-close')) 
 // ── copy OpenRouter prices onto models ──
 const OR = { models: [], catalog: [], byId: new Map() };
 const per1M = (v) => (v == null ? '—' : `⁦$${(v / M).toFixed(v && v < 1e5 ? 3 : 2)}⁩`);
-const samePrice = (m, x) => x && m.pricing_mode === 'token' && m.price_in === x.price_in && m.price_out === x.price_out && (m.price_cache_read || 0) === (x.price_cache_read || 0);
+const samePrice = (m, x) => x && m.pricing_mode === 'token' && m.price_in === x.price_in && m.price_out === x.price_out && (m.price_cache_read || 0) === (x.price_cache_read || 0) && (m.price_cache_write || 0) === (x.price_cache_write || 0);
 $('#orPrices').addEventListener('click', guard(async (e) => {
   const b = e.currentTarget; b.classList.add('loading');
   try { Object.assign(OR, await api('GET', '/api/admin/pricing/openrouter')); } finally { b.classList.remove('loading'); }
@@ -848,7 +848,7 @@ function renderOr() {
   const rows = OR.models.filter((m) => !onlyDiff || !samePrice(m, m.pick));
   const matched = OR.models.filter((m) => m.pick).length, diff = OR.models.filter((m) => m.pick && !samePrice(m, m.pick)).length;
   $('#orSummary').textContent = `${OR.models.length} نموذج · ${matched} انطابق · ${diff} سعره مختلف عن OpenRouter`;
-  $('#orTable').innerHTML = `<tr><th><input type="checkbox" id="orAll" aria-label="الكل"></th><th>النموذج</th><th>سعرك الحالي (دخل · خرج /1M)</th><th>نموذج OpenRouter</th><th class="num">دخل /1M</th><th class="num">خرج /1M</th><th class="num">كاش /1M</th></tr>` +
+  $('#orTable').innerHTML = `<tr><th><input type="checkbox" id="orAll" aria-label="الكل"></th><th>النموذج</th><th>سعرك الحالي (دخل · خرج /1M)</th><th>نموذج OpenRouter</th><th class="num">دخل /1M</th><th class="num">خرج /1M</th><th class="num">كاش قراءة · كتابة /1M</th></tr>` +
     (rows.map((m) => {
       const i = OR.models.indexOf(m), x = m.pick, same = samePrice(m, x);
       const cur = m.pricing_mode === 'request' ? `${usdPrecise(m.price_request)} / طلب` : `${per1M(m.price_in)} · ${per1M(m.price_out)}${m.pricing_mode === 'provider' ? ' <span class="badge">provider</span>' : ''}`;
@@ -857,7 +857,7 @@ function renderOr() {
         <td class="small">${cur}${!m.price_in && !m.price_out && m.pricing_mode !== 'request' ? ' <span class="badge warn">مجاني!</span>' : ''}</td>
         <td><input class="orId ltr" list="orIds" value="${esc(x?.id || '')}" placeholder="z-ai/glm-…" style="min-width:220px;width:100%" autocomplete="off">
           ${x ? `<div class="small muted">${m.match && x.id === m.match.id ? (m.match.how === 'route' ? 'من مسار OpenRouter' : 'مطابقة بالاسم') : 'اختيار يدوي'}${same ? ' · <span style="color:var(--ok)">نفس السعر</span>' : ''}</div>` : '<div class="small" style="color:var(--warn)">ما انطابق — اكتب المعرّف</div>'}</td>
-        <td class="num">${x ? per1M(x.price_in) : '—'}</td><td class="num">${x ? per1M(x.price_out) : '—'}</td><td class="num">${x ? per1M(x.price_cache_read) : '—'}</td></tr>`;
+        <td class="num">${x ? per1M(x.price_in) : '—'}</td><td class="num">${x ? per1M(x.price_out) : '—'}</td><td class="num">${x ? `${per1M(x.price_cache_read)} · ${x.price_cache_write ? per1M(x.price_cache_write) : '—'}` : '—'}</td></tr>`;
     }).join('') || `<tr><td colspan="7"><div class="empty">${icon('check', 40)}<div>كل النماذج المطابقة سعرها نفس OpenRouter</div></div></td></tr>`);
   $('#orAll').addEventListener('change', (e) => $$('#orTable .orSel:not(:disabled)').forEach((c) => { c.checked = e.target.checked; }));
 }
@@ -869,7 +869,7 @@ $('#orTable').addEventListener('change', (e) => {
 });
 $('#orApply').addEventListener('click', guard(async (e) => {
   const items = $$('#orTable tr[data-i]').filter((tr) => tr.querySelector('.orSel')?.checked).map((tr) => {
-    const m = OR.models[+tr.dataset.i]; return { id: m.id, price_in: m.pick.price_in, price_out: m.pick.price_out, price_cache_read: m.pick.price_cache_read };
+    const m = OR.models[+tr.dataset.i]; return { id: m.id, price_in: m.pick.price_in, price_out: m.pick.price_out, price_cache_read: m.pick.price_cache_read, price_cache_write: m.pick.price_cache_write || 0 };
   });
   if (!items.length) return toast('ما اخترت ولا نموذج', true);
   const mk = $('#orMarkup').value;

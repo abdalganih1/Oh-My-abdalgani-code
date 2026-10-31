@@ -33,6 +33,7 @@ export function normalizeUpstreamModel(m) {
     price_in: priceIn,
     price_out: priceOut,
     price_cache_read: perM(m.pricing?.input_cache_read),
+    price_cache_write: perM(m.pricing?.input_cache_write),
     free: (priceIn === 0 && priceOut === 0) || /(^|[:/-])free($|[:/-])/i.test(id) ? 1 : 0,
     vision: Array.isArray(m.architecture?.input_modalities) ? (m.architecture.input_modalities.includes('image') ? 1 : 0) : null,
     reasoning: Array.isArray(m.supported_parameters) ? (m.supported_parameters.some((p) => p === 'reasoning' || p === 'include_reasoning' || p === 'reasoning_effort') ? 1 : 0) : null,
@@ -108,11 +109,11 @@ async function autoPublish(env, provider, pm, policy, t) {
   if (pm.free) mode = 'token';
   const priceIn = pm.free ? 0 : pm.price_in || 0, priceOut = pm.free ? 0 : pm.price_out || 0;
   await db.batch([
-    db.prepare(`INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, vision, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, auto_source, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'new',?,?,?)`).bind(
+    db.prepare(`INSERT INTO models (id, name, group_id, context_length, max_output, reasoning, vision, pricing_mode, price_in, price_out, price_cache_read, price_request, markup_pct, status, description, auto_source, created_at, price_cache_write)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'new',?,?,?,?)`).bind(
       id, pm.name, group, pm.context_length || 128000, pm.max_output || 16384, pm.reasoning ?? 1, pm.vision ?? 0, mode,
       priceIn, priceOut, pm.free ? 0 : pm.price_cache_read || 0, pm.free ? 0 : policy.price_request || 0, pm.free ? 0 : policy.markup_pct || 0,
-      `${pm.free ? 'مجاني · ' : ''}أُضيف تلقائياً من ${provider.name}`, provider.id, t),
+      `${pm.free ? 'مجاني · ' : ''}أُضيف تلقائياً من ${provider.name}`, provider.id, t, pm.free ? 0 : pm.price_cache_write || 0),
     db.prepare('INSERT INTO model_routes (model_id, provider_id, upstream_model, priority) VALUES (?,?,?,0)').bind(id, provider.id, pm.upstream_id),
   ]);
   return id;
@@ -145,8 +146,8 @@ async function syncProvider(env, provider, cfg, t) {
     seen.add(pm.upstream_id);
     const ex = known.get(pm.upstream_id);
     if (!ex) {
-      stmts.push(db.prepare(`INSERT INTO provider_models (provider_id, upstream_id, name, context_length, max_output, price_in, price_out, price_cache_read, free, vision, reasoning, first_seen, last_seen, baseline)
-                             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(provider.id, pm.upstream_id, pm.name, pm.context_length, pm.max_output, pm.price_in, pm.price_out, pm.price_cache_read, pm.free, pm.vision, pm.reasoning, t, t, baseline ? 1 : 0));
+      stmts.push(db.prepare(`INSERT INTO provider_models (provider_id, upstream_id, name, context_length, max_output, price_in, price_out, price_cache_read, free, vision, reasoning, first_seen, last_seen, baseline, price_cache_write)
+                             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(provider.id, pm.upstream_id, pm.name, pm.context_length, pm.max_output, pm.price_in, pm.price_out, pm.price_cache_read, pm.free, pm.vision, pm.reasoning, t, t, baseline ? 1 : 0, pm.price_cache_write));
       if (!baseline) discovered.push(pm);
     } else if (ex.missing_since != null || t - ex.last_seen > 86400 || ex.free !== pm.free || ex.price_in !== pm.price_in || ex.price_out !== pm.price_out) {
       stmts.push(db.prepare('UPDATE provider_models SET last_seen = ?, missing_since = NULL, name = ?, context_length = COALESCE(?, context_length), price_in = ?, price_out = ?, free = ? WHERE provider_id = ? AND upstream_id = ?')
