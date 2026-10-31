@@ -120,22 +120,22 @@ function Alerts({ onBlockIp }) {
                         <div className="mt-1.5 text-[13.5px] leading-relaxed">{a.message}</div>
                         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
                           <span>إجراء النظام: <span className="text-fg-2">{a.action || '—'}</span></span>
-                          {a.user_id && <span>الطالب: <span className="text-fg-2">{a.user_name || `#${a.user_id}`}</span></span>}
-                          {a.ip && <span>IP: <span className="font-mono text-fg-2 ltr">{a.ip}</span></span>}
+                          {!!a.user_id && <span>الطالب: <span className="text-fg-2">{a.user_name || `#${a.user_id}`}</span></span>}
+                          {!!a.ip && <span>IP: <span className="font-mono text-fg-2 ltr">{a.ip}</span></span>}
                         </div>
                       </div>
                       <div className="flex w-full flex-wrap justify-end gap-1.5 sm:w-auto">
                         {!a.resolved && <Button size="sm" variant="secondary" icon={Check} loading={busy === `r${a.id}`} onClick={() => act(`r${a.id}`, () => api.post(`/api/admin/alerts/${a.id}/resolve`))}>تم</Button>}
-                        {a.rule === 'agent_loop' && !a.resolved && a.user_id && (
+                        {a.rule === 'agent_loop' && !a.resolved && !!a.user_id && (
                           <Button size="sm" variant="soft" icon={Play} loading={busy === `p${a.id}`} onClick={() => act(`p${a.id}`, () => api.del(`/api/admin/pauses/${a.user_id}`), 'انفك الإيقاف')}>فك الإيقاف</Button>
                         )}
-                        {a.user_id && (
+                        {!!a.user_id && (
                           <Button size="sm" variant="danger" icon={UserX} loading={busy === `d${a.id}`} onClick={async () => {
                             if (!(await confirm({ title: 'إيقاف حساب الطالب؟', description: `${a.user_name || `#${a.user_id}`} — مفاتيحه وجلساته بتتوقف.`, danger: true, confirmText: 'إيقاف الطالب' }))) return;
                             act(`d${a.id}`, () => api.patch(`/api/admin/users/${a.user_id}`, { disabled: true }), 'انوقف الحساب');
                           }}>إيقاف الطالب</Button>
                         )}
-                        {a.ip && <Button size="sm" variant="danger" icon={Ban} onClick={() => onBlockIp(a.ip)}>حظر IP</Button>}
+                        {!!a.ip && <Button size="sm" variant="danger" icon={Ban} onClick={() => onBlockIp(a.ip)}>حظر IP</Button>}
                       </div>
                     </div>
                   </motion.li>
@@ -201,9 +201,9 @@ function Rules({ S, loading, onSaved }) {
         actions={dirty && <Badge tone="warn" dot pulse>تعديلات غير محفوظة</Badge>}>
         {loading || !f ? <Skeleton className="h-64" /> : (
           <form onSubmit={submit}>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="gap-4 lg:columns-2">
               {RULE_GROUPS.map((g) => (
-                <fieldset key={g.title} className={cn('min-w-0 rounded-2xl border border-line bg-sunken/40 p-4', g.fields.length > 4 && 'lg:row-span-2')}>
+                <fieldset key={g.title} className="mb-4 min-w-0 break-inside-avoid rounded-2xl border border-line bg-sunken/40 p-4">
                   <legend className="flex items-center gap-2 px-1.5 text-[13px] font-semibold"><g.icon size={15} className="text-accent" />{g.title}</legend>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {g.fields.map((x) => (

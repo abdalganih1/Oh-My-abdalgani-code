@@ -182,7 +182,7 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
             ))}
           </Reorder.Group>
           {!shown.length && <div className="rounded-2xl border border-dashed border-line-strong p-5 text-center text-sm text-muted">بلا مسار، النموذج ما رح يشتغل. ضيف مسار.</div>}
-          <Button size="sm" variant="soft" icon={Plus} className="mt-2.5" onClick={() => setRoutes((rs) => [...rs, mkRoute({ provider_id: providers[0]?.id })])}>مسار</Button>
+          <Button size="sm" variant="soft" icon={Plus} className="mt-2.5" onClick={() => setRoutes((rs) => [...rs, mkRoute({ provider_id: providers[0]?.id })])}>إضافة مسار</Button>
         </section>
         <button type="submit" hidden />
       </form>

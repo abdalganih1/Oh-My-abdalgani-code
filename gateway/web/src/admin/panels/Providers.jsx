@@ -523,7 +523,7 @@ function DiscoverDialog({ data: live, onClose, onImport }) {
   ];
   return (
     <Modal open={!!live} onOpenChange={(o) => { if (!o) onClose(); }} size="xl" icon={Download}
-      title={data ? <>نماذج <span className="font-mono ltr">{data.provider.name}</span> ({data.list.length})</> : ''}
+      title={data ? <>نماذج {data.provider.name} <span className="num text-muted">({data.list.length})</span></> : ''}
       description="اضغط إضافة لتفتح محرّر النموذج معبّى. إذا النموذج موجود، المسار بينضاف كاحتياط."
       footer={<Button variant="ghost" onClick={onClose}>إغلاق</Button>}>
       {data && <>
