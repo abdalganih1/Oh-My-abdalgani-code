@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # To take over api.abdalgani.com (currently the old LiteLLM server — switching cuts it off):
 #   1. remove the existing DNS record for `api` in the abdalgani.com zone
 #   2. uncomment the line below and run `npm run deploy`
-# routes = [{ pattern = "api.abdalgani.com", custom_domain = true }]
+routes = [{ pattern = "api.abdalgani.com", custom_domain = true }]
 workers_dev = true
 
 [assets]
