@@ -97,7 +97,7 @@ export const Input = forwardRef(function Input({ className, icon: Icon, mono, ..
   return (
     <div className={cn('relative min-w-0', className)}>
       <Icon size={16} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted start-3" />
-      <input ref={ref} className={cn(FIELD, 'h-10 ps-9', mono && 'font-mono text-[13px]')} {...p} />
+      <input ref={ref} className={cn(FIELD, 'h-10 ps-9', mono && 'font-mono text-[13px] ltr')} {...p} />
     </div>
   );
 });
