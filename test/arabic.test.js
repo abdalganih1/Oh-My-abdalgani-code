@@ -92,3 +92,16 @@ test('OpenCode Arabic display plugin: written + registered in tui.json, keeps ot
   // inside our WezTerm (it does bidi itself) the plugin stands down
   assert.match(ar.WEZTERM_LUA, /ABDALGANI_ARABIC_DISPLAY = '0'/);
 });
+
+test('bidi: Arabic paragraphs align right inside their box; the cursor follows the visual order', async () => {
+  const { fixRow, cursorColumn, displayLine } = await import('../cli/bidi.js');
+  const box = '┃  مرحبا كيفك            │';
+  const cells = Array.from(box, (c) => c.codePointAt(0));
+  const r = fixRow(cells, { bg: cells.map(() => 1) });
+  assert.equal(String.fromCodePoint(...r.chars), '┃            ﻚﻔﻴﻛ ﺎﺒﺣﺮﻣ  │'); // same 2-cell margin on the right
+  assert.equal(cursorColumn(r, 13), 12); // end of text → left of the last letter typed
+  assert.equal(cursorColumn(r, 3), 22); // start of text → on the first (rightmost) letter
+  assert.equal(cursorColumn(r, 8), 17); // between the words
+  // an English sentence with an Arabic word stays left-aligned
+  assert.equal(displayLine('use مرحبا here      ', { bg: Array(20).fill(0) }), 'use ﺎﺒﺣﺮﻣ here      ');
+});

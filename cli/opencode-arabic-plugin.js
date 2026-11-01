@@ -16,7 +16,7 @@ const graphemes = (s) => (segmenter ? Array.from(segmenter.segment(s), (x) => x.
 // OpenTUI keeps non-ASCII text (Arabic included) as ids into a grapheme pool, so the real text is
 // read once per frame with getRealCharBytes, and changed cells are written back with setCell —
 // the native side then keeps the pool's reference counts right.
-function fixFrame(buf, RGBA) {
+function fixFrame(buf, RGBA, cursor) {
   const w = buf.width, h = buf.height, B = buf.buffers;
   if (!w || !h) return;
   const ch = B.char, fg = B.fg, bg = B.bg, at = B.attributes;
@@ -44,8 +44,11 @@ function fixFrame(buf, RGBA) {
       else cps[x] = wide || g.length > len ? FRAME : cp;
     }
     if (!rtl || gi !== gs.length) continue; // nothing to do, or the text didn't line up with the cells
-    const r = fixRow(cps);
+    const bgKey = new Array(w);
+    for (let x = 0; x < w; x++) { const i = (o + x) * sb; bgKey[x] = bg[i] + ',' + bg[i + 1] + ',' + bg[i + 2] + ',' + bg[i + 3]; }
+    const r = fixRow(cps, { bg: bgKey });
     if (!r) continue;
+    if (cursor && cursor.y === y) cursor.x = cursorColumn(r, cursor.x);
     const F = fg.slice(o * sf, (o + w) * sf), G = bg.slice(o * sb, (o + w) * sb), A = at.slice(o * sa, (o + w) * sa);
     for (let x = 0; x < w; x++) {
       const s = r.map[x];
@@ -62,9 +65,31 @@ const tui = async (api) => {
   const renderer = api.renderer;
   let on = api.kv.get('abdalgani.arabic_display', true);
   const RGBA = api.theme.current.text.constructor;
-  const fn = (buf) => { if (on) { try { fixFrame(buf, RGBA); } catch {} } };
+  // The text box puts the terminal cursor at its LOGICAL column while drawing (before our hook);
+  // remember that, and after reordering move the cursor to where that spot now is on screen.
+  // V1 sets it from JS (caught by the wrapper below); V2 may set it natively, so the renderer's
+  // cursor state is read too — anything that isn't the position we applied ourselves is fresh.
+  const setCursor = renderer.setCursorPosition.bind(renderer);
+  let logical = null, applied = null;
+  renderer.setCursorPosition = (x, y, visible = true) => { logical = { x, y, visible }; applied = null; setCursor(x, y, visible); };
+  const readCursor = () => {
+    let st = null;
+    try { st = renderer.getCursorState?.(); } catch {}
+    if (st && typeof st.x === 'number' && !(applied && st.x === applied.x && st.y === applied.y)) { logical = { x: st.x, y: st.y, visible: !!st.visible }; applied = null; }
+  };
+  const restore = () => { if (applied && logical) { setCursor(logical.x, logical.y, logical.visible); applied = null; } };
+  const fn = (buf) => {
+    if (!on) { restore(); return; }
+    readCursor();
+    const cur = logical && logical.visible ? { x: logical.x - 1, y: logical.y - 1 } : null; // 1-based → cells
+    try { fixFrame(buf, RGBA, cur); } catch { if (cur) cur.x = logical.x - 1; }
+    if (!cur) return;
+    const want = cur.x + 1;
+    if (want === logical.x) restore();
+    else if (!applied || applied.x !== want || applied.y !== logical.y) { setCursor(want, logical.y, true); applied = { x: want, y: logical.y }; }
+  };
   renderer.addPostProcessFn(fn);
-  api.lifecycle.onDispose(() => renderer.removePostProcessFn(fn));
+  api.lifecycle.onDispose(() => { renderer.removePostProcessFn(fn); delete renderer.setCursorPosition; });
   // /rtl toggles it (in case a screen looks odd), remembered between runs
   api.command?.register(() => [{
     title: on ? 'Arabic display: off (عرض العربي: إيقاف)' : 'Arabic display: on (عرض العربي: تشغيل)',

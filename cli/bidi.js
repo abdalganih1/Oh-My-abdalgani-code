@@ -93,15 +93,19 @@ export function visualOrder(cps) {
 
 /**
  * Fix one row. `cells` = codepoints of the row (0 = empty). Returns null when the row has no RTL text,
- * else { map, chars }: map[x] = the source column whose cell (colors included) belongs at column x,
- * chars[x] = the codepoint to draw there (shaped + mirrored).
+ * else { map, chars, dir }: map[x] = the source column whose cell (colors included) belongs at column x,
+ * chars[x] = the codepoint to draw there (shaped + mirrored), dir[src] = 'R' | 'L' for every source
+ * column that took part (used to place the cursor).
+ * `bg` (optional, one key per cell) enables right-alignment of Arabic paragraphs: the line slides
+ * right inside the area of the same background, keeping the same margin it had on the left.
  */
-export function fixRow(cells) {
+export function fixRow(cells, { bg = null } = {}) {
   let has = false;
   for (let i = 0; i < cells.length; i++) if (isRtl(cells[i])) { has = true; break; }
   if (!has) return null;
   const w = cells.length;
-  const map = [...Array(w).keys()], chars = Array.from(cells);
+  const map = [...Array(w).keys()], chars = Array.from(cells), dirOf = new Array(w).fill(null);
+  const blank = (i, ref) => isSpace(cells[i]) && !isFrame(cells[i]) && (!bg || bg[i] === bg[ref]);
   // segments: split at UI frame characters and at wide gaps (3+ spaces = separate columns of the UI)
   let s = 0;
   const flush = (a, b) => { // [a, b)
@@ -112,13 +116,24 @@ export function fixRow(cells) {
     if (!rtl) return;
     const seg = Array.from(cells.slice(a, b));
     const shaped = shape(seg);
-    const { order, dir } = visualOrder(seg);
+    const { order, dir, base } = visualOrder(seg);
+    // right-align an Arabic paragraph line: margin on the right = the blank margin it has on the left
+    let shift = 0;
+    if (bg && base === 'R') {
+      let l = a; while (l > 0 && blank(l - 1, a)) l--;
+      let e = b; while (e < w && blank(e, a)) e++;
+      const content = e < w && !isFrame(cells[e]) && bg[e] === bg[a]; // another column of text follows
+      const end = content ? e - 3 : e - Math.min(a - l, 8);
+      if (end > b) shift = end - b;
+    }
+    for (let k = 0; k < shift; k++) { map[a + k] = b + k; chars[a + k] = cells[b + k]; }
     for (let v = 0; v < order.length; v++) {
       const l = order[v], src = a + l;
-      map[a + v] = src;
+      map[a + shift + v] = src;
+      dirOf[src] = dir[l];
       let c = shaped[l];
       if (dir[l] === 'R' && MIRROR[c]) c = MIRROR[c];
-      chars[a + v] = c;
+      chars[a + shift + v] = c;
     }
   };
   for (let i = 0; i <= w; i++) {
@@ -129,12 +144,30 @@ export function fixRow(cells) {
       s = i; i--;
     }
   }
-  return { map, chars };
+  return { map, chars, dir: dirOf, cells };
+}
+
+/**
+ * Where the cursor goes after a row was fixed. `x` = the logical cursor column (the cell the next
+ * character would be typed into). It sits just past the character typed before it: to its LEFT when
+ * that character is Arabic, to its right otherwise.
+ */
+export function cursorColumn(fixed, x) {
+  const { map, dir, cells } = fixed, w = map.length;
+  const inv = new Array(w); for (let v = 0; v < w; v++) inv[map[v]] = v;
+  let p = x - 1, gap = 0;
+  while (p >= 0 && !dir[p] && isSpace(cells[p])) { p--; gap++; }
+  if (p >= 0 && dir[p]) {
+    const c = dir[p] === 'R' ? inv[p] - 1 - gap : inv[p] + 1 + gap;
+    return Math.max(0, Math.min(w - 1, c));
+  }
+  if (x < w && dir[x]) return inv[x]; // at the start of an Arabic line
+  return x;
 }
 
 /** Convenience for tests and plain strings: a whole line → what the screen should show. */
-export function displayLine(text) {
+export function displayLine(text, opts) {
   const cells = Array.from(text, (ch) => ch.codePointAt(0));
-  const r = fixRow(cells);
+  const r = fixRow(cells, opts);
   return r ? String.fromCodePoint(...r.chars) : text;
 }
