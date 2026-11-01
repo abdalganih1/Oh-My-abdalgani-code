@@ -24,6 +24,11 @@
 curl -fsSL https://api.abdalgani.com/install.sh | bash
 ```
 
+> إذا طلع `Could not resolve host`، فالـ DNS تبع السيرفر معطّل. هاد الأمر بينزّل المثبّت عن طريق DNS-over-HTTPS، والمثبّت بيصلّح DNS الجهاز لحاله:
+> ```bash
+> curl -fsSL --doh-url https://1.1.1.1/dns-query https://api.abdalgani.com/install.sh | bash
+> ```
+
 **Windows (PowerShell)**
 ```powershell
 irm https://api.abdalgani.com/install.ps1 | iex; abdalgani-setup
@@ -108,6 +113,9 @@ print(client.chat.completions.create(model="abd-main", messages=[{"role": "user"
 
 الدومين شغّال، بس جهازك أو السيرفر ما عم يقدر يحوّل الاسم لعنوان. هالشي بيصير كتير على سيرفرات VPS جديدة، أو على شبكة بتحجب الـ DNS. الحل إنك تحط DNS عام (Cloudflare `1.1.1.1` وGoogle `8.8.8.8`) مرة وحدة.
 
+**المثبّت بيصلّحها لحاله:** إذا لقى إنه `github.com` أو `npm` أو البوابة ما انحلّوا، بيحط DNS عام. على Linux هاد بيصير إذا شغّلته كـ root أو عندك sudo، وعلى Windows إذا فتحت PowerShell كمسؤول. الملف القديم بينحفظ باسم `/etc/resolv.conf.abdalgani.bak`. وإذا ما بدك المثبّت يغيّر الـ DNS، شغّله مع `ABDALGANI_NO_DNS_FIX=1`.
+إذا السيرفر ما قدر ينزّل المثبّت أصلاً، استعمل أمر `--doh-url` اللي فوق. والخطوات اليدوية تحت بتنفع إذا المثبّت ما قدر يصلّحها:
+
 **1. افحص:**
 ```bash
 getent hosts api.abdalgani.com || getent hosts google.com || echo "الـ DNS معطّل كله"
@@ -162,7 +170,8 @@ My key: sk-abd-...   Tools I want: OpenCode, ClaudeCode   (others: Hermes, Codex
 Steps:
 1. macOS/Linux/WSL:  curl -fsSL https://api.abdalgani.com/install.sh | bash -s -- --tool <Tools> --api-key <KEY>
    Windows:          $env:ABDALGANI_API_KEY="<KEY>"; irm https://api.abdalgani.com/install.ps1 | iex; abdalgani-setup --tool <Tools>
-   If curl says "Could not resolve host": the machine's DNS is broken, not the gateway — apply the README #dns fix
+   If curl says "Could not resolve host": the machine's DNS is broken. Re-fetch with `curl -fsSL --doh-url https://1.1.1.1/dns-query <same URL> | bash`;
+   the installer then fixes the resolver itself (root/sudo). Manual fix: README #dns
    (systemd-resolved drop-in or /etc/resolv.conf → 1.1.1.1 / 8.8.8.8), then retry. Mirror: raw.githubusercontent.com/abdalganih1/Oh-My-abdalgani-code/main/gateway/web/public/install.sh
 2. Verify:           abdalgani-setup --status   and   abdalgani-setup --list-models --api-key <KEY>
 3. Use the stable aliases abd-main / abd-fast / abd-think unless I name a model. Never invent model ids — take them from --list-models.
