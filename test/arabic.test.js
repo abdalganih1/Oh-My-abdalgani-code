@@ -174,3 +174,30 @@ test('bidi: Arabic paragraphs align right inside their box; the cursor follows t
   // an English sentence with an Arabic word stays left-aligned
   assert.equal(displayLine('use مرحبا here      ', { bg: Array(20).fill(0) }), 'use ﺎﺒﺣﺮﻣ here      ');
 });
+
+test('first screen: the terminal mode picked there drives every Arabic string and the OpenCode plugin', async () => {
+  const core = await import('../cli/core.js');
+  const { displayLine } = await import('../cli/bidi.js');
+  core.setLang('ar');
+  core.setRtl('native');
+  assert.equal(core.tr('مرحبا', 'Hi'), 'مرحبا');                 // the terminal reorders it itself
+  core.setRtl('flip');
+  assert.equal(core.tr('مرحبا', 'Hi'), displayLine('مرحبا'));     // pre-reordered + joined
+  assert.equal(core.flipText('abc'), 'abc');
+  // long lines are wrapped first, so a reversed sentence still reads top-down
+  const rows = core.flipText('كلمة كلمة كلمة كلمة', 10).split('\n');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0], displayLine('كلمة كلمة'));
+  core.setLang('en');
+  assert.equal(core.tr('مرحبا', 'Hi'), 'Hi');
+
+  const { installArabicDisplayPlugin, removeArabicDisplayPlugin, V2_PLUGIN_DIR } = await import('../cli/tools/opencode.js');
+  const dir = path.join(home, '.config', 'opencode-native');
+  fs.mkdirSync(dir, { recursive: true });
+  installArabicDisplayPlugin(dir);
+  installArabicDisplayPlugin(dir, { v2: true });
+  fs.writeFileSync(path.join(dir, 'tui.json'), JSON.stringify({ plugin: ['keep-me', 'file:///x/abdalgani/abdalgani-arabic-display.js'] }));
+  removeArabicDisplayPlugin(dir);
+  assert.equal(fs.existsSync(V2_PLUGIN_DIR(dir)), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tui.json'), 'utf8')).plugin, ['keep-me']);
+});

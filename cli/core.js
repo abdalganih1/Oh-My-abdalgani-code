@@ -5,6 +5,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import chalk from 'chalk';
+import { displayLine, isRtl } from './bidi.js';
 
 export const isWin = os.platform() === 'win32';
 export const HOME = os.homedir();
@@ -19,8 +20,32 @@ export const ALIASES = { main: 'abd-main', fast: 'abd-fast', think: 'abd-think' 
 let lang = 'ar';
 export const setLang = (l) => { lang = l === 'en' ? 'en' : 'ar'; };
 export const getLang = () => lang;
+/**
+ * How this terminal shows Arabic, picked on the first screen (the user clicks the "العربية" that
+ * reads right): 'native' = the terminal reorders + joins Arabic itself; 'flip' = it prints left-to-right,
+ * so we hand it text that is already reordered and joined (and OpenCode gets its display plugin).
+ */
+let rtl = 'flip';
+export const RTL_MODES = ['native', 'flip'];
+export const setRtl = (m) => { if (RTL_MODES.includes(m)) rtl = m; };
+export const getRtl = () => rtl;
+
+/** Arabic text → what a left-to-right terminal must print, wrapped first so long lines still read top-down. */
+export function flipText(text, width = (process.stdout.columns || 80) - 6) {
+  return String(text).split('\n').map((line) => {
+    if (![...line].some((ch) => isRtl(ch.codePointAt(0)))) return line;
+    const rows = [];
+    let cur = '';
+    for (const word of line.split(' ')) {
+      if (cur && [...cur].length + 1 + [...word].length > width) { rows.push(cur); cur = word; } else cur = cur ? `${cur} ${word}` : word;
+    }
+    rows.push(cur);
+    return rows.map((r) => displayLine(r)).join('\n');
+  }).join('\n');
+}
+
 /** tr('عربي', 'English') */
-export const tr = (ar, en) => (lang === 'en' ? en : ar);
+export const tr = (ar, en) => (lang === 'en' ? en : rtl === 'flip' ? flipText(ar) : ar);
 
 let quiet = false;
 export const setQuiet = (q) => { quiet = !!q; };

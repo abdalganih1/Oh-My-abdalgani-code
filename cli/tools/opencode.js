@@ -77,6 +77,15 @@ export function installArabicDisplayPlugin(dir, { v2 = false } = {}) {
   return file;
 }
 
+/** The terminal reorders Arabic itself (picked on the first screen): our plugin would reverse it again. */
+export function removeArabicDisplayPlugin(dir) {
+  const jsonc = path.join(dir, 'tui.jsonc'), json = path.join(dir, 'tui.json');
+  dropPluginEntry(!fs.existsSync(json) && fs.existsSync(jsonc) ? jsonc : json, 'plugin');
+  dropPluginEntry(path.join(dir, 'cli.json'), 'plugins');
+  fs.rmSync(V2_PLUGIN_DIR(dir), { recursive: true, force: true });
+  fs.rmSync(path.join(dir, 'abdalgani', PLUGIN_FILE), { force: true });
+}
+
 const EFFORTS = ['low', 'medium', 'high'];
 
 /** OpenCode V2 — `providers` map, settings/headers/body split, model variants, provider/model#variant. */
@@ -136,9 +145,13 @@ export function configureOpenCode(ctx) {
   applyArabic(out, { v2, arabicDefault: !!ctx.arabic, dir });
   writeArabicFile(dir, !!ctx.arabic);
   writeJson(file, out);
-  installArabicDisplayPlugin(dir, { v2 });
+  const native = ctx.rtl === 'native';
+  if (native) removeArabicDisplayPlugin(dir); else installArabicDisplayPlugin(dir, { v2 });
   log.dim(`   ${tr('صيغة الإعداد', 'Config schema')}: OpenCode V${v2 ? 2 : 1} · ${tr('النموذج', 'model')}: ${PROVIDER_ID}/${ctx.model}`);
-  log.dim(`   ${tr('العربية', 'Arabic')}: ${tr('عرض صحيح داخل OpenCode بأي طرفية ✓ (/rtl للإيقاف)', 'correct display inside OpenCode in any terminal ✓ (/rtl toggles)')} · /ar ${tr('و', 'and')} /en ${ctx.arabic ? tr('· عربي افتراضياً ✓', '· Arabic by default ✓') : ''}`);
+  const display = native
+    ? tr('طرفيتك بتعرض العربي صح لحالها — بلا قلب', 'your terminal renders Arabic itself — no reordering')
+    : tr('عرض صحيح داخل OpenCode بأي طرفية ✓ (/rtl للإيقاف)', 'correct display inside OpenCode in any terminal ✓ (/rtl toggles)');
+  log.dim(`   ${tr('العربية', 'Arabic')}: ${display} · /ar ${tr('و', 'and')} /en ${ctx.arabic ? tr('· عربي افتراضياً ✓', '· Arabic by default ✓') : ''}`);
 }
 
 export function configureKilo(ctx) {

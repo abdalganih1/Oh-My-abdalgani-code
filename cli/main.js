@@ -2,8 +2,9 @@
 import chalk from 'chalk';
 import { select, input, checkbox, search, confirm } from '@inquirer/prompts';
 import { createHash } from 'node:crypto';
-import { BASE_URL, API_URL, ALIASES, setLang, getLang, tr, log, savedKey, saveKey, which, run, loadState, saveState, rememberTool, setQuiet, deviceHeaders } from './core.js';
+import { BASE_URL, API_URL, ALIASES, setLang, getLang, setRtl, getRtl, RTL_MODES, tr, log, savedKey, saveKey, which, run, loadState, saveState, rememberTool, setQuiet, deviceHeaders } from './core.js';
 import { setupArabicDisplay } from './arabic.js';
+import { displayLine } from './bidi.js';
 import { setAutoSync } from './schedule.js';
 import { fetchCatalog, describeAccount, printStatus } from './gateway.js';
 import { INSTALL, installTool, opencodeMajor } from './install.js';
@@ -40,6 +41,8 @@ Headless:      node setup.js --tool <Name[,Name]> [--model abd-main] [--effort h
   --arabic-display  only the display part (WezTerm + launchers)
   --auto-sync   on | off — refresh your tools' model lists every 6h (Task Scheduler / cron)
   --lang        ar | en
+  --rtl         native | flip — does this terminal show Arabic correctly by itself (native) or reversed (flip)?
+                Asked on the first screen and remembered; flip installs OpenCode's Arabic display plugin
   --status      balance + the real model behind abd-main / abd-fast / abd-think
   --sync        refresh every tool configured before (after switching models in the dashboard)
   --quiet       with --sync: silent, and only rewrites when the model catalog changed
@@ -112,7 +115,7 @@ const pickEffort = () => select({
 async function configure(tool, base, cli, interactive) {
   console.log(chalk.bold.cyan(`\n━━ ${TOOLS[tool].label} ━━`));
   const opencodeMajorVer = await ensureInstalled(tool, cli, interactive);
-  TOOLS[tool].configure({ ...base, opencodeMajor: opencodeMajorVer ?? 2 });
+  TOOLS[tool].configure({ ...base, rtl: getRtl(), opencodeMajor: opencodeMajorVer ?? 2 });
   rememberTool(tool, { model: base.model, effort: base.effort, arabic: base.arabic });
 }
 
@@ -141,7 +144,7 @@ async function sync(key, catalog, { onlyIfChanged = false } = {}) {
       model = ALIASES.main;
     }
     log.info(chalk.bold(`\n━━ ${TOOLS[t].label} ━━`));
-    TOOLS[t].configure({ apiKey: key, models: catalog.models, model, effort: o.effort || '', arabic: !!o.arabic, headers: deviceHeaders(), opencodeMajor: t === 'OpenCode' ? (opencodeMajor() || 2) : 2 });
+    TOOLS[t].configure({ apiKey: key, models: catalog.models, model, effort: o.effort || '', arabic: !!o.arabic, rtl: getRtl(), headers: deviceHeaders(), opencodeMajor: t === 'OpenCode' ? (opencodeMajor() || 2) : 2 });
   }
   saveState({ catalogHash: hash, lastSync: Math.floor(Date.now() / 1000) });
   printMapping(catalog.models);
@@ -149,14 +152,32 @@ async function sync(key, catalog, { onlyIfChanged = false } = {}) {
 
 export async function main(argv = process.argv.slice(2)) {
   const cli = parseArgs(argv);
-  setLang(cli.lang || (cli.tool ? 'en' : 'ar'));
+  const saved = loadState();
+  setLang(cli.lang || (cli.tool ? 'en' : saved.lang || 'ar'));
+  setRtl(RTL_MODES.includes(cli.rtl) ? cli.rtl : saved.rtl);
   if (cli.help || cli.h) { console.log(HELP); return; }
   if (cli['list-tools']) { console.log(Object.keys(TOOLS).join('\n')); return; }
 
   const interactive = !cli.tool && !cli['list-models'] && !cli.yes && process.stdin.isTTY;
 
   if (interactive && !cli.lang) {
-    setLang(await select({ message: 'Language / اللغة', choices: [{ name: 'العربية', value: 'ar' }, { name: 'English', value: 'en' }] }));
+    // The same word twice: as typed, and pre-reordered for terminals that print Arabic left-to-right.
+    // Whichever one reads right tells us how this terminal handles Arabic, for every screen after this.
+    const word = 'العربية';
+    const pick = await select({
+      message: `Language — pick the "${word}" that reads correctly on your screen / ${word} / ${displayLine(word)}`,
+      choices: [
+        { name: word, value: 'ar:native' },
+        { name: displayLine(word), value: 'ar:flip' },
+        { name: 'English', value: 'en' },
+      ],
+    });
+    const [l, mode] = pick.split(':');
+    setLang(l);
+    if (mode && !RTL_MODES.includes(cli.rtl)) setRtl(mode);
+    saveState({ lang: l, rtl: getRtl() });
+  } else if (RTL_MODES.includes(cli.rtl)) {
+    saveState({ rtl: cli.rtl });
   }
   if (!cli.quiet) console.log(chalk.bold.cyan(`\n⚡ abdalgani — ${tr('إعداد أدوات البرمجة', 'coding tools setup')}  (${BASE_URL})\n`));
 
@@ -201,8 +222,12 @@ export async function main(argv = process.argv.slice(2)) {
   let arabic = cli.arabic === true || cli.arabic === 'true';
   let arabicDisplay = arabic || cli['arabic-display'] === true;
   let autoSync = cli['auto-sync'] === 'on' || cli['auto-sync'] === true;
+  if (interactive && nonClaude.length && getRtl() === 'native') {
+    arabicDisplay = false; // this terminal already reorders + joins Arabic — no WezTerm needed
+    log.dim(`   ${tr('🇸🇦 طرفيتك بتعرض العربي صح لحالها — ما في داعي لـ WezTerm أو للقلب', '🇸🇦 Your terminal renders Arabic by itself — no WezTerm or reordering needed')}`);
+  }
   if (interactive && nonClaude.length) {
-    arabicDisplay = await confirm({
+    if (getRtl() !== 'native') arabicDisplay = await confirm({
       message: tr('🇸🇦 حزمة العربي: عرض العربي صحيح بالطرفية (WezTerm + أوامر opencode-ar / pi-ar …)؟', '🇸🇦 Arabic pack: render Arabic correctly in the terminal (WezTerm + opencode-ar / pi-ar … launchers)?'),
       default: getLang() === 'ar',
     });
