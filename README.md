@@ -100,6 +100,53 @@ print(client.chat.completions.create(model="abd-main", messages=[{"role": "user"
 | `429` | طلبات كتير ورا بعض. استنى دقيقة |
 | الأداة ما بتشوف النماذج الجديدة | `abdalgani-setup --sync` |
 | `abdalgani-setup: command not found` | سكّر الطرفية وافتحها من جديد |
+| `Could not resolve host: api.abdalgani.com` | الـ DNS تبع جهازك معطّل. شوف [ما بيوصل للدومين](#dns) |
+
+
+<a id="dns"></a>
+### ما بيوصل للدومين (`Could not resolve host`)
+
+الدومين شغّال، بس جهازك أو السيرفر ما عم يقدر يحوّل الاسم لعنوان. هالشي بيصير كتير على سيرفرات VPS جديدة، أو على شبكة بتحجب الـ DNS. الحل إنك تحط DNS عام (Cloudflare `1.1.1.1` وGoogle `8.8.8.8`) مرة وحدة.
+
+**1. افحص:**
+```bash
+getent hosts api.abdalgani.com || getent hosts google.com || echo "الـ DNS معطّل كله"
+```
+
+**2. صلّح (Linux، كـ root):**
+
+إذا السيرفر عليه `systemd-resolved` (Ubuntu وDebian الجديد)، بيضل الإعداد بعد إعادة التشغيل:
+```bash
+mkdir -p /etc/systemd/resolved.conf.d && printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=1.0.0.1 8.8.4.4\n' > /etc/systemd/resolved.conf.d/abdalgani-dns.conf && systemctl restart systemd-resolved
+```
+
+إذا ما عليه `systemd-resolved` (Alpine وDebian القديم والحاويات):
+```bash
+printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
+```
+
+> إذا الملف رجع لحاله بعد إعادة التشغيل، فلوحة مزوّد السيرفر أو `netplan` أو DHCP عم يكتبه من جديد. غيّر الـ DNS من هونيك.
+
+**macOS:**
+```bash
+sudo networksetup -setdnsservers Wi-Fi 1.1.1.1 8.8.8.8 && sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder
+```
+
+**Windows (PowerShell كمسؤول):**
+```powershell
+Get-NetAdapter | Where-Object Status -eq Up | Set-DnsClientServerAddress -ServerAddresses 1.1.1.1,8.8.8.8; Clear-DnsClientCache
+```
+
+**3. أعد التثبيت** بأمر التثبيت العادي من فوق.
+
+**إذا الحجب على دومينّا بس:** نفس المثبّت موجود على GitHub:
+```bash
+curl -fsSL https://raw.githubusercontent.com/abdalganih1/Oh-My-abdalgani-code/main/gateway/web/public/install.sh | bash
+```
+```powershell
+irm https://raw.githubusercontent.com/abdalganih1/Oh-My-abdalgani-code/main/gateway/web/public/install.ps1 | iex; abdalgani-setup
+```
+بس انتبه: أدواتك رح تحكي مع `api.abdalgani.com`، فلازم جهازك يقدر يحلّ هالاسم بالآخر. المثبّت نفسه بيقلك إذا الاسم ما انحلّ.
 
 ---
 
@@ -115,6 +162,8 @@ My key: sk-abd-...   Tools I want: OpenCode, ClaudeCode   (others: Hermes, Codex
 Steps:
 1. macOS/Linux/WSL:  curl -fsSL https://api.abdalgani.com/install.sh | bash -s -- --tool <Tools> --api-key <KEY>
    Windows:          $env:ABDALGANI_API_KEY="<KEY>"; irm https://api.abdalgani.com/install.ps1 | iex; abdalgani-setup --tool <Tools>
+   If curl says "Could not resolve host": the machine's DNS is broken, not the gateway — apply the README #dns fix
+   (systemd-resolved drop-in or /etc/resolv.conf → 1.1.1.1 / 8.8.8.8), then retry. Mirror: raw.githubusercontent.com/abdalganih1/Oh-My-abdalgani-code/main/gateway/web/public/install.sh
 2. Verify:           abdalgani-setup --status   and   abdalgani-setup --list-models --api-key <KEY>
 3. Use the stable aliases abd-main / abd-fast / abd-think unless I name a model. Never invent model ids — take them from --list-models.
 Do not edit unrelated config. The installer backs up files it changes (*.abdalgani.bak).

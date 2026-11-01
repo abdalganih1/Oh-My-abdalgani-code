@@ -45,6 +45,7 @@ export async function fetchCatalog(apiKey) {
     return { ok: true, models, account };
   } catch (e) {
     log.warn(`⚠️ ${tr('تعذّر الاتصال بالبوابة — سأستخدم الأسماء الثابتة فقط', 'Gateway unreachable — using stable aliases only')} (${e.message})`);
+    if (isDnsError(e)) log.warn(dnsHint());
     return { ok: true, models: FALLBACK, offline: true };
   }
 }
@@ -82,3 +83,9 @@ export async function printStatus(apiKey) {
   log.dim(`\n   ${tr('بدّل النماذج من', 'Switch models at')} ${BASE_URL}`);
   return true;
 }
+
+/** The machine's DNS can't resolve the gateway (seen on fresh VPSes with a broken resolver). */
+export const isDnsError = (e) => ['ENOTFOUND', 'EAI_AGAIN'].includes(e?.cause?.code || e?.code);
+export const dnsHint = () => tr(
+  `   ${new URL(BASE_URL).host} ما انحلّ على هالجهاز — المشكلة بالـ DNS تبع الجهاز، مش بالبوابة.\n   الحل بالـ README ← "ما بيوصل للدومين": https://github.com/abdalganih1/Oh-My-abdalgani-code#dns`,
+  `   ${new URL(BASE_URL).host} does not resolve on this machine — its DNS is broken, not the gateway.\n   Fix: https://github.com/abdalganih1/Oh-My-abdalgani-code#dns`);
