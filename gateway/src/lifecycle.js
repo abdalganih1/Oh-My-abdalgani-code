@@ -278,7 +278,15 @@ export async function runMaintenance(env, { now = nowSec(), sync = true } = {}) 
   }
   summary.health = await checkHealth(env, cfg, now);
   summary.models = await reconcileModels(env, cfg, now);
-  try { const { refreshAutoPrices } = await import('./prices.js'); summary.prices = await refreshAutoPrices(env.DB); } catch (e) { summary.prices = { error: e.message }; }
+  // OpenRouter prices move slowly: re-price once a day (saving a model or the admin button re-prices at once)
+  try {
+    const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'prices_refreshed_at'").first();
+    if (!last || now - Number(last.value) >= 86400) {
+      const { refreshAutoPrices } = await import('./prices.js');
+      summary.prices = await refreshAutoPrices(env.DB);
+      await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('prices_refreshed_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(String(now)).run();
+    }
+  } catch (e) { summary.prices = { error: e.message }; }
   try { summary.alerts = await runDetectors(env, await getSecurity(env.DB, true), now); } catch (e) { summary.alerts = { error: e.message }; }
   await env.DB.prepare('DELETE FROM events WHERE created_at < ?').bind(now - 90 * 86400).run();
   summary.notified = await notifyPending(env);

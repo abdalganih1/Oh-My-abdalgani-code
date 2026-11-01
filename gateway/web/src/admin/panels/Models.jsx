@@ -145,7 +145,7 @@ export default function Models() {
       </div>
 
       <Card title="النماذج" icon={Layers}
-        subtitle={<>وضع التسعير: <b>تلقائي</b> (الافتراضي) = السعر بيتحدد لحاله من OpenRouter ويتحدث كل 30 دقيقة · <b>لكل توكن</b> = جدولك لكل مليون توكن · <b>لكل طلب</b> = سعر ثابت · <b>حسب المزوّد</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك النسبة الإضافية تنضاف فوق.</>}
+        subtitle={<>وضع التسعير: <b>تلقائي</b> (الافتراضي) = السعر بيتحدد لحاله من OpenRouter ويتحدث مرة باليوم · <b>لكل توكن</b> = جدولك لكل مليون توكن · <b>لكل طلب</b> = سعر ثابت · <b>حسب المزوّد</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك النسبة الإضافية تنضاف فوق.</>}
         actions={<>
           <Button icon={Combine} disabled={!data} onClick={() => setMerge({})}>دمج</Button>
           <Button icon={RefreshCcw} loading={busy === 'prices'} onClick={refreshPrices}>حدّث الأسعار</Button>

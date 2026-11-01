@@ -328,7 +328,7 @@ function PublishModal({ item, onClose, onDone }) {
             <Segmented full value={f.pricing_mode} onChange={set('pricing_mode')} options={[{ value: 'auto', label: 'تلقائي' }, { value: 'token', label: 'بالتوكن' }, { value: 'provider', label: 'حسب المزوّد' }, { value: 'request', label: 'بالطلب' }]} />
           </Field>
           {f.pricing_mode === 'auto' ? (
-            <p className="rounded-xl bg-accent-soft/60 px-3 py-2.5 text-[12.5px] text-fg-2 sm:col-span-2">السعر بيتحدد لحاله من OpenRouter (أو من سعر المزوّد) وبيتحدث كل 30 دقيقة — ما في شي تعبّيه.</p>
+            <p className="rounded-xl bg-accent-soft/60 px-3 py-2.5 text-[12.5px] text-fg-2 sm:col-span-2">السعر بيتحدد لحاله من OpenRouter (أو من سعر المزوّد) وبيتحدث مرة باليوم — ما في شي تعبّيه.</p>
           ) : f.pricing_mode === 'request' ? (
             <Field label="السعر لكل طلب ($)" className="sm:col-span-2"><Input type="number" step="any" min="0" className="ltr" value={f.price_request} onChange={set('price_request')} /></Field>
           ) : (
