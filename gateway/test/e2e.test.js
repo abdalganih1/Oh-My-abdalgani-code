@@ -647,3 +647,47 @@ test('detectors ignore the admin playground account (many networks by design)', 
   assert.ok(!alerts.some((a) => a.rule === 'shared_ip' && a.ip.startsWith('203.0.113.')), 'no shared-IP alert from playground networks');
   await setSecurity({ alert_ips_per_user: 4, alert_users_per_ip: 4 });
 });
+
+test('auto pricing: a bundle model (fast) bills each request at the OpenRouter price of the route that answered', async () => {
+  const r = await admin('POST', '/models', {
+    id: 'fast', name: 'Fast', pricing_mode: 'auto', status: 'active', custom_order: true,
+    routes: [{ provider_id: 'zai', upstream_model: 'glm-5.3' }, { provider_id: 'openrouter', upstream_model: 'vendor/not-on-openrouter' }],
+  });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.data.auto.unmatched, ['fast ← openrouter/vendor/not-on-openrouter']);
+  const m = (await admin('GET', '/models')).data.find((x) => x.id === 'fast');
+  assert.equal(m.routes[0].price_in, 69_900); // z-ai/glm-5.3 on OpenRouter, matched by name
+  assert.equal(m.routes[0].price_ref, 'z-ai/glm-5.3');
+  assert.equal(m.price_in, 69_900); assert.equal(m.price_out, 1_400_000); // model shows the most expensive route
+  const pk = (await admin('POST', '/playground/key')).data.api_key;
+  const res = await call('POST', '/v1/chat/completions', { token: pk, body: { model: 'fast', messages: [{ role: 'user', content: 'auto price' }] } });
+  assert.equal(res.status, 200, res.text);
+  const log = (await admin('GET', '/logs?model=fast')).data.rows[0];
+  assert.equal(log.cost, Math.ceil((1000 * 69_900 + 500 * 1_400_000) / 1e6)); // ignores OpenRouter's usage.cost, uses the route price
+  // a hand-typed route price sticks through refreshes
+  await admin('POST', '/models', { ...m, routes: [{ provider_id: 'zai', upstream_model: 'glm-5.3', price_in: 1_000_000, price_out: 2_000_000 }] });
+  const m2 = (await admin('GET', '/models')).data.find((x) => x.id === 'fast');
+  assert.equal(m2.routes[0].price_ref, 'manual'); assert.equal(m2.routes[0].price_in, 1_000_000); assert.equal(m2.price_out, 2_000_000);
+});
+
+test('merge: the same model from two providers becomes one model with both routes', async () => {
+  await admin('POST', '/models', { id: 'claude-sonnet-5-5', name: 'Sonnet (Anthropic)', pricing_mode: 'token', routes: [{ provider_id: 'anthropic', upstream_model: 'claude-sonnet-5-5' }] });
+  await admin('POST', '/models', { id: 'claude-sonnet-5.5', name: 'Sonnet (OR)', pricing_mode: 'token', price_in: 2_000_000, price_out: 10_000_000, context_length: 1_000_000,
+    routes: [{ provider_id: 'openrouter', upstream_model: 'anthropic/claude-sonnet-5.5' }, { provider_id: 'anthropic', upstream_model: 'claude-sonnet-5-5' }] });
+  const u = await admin('POST', '/users', { name: 'merge student' });
+  await env.DB.prepare("INSERT INTO user_aliases (user_id, alias, model_id) VALUES (?, 'abd-think', 'claude-sonnet-5.5')").bind(u.data.id).run();
+  const r = await admin('POST', '/models/merge', { into: 'claude-sonnet-5-5', from: ['claude-sonnet-5.5'], pricing_from: 'claude-sonnet-5.5' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.data.routes_moved, 1); // the duplicate anthropic route is skipped
+  const ms = (await admin('GET', '/models')).data;
+  assert.ok(!ms.some((m) => m.id === 'claude-sonnet-5.5'));
+  const m = ms.find((x) => x.id === 'claude-sonnet-5-5');
+  assert.deepEqual(m.routes.map((x) => x.provider_id).sort(), ['anthropic', 'openrouter']);
+  assert.equal(m.price_in, 2_000_000); assert.equal(m.context_length, 1_000_000);
+  const al = (await admin('GET', `/users/${u.data.id}`)).data.aliases;
+  assert.deepEqual(al.map((a) => [a.alias, a.model_id]), [['abd-think', 'claude-sonnet-5-5']]); // the student's pick follows the merge
+  // publishing it again from another provider just adds a route
+  const add = await admin('POST', '/models/claude-sonnet-5-5/routes', { provider_id: 'zai', upstream_model: 'claude-sonnet-5-5' });
+  assert.equal(add.data.added, true);
+  assert.equal((await admin('POST', '/models/claude-sonnet-5-5/routes', { provider_id: 'zai', upstream_model: 'claude-sonnet-5-5' })).data.added, false);
+});

@@ -8,6 +8,7 @@ import { handleAdmin } from './api/admin.js';
 import { handleMe } from './api/user.js';
 import { apiError, HttpError, json } from './util.js';
 import { runMaintenance } from './lifecycle.js';
+import { refreshAutoPrices } from './prices.js';
 import { preflight, authFailure, clientIp, cleanupSecurity } from './security.js';
 import { handleAuth } from './accounts.js';
 
@@ -86,5 +87,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runMaintenance(env).then((s) => console.log('maintenance', JSON.stringify(s))).catch((e) => console.error('maintenance failed', e)));
     ctx.waitUntil(cleanupSecurity(env.DB).catch(() => {}));
+    // auto-priced models follow OpenRouter's price list (cheap: one fetch, only when such models exist)
+    ctx.waitUntil(refreshAutoPrices(env.DB).catch((e) => console.error('auto prices failed', e)));
   },
 };

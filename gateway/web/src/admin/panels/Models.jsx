@@ -1,14 +1,17 @@
 // Models & routing: prices, status, groups and which providers serve each model.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Brain, Coins, Cpu, Eye, Layers, Pencil, Plus, RefreshCcw, Route, Search, Sparkles, Trash2, TriangleAlert, CircleOff } from 'lucide-react';
+import { ArrowLeft, Brain, Coins, Combine, Cpu, Eye, Layers, Pencil, Plus, RefreshCcw, Route, Search, Sparkles, Trash2, TriangleAlert, CircleOff } from 'lucide-react';
 import { Badge, Button, Card, DataTable, Empty, Input, Segmented, Select, Stat, Tip, cn, toast, useConfirm } from '../../ui/index.js';
 import { STATUS, priceLabel, tokens } from '../../lib/format.js';
 import { useAsync, usePersisted } from '../../lib/hooks.js';
 import { api, useAdmin } from '../ctx.js';
 import { NEW_MODEL, useModelEditor } from './cfg/ModelEditor.jsx';
 import OpenRouterDialog from './cfg/OpenRouterDialog.jsx';
+import MergeDialog from './cfg/MergeDialog.jsx';
+import { duplicateGroups } from './cfg/shared.js';
 
 const isFree = (m) => (m.pricing_mode === 'request' ? !m.price_request : !m.price_in && !m.price_out && m.pricing_mode !== 'provider');
+const MODE_BADGE = { auto: 'تلقائي', provider: 'حسب المزوّد' };
 const needsRestore = (m) => m.status === 'archived' || m.routes.some((r) => r.archived_at);
 
 function Routes({ m, provName }) {
@@ -48,6 +51,7 @@ export default function Models() {
   const [group, setGroup] = usePersisted('abd:modelGroup', '');
   const [orOpen, setOrOpen] = useState(false);
   const [busy, setBusy] = useState('');
+  const [merge, setMerge] = useState(null); // { into, from[] }
   const { openModel, editor } = useModelEditor({ providers, getModels: useCallback(() => modelsRef.current, []), onSaved: () => reload() });
 
   const provName = useCallback((id) => providers.find((p) => p.id === id)?.name || id, [providers]);
@@ -100,6 +104,7 @@ export default function Models() {
     { key: 'status', header: 'الحالة', cell: (m) => { const s = STATUS[m.status]; return s ? <Badge tone={s.tone} dot>{s.label}</Badge> : <Badge>{m.status}</Badge>; } },
     { key: 'price', header: 'السعر', mobileFull: true, cell: (m) => (
       <div className="max-w-[260px] text-[12.5px] leading-relaxed text-fg-2 max-sm:max-w-none">
+        {MODE_BADGE[m.pricing_mode] && m.pricing_mode === 'auto' ? <Badge tone="accent" className="me-1.5 h-5 text-[10.5px]">{MODE_BADGE[m.pricing_mode]}</Badge> : null}
         {priceLabel(m)}{m.markup_pct ? <span className="text-accent-ink"> +{m.markup_pct}%</span> : null}
         {isFree(m) && <Badge tone="warn" className="ms-1.5 h-5 text-[10.5px]">مجاني!</Badge>}
       </div>
@@ -120,6 +125,7 @@ export default function Models() {
   const live = models.filter((m) => ['new', 'active', 'legacy'].includes(m.status));
   const noRoute = live.filter((m) => !m.routes.some((r) => r.enabled && !r.archived_at)).length;
   const free = live.filter(isFree).length;
+  const dups = useMemo(() => duplicateGroups(models), [models]);
 
   return (
     <div className="grid gap-4 sm:gap-5">
@@ -131,11 +137,24 @@ export default function Models() {
       </div>
 
       <Card title="النماذج" icon={Layers}
-        subtitle={<>وضع التسعير: <b>لكل توكن</b> = جدولك لكل مليون توكن · <b>لكل طلب</b> = سعر ثابت · <b>حسب المزوّد</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك. النسبة الإضافية تنضاف فوق.</>}
+        subtitle={<>وضع التسعير: <b>لكل توكن</b> = جدولك لكل مليون توكن · <b>لكل طلب</b> = سعر ثابت · <b>حسب المزوّد</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك · <b>تلقائي</b> = نموذج تحته عدة نماذج (مثل fast)، كل طلب بسعر OpenRouter للنموذج اللي ردّ. النسبة الإضافية تنضاف فوق.</>}
         actions={<>
+          <Button icon={Combine} disabled={!data} onClick={() => setMerge({})}>دمج</Button>
           <Button icon={Coins} onClick={() => setOrOpen(true)}>أسعار OpenRouter</Button>
           <Button variant="primary" icon={Plus} disabled={!data} onClick={() => openModel(NEW_MODEL, true)}>نموذج جديد</Button>
         </>}>
+        {dups.length > 0 && (
+          <div className="mb-4 grid gap-2">
+            {dups.map((g) => (
+              <div key={g.map((m) => m.id).join('|')} className="flex flex-wrap items-center gap-2 rounded-2xl border border-warn/30 bg-warn-soft px-3.5 py-2.5 text-[13px]">
+                <Combine size={16} className="shrink-0 text-warn" />
+                <span className="text-fg-2">هدول شكلهم نفس النموذج من مزوّدين مختلفين:</span>
+                {g.map((m) => <Badge key={m.id} className="font-mono ltr">{m.id} · {m.routes.map((r) => provName(r.provider_id)).join('+')}</Badge>)}
+                <Button size="xs" variant="primary" icon={Combine} className="ms-auto" onClick={() => setMerge({ into: g[0].id, from: g.slice(1).map((m) => m.id) })}>ادمجهم</Button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
           <Input icon={Search} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث بالاسم أو المعرّف أو المزوّد…" className="min-w-[220px] flex-1" aria-label="بحث" />
           <Select value={group} onChange={setGroup} options={groupOpts} className="w-full sm:w-[190px]" aria-label="الفئة" />
@@ -156,6 +175,7 @@ export default function Models() {
       </Card>
 
       <OpenRouterDialog open={orOpen} onOpenChange={setOrOpen} onApplied={reload} />
+      {merge && <MergeDialog open models={models} initial={merge} provName={provName} onClose={() => setMerge(null)} onDone={() => { setMerge(null); reload(); }} />}
       {editor}
     </div>
   );

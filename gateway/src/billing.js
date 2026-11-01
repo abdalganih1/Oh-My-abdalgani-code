@@ -7,7 +7,11 @@ import { MICRO, now } from './util.js';
  * @param {number|null} providerCostUsd  cost reported by upstream (OpenRouter usage.cost), USD
  * @returns {number} micro-USD
  */
-export function computeCost(model, usage, providerCostUsd = null) {
+export function computeCost(model, usage, providerCostUsd = null, route = null) {
+  // auto: the price of the route that actually answered (its OpenRouter price), else the model's table
+  if (model.pricing_mode === 'auto' && route && route.price_in != null) {
+    model = { ...model, price_in: route.price_in, price_out: route.price_out ?? 0, price_cache_read: route.price_cache_read ?? 0, price_cache_write: route.price_cache_write ?? 0 };
+  }
   const p = Math.max(0, usage.prompt || 0);
   const c = Math.max(0, usage.completion || 0);
   const cached = Math.min(p, Math.max(0, usage.cached || 0));
@@ -103,7 +107,7 @@ export async function loadSubscriptions(db, userId) {
 
 /** Record usage + charge wallet atomically (single D1 batch). */
 export async function settle(db, { user, keyId, model, routeInfo, endpoint, status, usage, providerCostUsd, latency, error, subscriptionId, requestedModel, reserved = 0, ip = null, deviceId = null }) {
-  const cost = status < 400 ? computeCost(model, usage, providerCostUsd) : 0;
+  const cost = status < 400 ? computeCost(model, usage, providerCostUsd, routeInfo) : 0;
   const upstreamCost = status < 400 ? computeUpstreamCost(model, routeInfo, usage, providerCostUsd) : 0;
   let charged = 0;
   let subId = subscriptionId ?? null;

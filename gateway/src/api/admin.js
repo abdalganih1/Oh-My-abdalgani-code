@@ -6,6 +6,7 @@ import {
 } from '../util.js';
 import { upstreamHeaders } from '../routing.js';
 import { runMaintenance, restoreProvider, restoreModel, normalizeUpstreamModel } from '../lifecycle.js';
+import { fetchOpenRouterCatalog, catalogMatcher, refreshAutoPrices } from '../prices.js';
 import { adminReport, exportCsv } from '../reports.js';
 import { getSecurity, resetSecurityCache } from '../security.js';
 
@@ -17,6 +18,59 @@ async function createUserKey(db, userId, name = 'default') {
   await db.prepare('INSERT INTO api_keys (user_id, name, key_hash, prefix) VALUES (?,?,?,?)')
     .bind(userId, name, await sha256Hex(key), key.slice(0, 12)).run();
   return key;
+}
+
+/**
+ * Fold `from` models into `into`: their routes join it (duplicates skipped), students' alias picks,
+ * global aliases and request history move to it, then the duplicates are deleted.
+ * `pricing_from` (optional) copies that model's pricing onto the merged model.
+ */
+async function mergeModels(db, body) {
+  const into = String(body.into || '');
+  const from = [...new Set((Array.isArray(body.from) ? body.from : []).map(String))].filter((x) => x && x !== into);
+  need(ID_RE.test(into), 'into required');
+  need(from.length && from.length <= 20, 'from must list 1–20 models');
+  const target = await db.prepare('SELECT * FROM models WHERE id = ?').bind(into).first();
+  need(target, `model ${into} not found`);
+  const ph = from.map(() => '?').join(',');
+  const { results: found } = await db.prepare(`SELECT * FROM models WHERE id IN (${ph})`).bind(...from).all();
+  need(found.length === from.length, 'some models to merge were not found');
+  const { results: routes } = await db.prepare(`SELECT * FROM model_routes WHERE model_id IN (?, ${ph}) ORDER BY model_id = ? DESC, priority, id`).bind(into, ...from, into).all();
+  const seen = new Set(routes.filter((r) => r.model_id === into).map((r) => `${r.provider_id}|${r.upstream_model}`));
+  let next = routes.filter((r) => r.model_id === into).reduce((a, r) => Math.max(a, r.priority + 1), 0);
+  const stmts = [];
+  let moved = 0;
+  for (const r of routes.filter((x) => x.model_id !== into)) {
+    const k = `${r.provider_id}|${r.upstream_model}`;
+    if (seen.has(k)) continue;
+    seen.add(k); moved++;
+    stmts.push(db.prepare('UPDATE model_routes SET model_id = ?, priority = ? WHERE id = ?').bind(into, next++, r.id));
+  }
+  const src = body.pricing_from && body.pricing_from !== into ? found.find((m) => m.id === body.pricing_from) : null;
+  if (src) {
+    stmts.push(db.prepare('UPDATE models SET pricing_mode = ?, price_in = ?, price_out = ?, price_cache_read = ?, price_cache_write = ?, price_request = ?, markup_pct = ? WHERE id = ?')
+      .bind(src.pricing_mode, src.price_in, src.price_out, src.price_cache_read, src.price_cache_write, src.price_request, src.markup_pct, into));
+  }
+  // widen capabilities to the best of the merged models (any route may serve)
+  const ctx = Math.max(target.context_length, ...found.map((m) => m.context_length));
+  const out = Math.max(target.max_output, ...found.map((m) => m.max_output));
+  stmts.push(db.prepare('UPDATE models SET context_length = ?, max_output = ?, reasoning = MAX(reasoning, ?), vision = MAX(vision, ?) WHERE id = ?')
+    .bind(ctx, out, Math.max(...found.map((m) => m.reasoning || 0)), Math.max(...found.map((m) => m.vision || 0)), into));
+  // a student who had picked a duplicate for an alias keeps working
+  stmts.push(db.prepare(`UPDATE user_aliases SET model_id = ? WHERE model_id IN (${ph})`).bind(into, ...from));
+  stmts.push(db.prepare(`UPDATE usage_logs SET model_id = ? WHERE model_id IN (${ph})`).bind(into, ...from));
+  stmts.push(db.prepare(`DELETE FROM models WHERE id IN (${ph})`).bind(...from));
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'aliases'").first();
+  if (row?.value) {
+    let g = {}; try { g = JSON.parse(row.value) || {}; } catch { /* keep */ }
+    let changed = false;
+    for (const [k, v] of Object.entries(g)) if (from.includes(v)) { g[k] = into; changed = true; }
+    if (changed) stmts.push(db.prepare("UPDATE settings SET value = ? WHERE key = 'aliases'").bind(JSON.stringify(g)));
+  }
+  stmts.push(db.prepare("INSERT INTO events (kind, model_id, message) VALUES ('model_merged', ?, ?)").bind(into, `merged ${from.join(', ')} → ${into} (${moved} routes)`));
+  await db.batch(stmts);
+  if ((src?.pricing_mode || target.pricing_mode) === 'auto') await refreshAutoPrices(db, { modelId: into }).catch(() => {});
+  return { ok: true, into, merged: from, routes_moved: moved };
 }
 
 function maskKeyRow(k) {
@@ -220,24 +274,17 @@ export async function handleAdmin(request, env, ctx, path) {
 
   // ── pricing: copy OpenRouter's public per-token prices onto our models ──
   if (a === 'pricing' && b === 'openrouter' && method === 'GET') {
-    const res = await fetch('https://openrouter.ai/api/v1/models', { headers: { accept: 'application/json', 'user-agent': 'abdalgani-gateway' } });
-    if (!res.ok) throw new HttpError(502, `openrouter ${res.status}`);
-    const catalog = ((await res.json()).data || []).filter((m) => m?.id && m.pricing).map((m) => {
-      const n = normalizeUpstreamModel(m);
-      return { id: n.upstream_id, name: n.name, price_in: n.price_in ?? 0, price_out: n.price_out ?? 0, price_cache_read: n.price_cache_read ?? 0, price_cache_write: n.price_cache_write ?? 0, free: n.free };
-    }).filter((m) => m.price_in >= 0 && m.price_out >= 0); // OpenRouter uses -1 for "variable" (routers)
-    const byId = new Map(catalog.map((m) => [m.id.toLowerCase(), m]));
-    const tail = (x) => String(x || '').toLowerCase().split('/').pop().replace(/:(free|thinking|beta|extended|nitro|floor)$/, '');
-    const byTail = new Map();
-    for (const m of catalog) { const t = tail(m.id); const prev = byTail.get(t); if (!prev || (prev.free && !m.free)) byTail.set(t, m); }
+    let catalog;
+    try { catalog = await fetchOpenRouterCatalog(); } catch (e) { throw new HttpError(502, e.message); }
+    const match = catalogMatcher(catalog);
     const { results: models } = await db.prepare("SELECT id, name, pricing_mode, price_in, price_out, price_cache_read, price_cache_write, price_request, markup_pct, status FROM models WHERE status != 'archived' ORDER BY sort, id").all();
     const { results: routes } = await db.prepare('SELECT model_id, provider_id, upstream_model FROM model_routes ORDER BY priority, id').all();
     const out = models.map((m) => {
       const rs = routes.filter((r) => r.model_id === m.id);
       let hit = null, how = null;
-      const orRoute = rs.find((r) => r.provider_id === 'openrouter' && byId.has(r.upstream_model.toLowerCase()));
-      if (orRoute) { hit = byId.get(orRoute.upstream_model.toLowerCase()); how = 'route'; }
-      for (const cand of [m.id, ...rs.map((r) => r.upstream_model)]) { if (hit) break; const h = byTail.get(tail(cand)); if (h) { hit = h; how = 'name'; } }
+      const orRoute = rs.find((r) => r.provider_id === 'openrouter' && match.exact(r.upstream_model));
+      if (orRoute) { hit = match.exact(orRoute.upstream_model); how = 'route'; }
+      for (const cand of [m.id, ...rs.map((r) => r.upstream_model)]) { if (hit) break; const h = match.name(cand); if (h) { hit = h; how = 'name'; } }
       return { ...m, match: hit ? { ...hit, how } : null };
     });
     return json({ models: out, catalog: catalog.map(({ id, name, price_in, price_out, price_cache_read, price_cache_write }) => ({ id, name, price_in, price_out, price_cache_read, price_cache_write })) });
@@ -249,14 +296,32 @@ export async function handleAdmin(request, env, ctx, path) {
     const stmts = body.items.map((it) => {
       need(ID_RE.test(it.id || ''), 'invalid model id');
       const [pi, po, pc, pw] = [it.price_in, it.price_out, it.price_cache_read ?? 0, it.price_cache_write ?? 0].map((v) => Math.max(0, toInt(v)));
-      return db.prepare("UPDATE models SET pricing_mode = 'token', price_in = ?, price_out = ?, price_cache_read = ?, price_cache_write = ?, markup_pct = COALESCE(?, markup_pct) WHERE id = ?").bind(pi, po, pc, pw, markup, it.id);
+      return db.prepare("UPDATE models SET pricing_mode = CASE WHEN pricing_mode = 'auto' THEN 'auto' ELSE 'token' END, price_in = ?, price_out = ?, price_cache_read = ?, price_cache_write = ?, markup_pct = COALESCE(?, markup_pct) WHERE id = ?").bind(pi, po, pc, pw, markup, it.id);
     });
     await db.batch(stmts);
+    await refreshAutoPrices(db).catch(() => {}); // auto models keep their per-route prices
     return json({ ok: true, updated: stmts.length });
   }
 
   if (a === 'models') {
     if (method === 'POST' && b && seg.at(-1) === 'restore') return json({ ok: await restoreModel(db, seg.slice(1, -1).join('/')) });
+    // merge duplicates (same model published from two providers) into one model with all routes
+    if (method === 'POST' && b === 'merge' && seg.length === 2) return json(await mergeModels(db, await readJson(request)));
+    // add one more provider route to an existing model (publishing the same model from another provider)
+    if (method === 'POST' && b && seg.length > 2 && seg.at(-1) === 'routes') {
+      const id = seg.slice(1, -1).join('/');
+      const r = await readJson(request);
+      need(r.provider_id && r.upstream_model, 'provider_id + upstream_model required');
+      const m = await db.prepare('SELECT pricing_mode FROM models WHERE id = ?').bind(id).first();
+      need(m, `model ${id} not found`);
+      const dup = await db.prepare('SELECT id FROM model_routes WHERE model_id = ? AND provider_id = ? AND upstream_model = ?').bind(id, r.provider_id, r.upstream_model).first();
+      if (!dup) {
+        const pr = await db.prepare('SELECT COALESCE(MAX(priority) + 1, 0) n FROM model_routes WHERE model_id = ?').bind(id).first();
+        await db.prepare('INSERT INTO model_routes (model_id, provider_id, upstream_model, priority, enabled) VALUES (?,?,?,?,1)').bind(id, r.provider_id, r.upstream_model, pr.n).run();
+      }
+      if (m.pricing_mode === 'auto') await refreshAutoPrices(db, { modelId: id }).catch(() => {});
+      return json({ ok: true, added: !dup });
+    }
     if (method === 'GET') {
       const { results: models } = await db.prepare('SELECT * FROM models ORDER BY sort, id').all();
       const { results: routes } = await db.prepare(`SELECT r.*, p.priority AS provider_priority FROM model_routes r JOIN providers p ON p.id = r.provider_id JOIN models m ON m.id = r.model_id ORDER BY r.model_id, CASE WHEN m.custom_order = 1 THEN r.priority ELSE p.priority END, r.priority, r.id`).all();
@@ -265,7 +330,7 @@ export async function handleAdmin(request, env, ctx, path) {
     if (method === 'POST') {
       const m = await readJson(request);
       need(ID_RE.test(m.id || ''), 'invalid model id');
-      need(['token', 'request', 'provider'].includes(m.pricing_mode || 'token'), 'pricing_mode must be token|request|provider');
+      need(['token', 'request', 'provider', 'auto'].includes(m.pricing_mode || 'token'), 'pricing_mode must be token|request|provider|auto');
       need(['new', 'active', 'legacy', 'hidden', 'archived'].includes(m.status || 'active'), 'status must be new|active|legacy|hidden|archived');
       // a model the admin adds shows as "new" to students for the first days (the cron expires it)
       if (!(await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(m.id).first()) && (!m.status || m.status === 'active')) m.status = 'new';
@@ -284,11 +349,17 @@ export async function handleAdmin(request, env, ctx, path) {
         m.routes.forEach((r, i) => {
           need(r.provider_id && r.upstream_model, 'each route needs provider_id + upstream_model');
           const opt = (v) => (v === undefined || v === null || v === '' ? null : toInt(v));
-          stmts.push(db.prepare('INSERT INTO model_routes (model_id, provider_id, upstream_model, priority, enabled, cost_in, cost_out) VALUES (?,?,?,?,?,?,?)')
-            .bind(m.id, r.provider_id, r.upstream_model, toInt(r.priority, i), r.enabled === false || r.enabled === 0 ? 0 : 1, opt(r.cost_in), opt(r.cost_out)));
+          // a hand-typed selling price on a route sticks (price_ref = manual); otherwise auto mode fills it from OpenRouter
+          const manual = r.price_in !== undefined && r.price_in !== null && r.price_in !== '';
+          stmts.push(db.prepare('INSERT INTO model_routes (model_id, provider_id, upstream_model, priority, enabled, cost_in, cost_out, price_in, price_out, price_cache_read, price_cache_write, price_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+            .bind(m.id, r.provider_id, r.upstream_model, toInt(r.priority, i), r.enabled === false || r.enabled === 0 ? 0 : 1, opt(r.cost_in), opt(r.cost_out),
+              manual ? toInt(r.price_in) : null, manual ? toInt(r.price_out) : null, manual ? opt(r.price_cache_read) : null, manual ? opt(r.price_cache_write) : null, manual ? 'manual' : null));
         });
       }
       await db.batch(stmts);
+      if ((m.pricing_mode || 'token') === 'auto') {
+        try { const r = await refreshAutoPrices(db, { modelId: m.id }); return json({ ok: true, auto: r }); } catch (e) { return json({ ok: true, auto: { error: e.message } }); }
+      }
       return json({ ok: true });
     }
     if (method === 'DELETE' && b) { await db.prepare('DELETE FROM models WHERE id = ?').bind(seg.slice(1).join('/')).run(); return json({ ok: true }); }

@@ -11,6 +11,7 @@ import {
 } from '../../ui/index.js';
 import { useAsync } from '../../lib/hooks.js';
 import { M, ago, date, day, int, tokens } from '../../lib/format.js';
+import { findTwin } from './cfg/shared.js';
 import { api, useAdmin } from '../ctx.js';
 
 const KIND = {
@@ -18,6 +19,7 @@ const KIND = {
   model_published: { icon: CircleCheck, tone: 'ok', label: 'نُشر', cat: 'models' },
   model_archived: { icon: Archive, tone: 'warn', label: 'أُرشف', cat: 'models' },
   model_restored: { icon: Undo2, tone: 'ok', label: 'رجع', cat: 'models' },
+  model_merged: { icon: CircleCheck, tone: 'accent', label: 'دمج', cat: 'models' },
   provider_archived: { icon: PlugZap, tone: 'bad', label: 'مزوّد مؤرشف', cat: 'providers' },
   provider_restored: { icon: Plug, tone: 'ok', label: 'مزوّد رجع', cat: 'providers' },
   sync_error: { icon: AlertTriangle, tone: 'bad', label: 'خطأ مزامنة', cat: 'providers' },
@@ -263,11 +265,26 @@ function PublishModal({ item, onClose, onDone }) {
   const { groups, go } = useAdmin();
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (item) setF(prefill(item)); }, [item]);
+  const [models, setModels] = useState([]);
+  const [target, setTarget] = useState(''); // '' = publish as a new model, else add as a route to this model
+  useEffect(() => {
+    if (!item) return;
+    setF(prefill(item)); setTarget('');
+    api.get('/api/admin/models').then((ms) => {
+      setModels(ms);
+      const twin = findTwin(ms, { id: prefill(item).id, routes: [{ provider_id: item.provider_id, upstream_model: item.upstream_id }] });
+      if (twin) setTarget(twin.id);
+    }).catch(() => {});
+  }, [item]);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e?.target ? e.target.value : e }));
   const submit = async (e) => {
     e.preventDefault(); setBusy(true);
     try {
+      if (target) {
+        const r = await api.post(`/api/admin/models/${encodeURIComponent(target)}/routes`, { provider_id: item.provider_id, upstream_model: item.upstream_id });
+        toast.success(r.added ? `انضاف ${item.provider_name} كمسار لـ ${target}` : `${target} فيه هالمسار أصلاً`, { action: { label: 'افتح النماذج', onClick: () => go('models') } });
+        onDone(); return;
+      }
       const n = (v) => Math.round(Number(v || 0) * M);
       await api.post('/api/admin/models', {
         id: f.id.trim(), name: f.name.trim() || f.id.trim(), group_id: f.group_id || null, context_length: Number(f.context_length), max_output: Number(f.max_output),
@@ -285,11 +302,26 @@ function PublishModal({ item, onClose, onDone }) {
       description={item ? <>من <b>{item.provider_name}</b>: <span className="font-mono ltr">{item.upstream_id}</span> — بيظهر للطلاب بشارة "جديد". بتقدر تعدّل كل شي لاحقاً من "النماذج والتوجيه".</> : null}
       footer={<>
         <Button variant="ghost" onClick={onClose}>إلغاء</Button>
-        <Button type="submit" form="abd-publish" variant="primary" icon={Rocket} loading={busy}>نشر</Button>
+        <Button type="submit" form="abd-publish" variant="primary" icon={Rocket} loading={busy}>{target ? 'أضف المسار' : 'نشر'}</Button>
       </>}>
       {f && (
         <form id="abd-publish" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-          <Field label="المعرّف (اللي بيكتبه الطالب)" hint="أحرف صغيرة وأرقام و - . _"><Input mono required value={f.id} onChange={set('id')} /></Field>
+          <div className="sm:col-span-2">
+            <Segmented full value={target ? 'route' : 'new'} onChange={(v) => setTarget(v === 'new' ? '' : (findTwin(models, { id: f.id, routes: [{ provider_id: item.provider_id, upstream_model: item.upstream_id }] })?.id || models[0]?.id || ''))}
+              options={[{ value: 'new', label: 'نموذج جديد' }, { value: 'route', label: 'مسار لنموذج موجود' }]} />
+            {target && (
+              <div className="mt-3 grid gap-2">
+                <Select value={target} onChange={setTarget} aria-label="النموذج الموجود"
+                  options={models.filter((m) => m.status !== 'archived').map((m) => ({ value: m.id, label: m.name, hint: m.id }))} />
+                <p className="text-[12.5px] text-muted">{item.provider_name} بينضاف كمزوّد إضافي لـ <b className="font-mono ltr">{target}</b> (احتياط أو أساسي حسب أولوية المزوّدين). الطلاب بيضلوا يطلبوا نفس الاسم.</p>
+              </div>
+            )}
+          </div>
+        </form>
+      )}
+      {f && !target && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Field label="المعرّف (اللي بيكتبه الطالب)" hint="أحرف صغيرة وأرقام و - . _"><Input mono required form="abd-publish" value={f.id} onChange={set('id')} /></Field>
           <Field label="الاسم"><Input value={f.name} onChange={set('name')} placeholder={f.id} /></Field>
           <Field label="الفئة"><Select value={f.group_id} onChange={set('group_id')} options={groupOpts} aria-label="الفئة" /></Field>
           <Field label="طريقة التسعير">
@@ -317,7 +349,7 @@ function PublishModal({ item, onClose, onDone }) {
             <Switch checked={f.reasoning} onCheckedChange={set('reasoning')} label="تفكير (reasoning)" />
             <Switch checked={f.vision} onCheckedChange={set('vision')} label="بيشوف الصور" />
           </div>
-        </form>
+        </div>
       )}
     </Modal>
   );
@@ -331,7 +363,12 @@ function LifecycleForm() {
   useEffect(() => { if (lc.data) setF({ archive_after_hours: lc.data.archive_after_hours ?? '', new_days: lc.data.new_days ?? '', missing_hours: lc.data.missing_hours ?? '' }); }, [lc.data]);
   const submit = async (e) => {
     e.preventDefault(); setBusy(true);
-    try { await api.put('/api/admin/lifecycle', Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Number(v)]))); toast.success('تم الحفظ'); }
+    try {
+      if (target) {
+        const r = await api.post(`/api/admin/models/${encodeURIComponent(target)}/routes`, { provider_id: item.provider_id, upstream_model: item.upstream_id });
+        toast.success(r.added ? `انضاف ${item.provider_name} كمسار لـ ${target}` : `${target} فيه هالمسار أصلاً`, { action: { label: 'افتح النماذج', onClick: () => go('models') } });
+        onDone(); return;
+      } await api.put('/api/admin/lifecycle', Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Number(v)]))); toast.success('تم الحفظ'); }
     catch (err) { toast.error(err.message); } finally { setBusy(false); }
   };
   const FIELDS = [

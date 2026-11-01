@@ -39,3 +39,34 @@ export const hostOf = (u) => String(u || '').replace(/^https:\/\//, '');
 export const NO_AUTOFILL = { autoComplete: 'off', spellCheck: false, autoCapitalize: 'off', autoCorrect: 'off', 'data-lpignore': 'true', 'data-1p-ignore': 'true', 'data-bwignore': 'true', 'data-form-type': 'other' };
 /** Visually masks a plain text input (no type=password → no "save password" prompt, no autofill). */
 export const SECRET_STYLE = { WebkitTextSecurity: 'disc', textSecurity: 'disc' };
+
+/** "anthropic/claude-sonnet-5.5:thinking" → "claude-sonnet-5-5": the same model across providers (mirrors src/prices.js). */
+export const modelKey = (x) => String(x || '').toLowerCase().split('/').pop().replace(/^~/, '')
+  .replace(/:(free|thinking|beta|extended|nitro|floor)$/, '').replace(/[._:\s]+/g, '-');
+// a multi-model bundle (auto pricing, e.g. `fast`) is never "the same model" as one of its members
+const keysOf = (m) => new Set((m.pricing_mode === 'auto' ? [m.id] : [m.id, ...(m.routes || []).map((r) => r.upstream_model)]).map(modelKey));
+/** An existing model that is (very likely) the same as `draft` — by id or by any upstream model id. */
+export function findTwin(models, draft) {
+  const want = keysOf(draft);
+  return (models || []).find((m) => m.id !== draft.id && m.status !== 'archived' && m.pricing_mode !== 'auto' && [...keysOf(m)].some((k) => want.has(k))) || null;
+}
+/** Groups of live models that look like duplicates of each other (merge candidates). */
+export function duplicateGroups(models) {
+  const live = (models || []).filter((m) => m.status !== 'archived' && m.pricing_mode !== 'auto');
+  const seen = new Set(), out = [];
+  for (const m of live) {
+    if (seen.has(m.id)) continue;
+    const ks = keysOf(m);
+    const grp = live.filter((o) => o.id === m.id || [...keysOf(o)].some((k) => ks.has(k)));
+    if (grp.length > 1) { grp.forEach((g) => seen.add(g.id)); out.push(grp); }
+  }
+  return out;
+}
+/** OpenRouter catalog lookup (exact id for OpenRouter routes, otherwise the normalized name). */
+export function orMatcher(catalog) {
+  const byId = new Map((catalog || []).map((m) => [m.id.toLowerCase(), m]));
+  const byKey = new Map();
+  const rank = (m) => (m.id.endsWith(':free') || (!m.price_in && !m.price_out) ? 2 : m.id.includes(':') ? 1 : 0);
+  for (const m of catalog || []) { const k = modelKey(m.id); const p = byKey.get(k); if (!p || rank(m) < rank(p)) byKey.set(k, m); }
+  return (r) => (r.provider_id === 'openrouter' && byId.get(String(r.upstream_model).toLowerCase())) || byKey.get(modelKey(r.upstream_model)) || null;
+}

@@ -1,12 +1,13 @@
 // Model editor dialog (shared by the Models panel and the provider "discover" import).
 // useModelEditor({ providers, getModels, onSaved }) → { openModel(m, isNew), editor }
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder, useDragControls } from 'motion/react';
-import { ArrowDown, ArrowUp, Brain, Cpu, Eye, GripVertical, Plus, Route, Trash2, TriangleAlert, ArrowLeft } from 'lucide-react';
+import { ArrowDown, ArrowUp, Brain, Combine, Cpu, Eye, GripVertical, Plus, Route, Sparkles, Trash2, TriangleAlert, ArrowLeft } from 'lucide-react';
 import { Badge, Button, Field, Input, Modal, Segmented, Select, Switch, Textarea, Tip, cn, toast, useConfirm } from '../../../ui/index.js';
 import { STATUS } from '../../../lib/format.js';
 import { api, useAdmin } from '../../ctx.js';
-import { ID_RE, M, toDollars, toMicro } from './shared.js';
+import { ID_RE, M, findTwin, orMatcher, toDollars, toMicro } from './shared.js';
+import MergeDialog from './MergeDialog.jsx';
 
 const USD = ['price_in', 'price_out', 'price_cache_read', 'price_cache_write', 'price_request'];
 const FIELDS = ['id', 'name', 'group_id', 'status', 'context_length', 'max_output', 'pricing_mode', ...USD, 'markup_pct', 'sort', 'description'];
@@ -15,15 +16,19 @@ const mkRoute = (r = {}) => ({
   k: ++rk, provider_id: r.provider_id || '', upstream_model: r.upstream_model || '', enabled: r.enabled !== 0 && r.enabled !== false,
   cost_in: r.cost_in != null ? String(r.cost_in / M) : '', cost_out: r.cost_out != null ? String(r.cost_out / M) : '',
   archived_at: r.archived_at, archived_reason: r.archived_reason, first_fail_at: r.first_fail_at,
+  // auto pricing: a hand-typed selling price (price_ref = manual) — otherwise OpenRouter's
+  manual: r.price_ref === 'manual', sell_in: r.price_ref === 'manual' ? toDollars(r.price_in) : '', sell_out: r.price_ref === 'manual' ? toDollars(r.price_out) : '',
 });
+const d3 = (v) => `$${(+(v / M).toFixed(4))}`;
 
 export const PRICING_MODES = [
   { value: 'token', label: 'لكل توكن', hint: 'جدولك لكل مليون توكن' },
   { value: 'request', label: 'لكل طلب', hint: 'سعر ثابت لكل طلب' },
   { value: 'provider', label: 'حسب المزوّد', hint: 'الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك' },
+  { value: 'auto', label: 'تلقائي', hint: 'كل طلب بينحسب بسعر OpenRouter للنموذج اللي فعلياً ردّ (من المسار اللي خدم). مثالي لنموذج مثل fast تحته عدة نماذج — الأسعار بتتحدث لحالها كل 30 دقيقة.' },
 ];
 
-function RouteRow({ r, i, n, custom, providers, onChange, onRemove, onMove }) {
+function RouteRow({ r, i, n, custom, providers, onChange, onRemove, onMove, auto, orHit, listId }) {
   const controls = useDragControls();
   const prov = providers.find((p) => p.id === r.provider_id);
   return (
@@ -42,7 +47,32 @@ function RouteRow({ r, i, n, custom, providers, onChange, onRemove, onMove }) {
         <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)]">
           <Select value={r.provider_id} onChange={(v) => onChange({ provider_id: v })} aria-label="المزوّد" placeholder="اختر مزوّد…"
             options={providers.map((p) => ({ value: p.id, label: p.name, hint: `${p.id}${p.archived_at ? ' · مؤرشف' : !p.enabled ? ' · موقوف' : ''}` }))} />
-          <Input mono value={r.upstream_model} onChange={(e) => onChange({ upstream_model: e.target.value })} placeholder="upstream model id" aria-label="معرّف النموذج عند المزوّد" />
+          <Input mono value={r.upstream_model} onChange={(e) => onChange({ upstream_model: e.target.value })} placeholder="upstream model id — اكتب لتشوف نماذج المزوّد" aria-label="معرّف النموذج عند المزوّد" list={listId} />
+          {auto && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-accent-soft/50 px-2.5 py-1.5 text-[12px] sm:col-span-2">
+              <Sparkles size={13} className="shrink-0 text-accent" />
+              {r.manual ? (
+                <>
+                  <span className="text-fg-2">سعر بيع يدوي $/1M</span>
+                  <Input type="number" step="any" min="0" inputMode="decimal" className="!h-7 !w-[80px] !px-2 text-[12.5px]" placeholder="دخل" value={r.sell_in} onChange={(e) => onChange({ sell_in: e.target.value })} aria-label="سعر البيع دخل" />
+                  <Input type="number" step="any" min="0" inputMode="decimal" className="!h-7 !w-[80px] !px-2 text-[12.5px]" placeholder="خرج" value={r.sell_out} onChange={(e) => onChange({ sell_out: e.target.value })} aria-label="سعر البيع خرج" />
+                  <button type="button" className="text-accent-ink underline-offset-2 hover:underline" onClick={() => onChange({ manual: false })}>رجّع لسعر OpenRouter</button>
+                </>
+              ) : orHit ? (
+                <>
+                  <span className="text-fg-2">بينحسب بسعر OpenRouter:</span>
+                  <b className="num ltr">{d3(orHit.price_in)} / {d3(orHit.price_out)}</b>
+                  <span className="truncate font-mono text-[11px] text-muted ltr">{orHit.id}</span>
+                  <button type="button" className="ms-auto text-muted underline-offset-2 hover:text-fg hover:underline" onClick={() => onChange({ manual: true, sell_in: String(+(orHit.price_in / M).toFixed(6)), sell_out: String(+(orHit.price_out / M).toFixed(6)) })}>سعر يدوي</button>
+                </>
+              ) : (
+                <>
+                  <span className="text-warn">{r.upstream_model ? 'ما لقيت هالنموذج على OpenRouter' : 'اختار النموذج لينحسب سعره'}</span>
+                  {r.upstream_model && <button type="button" className="ms-auto text-accent-ink underline-offset-2 hover:underline" onClick={() => onChange({ manual: true })}>حط سعر يدوي</button>}
+                </>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
             <Tip content="اختياري: كلفة المزوّد علينا لكل مليون توكن دخل (للمزوّدين حسب الاستخدام)">
               <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
@@ -68,7 +98,7 @@ function RouteRow({ r, i, n, custom, providers, onChange, onRemove, onMove }) {
   );
 }
 
-function ModelDialog({ state, onClose, providers, onSaved }) {
+function ModelDialog({ state, onClose, providers, onSaved, getModels }) {
   const { groups } = useAdmin();
   const confirm = useConfirm();
   const [f, setF] = useState(state.form);
@@ -82,7 +112,29 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
   const patch = (k, p) => setRoutes((rs) => rs.map((x) => (x.k === k ? { ...x, ...p } : x)));
   const move = (i, d) => setRoutes(() => { const a = [...shown]; const j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; });
   const mode = f.pricing_mode || 'token';
-  const free = mode === 'request' ? !(+f.price_request) : mode !== 'provider' && !(+f.price_in) && !(+f.price_out);
+  const [orCat, setOrCat] = useState(null);
+  const [provCat, setProvCat] = useState({});
+  const [merging, setMerging] = useState(false);
+  useEffect(() => {
+    if (mode !== 'auto' || orCat) return;
+    api.get('/api/admin/pricing/openrouter').then((d) => setOrCat(d.catalog || [])).catch((e) => { setOrCat([]); toast.error(`أسعار OpenRouter: ${e.message}`); });
+  }, [mode, orCat]);
+  useEffect(() => { // every provider's known model ids → suggestions under the upstream field
+    api.get('/api/admin/catalog').then((rows) => {
+      const by = {};
+      for (const r of rows || []) (by[r.provider_id] ||= []).push(r);
+      setProvCat(by);
+    }).catch(() => {});
+  }, []);
+  const orHit = useMemo(() => (orCat ? orMatcher(orCat) : () => null), [orCat]);
+  const autoRange = useMemo(() => {
+    if (mode !== 'auto') return null;
+    const ps = shown.filter((r) => r.enabled && r.upstream_model).map((r) => (r.manual ? { price_in: toMicro(r.sell_in), price_out: toMicro(r.sell_out) } : orHit(r))).filter(Boolean);
+    if (!ps.length) return null;
+    const ins = ps.map((p) => p.price_in), outs = ps.map((p) => p.price_out);
+    return { minIn: Math.min(...ins), maxIn: Math.max(...ins), minOut: Math.min(...outs), maxOut: Math.max(...outs), n: ps.length };
+  }, [mode, shown, orHit]);
+  const free = mode === 'auto' ? (orCat != null && !autoRange) : mode === 'request' ? !(+f.price_request) : mode !== 'provider' && !(+f.price_in) && !(+f.price_out);
 
   const save = async (e) => {
     e?.preventDefault();
@@ -100,11 +152,14 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
         routes: shown.map((r, i) => ({
           provider_id: r.provider_id, upstream_model: r.upstream_model.trim(), enabled: r.enabled, priority: i,
           cost_in: r.cost_in === '' ? null : toMicro(r.cost_in), cost_out: r.cost_out === '' ? null : toMicro(r.cost_out),
+          ...(mode === 'auto' && r.manual ? { price_in: toMicro(r.sell_in), price_out: toMicro(r.sell_out) } : {}),
         })).filter((r) => r.upstream_model),
       };
       if (body.routes.some((r) => !r.provider_id)) return toast.error('في مسار بلا مزوّد — اختار المزوّد أو امسح المسار');
-      await api.post('/api/admin/models', body);
-      toast.success('تم الحفظ');
+      const res = await api.post('/api/admin/models', body);
+      if (res.auto?.error) toast.warning(`انحفظ، بس أسعار OpenRouter ما انجابت: ${res.auto.error}`);
+      else if (res.auto?.unmatched?.length) toast.warning(`انحفظ — ${res.auto.unmatched.length} مسار ما إله سعر على OpenRouter (حطله سعر يدوي): ${res.auto.unmatched.join('، ')}`);
+      else toast.success('تم الحفظ');
       onClose(); onSaved?.(f.id);
     } catch (err) { toast.error(err.message); } finally { setBusy(false); }
   };
@@ -120,6 +175,7 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
       title={state.isNew ? 'نموذج جديد' : <>تعديل <span className="font-mono ltr text-[0.9em]">{f.id}</span></>}
       description="الأسعار بالدولار. النسبة الإضافية تنضاف فوق السعر."
       footer={<>
+        {!state.isNew && getModels && <Button variant="ghost" icon={Combine} className="me-auto" onClick={() => setMerging(true)}>دمج نماذج تانية فيه</Button>}
         <Button variant="ghost" onClick={onClose}>إلغاء</Button>
         <Button variant="primary" loading={busy} onClick={save}>حفظ</Button>
       </>}>
@@ -148,8 +204,15 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
             <Segmented size="sm" className="ms-auto" value={mode} onChange={set('pricing_mode')} options={PRICING_MODES.map(({ value, label }) => ({ value, label }))} />
           </div>
           <p className="mb-3 text-xs text-muted">{PRICING_MODES.find((x) => x.value === mode)?.hint}</p>
+          {mode === 'auto' && (
+            <div className="mb-3 rounded-xl border border-accent/25 bg-accent-soft/50 px-3 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+              {autoRange ? (
+                <>بيدفع الطالب حسب النموذج اللي ردّ: دخل <b className="num ltr">{d3(autoRange.minIn)}{autoRange.maxIn !== autoRange.minIn ? `–${d3(autoRange.maxIn)}` : ''}</b> · خرج <b className="num ltr">{d3(autoRange.minOut)}{autoRange.maxOut !== autoRange.minOut ? `–${d3(autoRange.maxOut)}` : ''}</b> لكل مليون توكن ({autoRange.n} نموذج). الطالب بيشوف "حتى" أغلى سعر.</>
+              ) : orCat == null ? 'عم جيب أسعار OpenRouter…' : 'ضيف مسارات تحت (مثلاً z.ai ← glm-5.3-flash، Nous ← deepseek-flash) وبينحسب سعر كل واحد لحاله.'}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {mode === 'request' ? num('price_request', '$ لكل طلب') : <>
+            {mode === 'auto' ? null : mode === 'request' ? num('price_request', '$ لكل طلب') : <>
               {num('price_in', '$ دخل /1M')}
               {num('price_out', '$ خرج /1M')}
               {num('price_cache_read', '$ قراءة كاش /1M')}
@@ -177,7 +240,7 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
           </div>
           <Reorder.Group axis="y" values={shown} onReorder={f.custom_order ? setRoutes : () => {}} as="div" className="flex flex-col gap-2">
             {shown.map((r, i) => (
-              <RouteRow key={r.k} r={r} i={i} n={shown.length} custom={!!f.custom_order} providers={providers}
+              <RouteRow key={r.k} r={r} i={i} n={shown.length} custom={!!f.custom_order} providers={providers} auto={mode === 'auto'} orHit={orHit(r)} listId={provCat[r.provider_id] ? `abd-up-${r.provider_id}` : undefined}
                 onChange={(p) => patch(r.k, p)} onRemove={() => setRoutes((rs) => rs.filter((x) => x.k !== r.k))} onMove={(d) => move(i, d)} />
             ))}
           </Reorder.Group>
@@ -185,7 +248,12 @@ function ModelDialog({ state, onClose, providers, onSaved }) {
           <Button size="sm" variant="soft" icon={Plus} className="mt-2.5" onClick={() => setRoutes((rs) => [...rs, mkRoute({ provider_id: providers[0]?.id })])}>إضافة مسار</Button>
         </section>
         <button type="submit" hidden />
+        {Object.entries(provCat).map(([pid, rows]) => (
+          <datalist key={pid} id={`abd-up-${pid}`}>{rows.map((m) => <option key={m.upstream_id} value={m.upstream_id}>{m.name || ''}</option>)}</datalist>
+        ))}
       </form>
+      {merging && <MergeDialog open models={getModels?.() || []} initial={{ into: f.id }} provName={(id) => providers.find((p) => p.id === id)?.name || id}
+        onClose={() => setMerging(false)} onDone={() => { setMerging(false); onClose(); onSaved?.(f.id); }} />}
     </Modal>
   );
 }
@@ -196,7 +264,10 @@ export function useModelEditor({ providers, getModels, onSaved }) {
   const seq = useRef(0);
   const openModel = useCallback((m, isNew = false) => {
     // importing a model that already exists must ADD its route as a fallback, never wipe the others
-    const ex = isNew && m.id ? (getModels?.() || []).find((x) => x.id === m.id) : null;
+    const all = getModels?.() || [];
+    let ex = isNew && m.id ? all.find((x) => x.id === m.id) : null;
+    // same model under a different id (e.g. claude-sonnet-5-5 from Anthropic vs anthropic/claude-sonnet-5.5 from Nous)
+    if (!ex && isNew && m.routes?.length) ex = findTwin(all, m);
     if (ex) {
       const extra = (m.routes || []).filter((r) => !ex.routes.some((o) => o.provider_id === r.provider_id && o.upstream_model === r.upstream_model));
       m = { ...ex, routes: [...ex.routes, ...extra] }; isNew = false;
@@ -210,7 +281,7 @@ export function useModelEditor({ providers, getModels, onSaved }) {
     if (!routes.length) routes.push(mkRoute({ provider_id: providers?.[0]?.id }));
     setState({ key: ++seq.current, open: true, form, routes, isNew });
   }, [getModels, providers]);
-  const editor = state ? <ModelDialog key={state.key} state={state} providers={providers || []} onClose={() => setState((s) => (s ? { ...s, open: false } : s))} onSaved={onSaved} /> : null;
+  const editor = state ? <ModelDialog key={state.key} state={state} providers={providers || []} getModels={getModels} onClose={() => setState((s) => (s ? { ...s, open: false } : s))} onSaved={onSaved} /> : null;
   return { openModel, editor };
 }
 
