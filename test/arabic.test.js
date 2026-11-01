@@ -129,6 +129,39 @@ test('OpenCode V2: plugin folder discovered under plugins/, stale tui.json/cli.j
   assert.equal(fs.existsSync(V2_PLUGIN_DIR(dir)), false);
 });
 
+test('OpenCode V2 frame: a line with an emoji is reordered as one sentence (the emoji moves as a 2-cell unit)', async () => {
+  const { installArabicDisplayPlugin } = await import('../cli/tools/opencode.js');
+  const dir = path.join(home, '.config', 'opencode-v2b');
+  const file = installArabicDisplayPlugin(dir, { v2: true });
+  const mod = await import(`${pathToFileURL(file).href}?t=${Date.now()}`);
+  class RGBA { constructor(b) { this.buffer = new Uint16Array(b); } }
+  const fns = [];
+  mod.default.setup({ renderer: { addPostProcessFn: (f) => fns.push(f), removePostProcessFn() {}, setCursorPosition() {} }, theme: { t: new RGBA([0, 0, 0, 0]) }, storage: { store: () => [{ on: true }, () => {}] }, keymap: { layer() {} }, ui: { toast: { show() {} } } });
+  // one row: "أنا 👋 بخير" + padding; the emoji takes 2 cells (second one is a continuation)
+  const w = 20, cells = [];
+  for (const g of new Intl.Segmenter().segment('أنا 👋 بخير')) { cells.push(g.segment); if (g.segment === '👋') cells.push(''); }
+  while (cells.length < w) cells.push(' ');
+  const screen = [...cells];
+  const enc = new TextEncoder();
+  const buf = {
+    width: w, height: 1,
+    buffers: {
+      char: Uint32Array.from(cells, (c) => (c === '' ? 0xC0000000 : c.codePointAt(0) > 127 ? 0x80000001 : c.codePointAt(0))),
+      fg: new Uint16Array(w * 4), bg: new Uint16Array(w * 4), attributes: new Uint32Array(w),
+    },
+    withResolvedChars(_o, cb) { const parts = cells.map((c) => enc.encode(c)); const lens = Uint8Array.from(parts, (p) => p.length); const bytes = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { bytes.set(p, o); o += p.length; } return cb(bytes, null, lens); },
+    setCell(x, _y, s) { screen[x] = s; },
+    drawText(s, x) { screen[x] = s; screen[x + 1] = ''; },
+  };
+  fns[0](buf);
+  assert.equal(screen.join('').trimEnd(), '         ﺮﻴﺨﺑ 👋 ﺎﻧﺃ'); // right-aligned; visual: بخير on the left, then 👋, then أنا on the right
+  // V1 has no per-cell text, only the whole frame text: same result
+  screen.splice(0, w, ...cells);
+  const v1 = { ...buf, withResolvedChars: undefined, getRealCharBytes: () => enc.encode(cells.join('')) };
+  fns[0](v1);
+  assert.equal(screen.join('').trimEnd(), '         ﺮﻴﺨﺑ 👋 ﺎﻧﺃ');
+});
+
 test('bidi: Arabic paragraphs align right inside their box; the cursor follows the visual order', async () => {
   const { fixRow, cursorColumn, displayLine } = await import('../cli/bidi.js');
   const box = '┃  مرحبا كيفك            │';

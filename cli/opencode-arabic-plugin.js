@@ -7,15 +7,47 @@ import fs from 'node:fs';
 export const PLUGIN_FILE = 'abdalgani-arabic-display.js';
 
 const WRAPPER = String.raw`
-const FLAGS = 0xC0000000, CONT = 0xC0000000;
+// top 2 bits of a cell: 2 = grapheme id (non-ASCII text), 3 = second half of a wide char. (>>> keeps it
+// unsigned — a plain & gives a negative number that never equals 0xC0000000.)
+const isCont = (c) => (c >>> 30) === 3;
+const isGrapheme = (c) => (c >>> 30) === 2;
 const FRAME = 0x2502; // stands in for cells that must never move (wide chars and their continuation)
 const decoder = new TextDecoder();
 const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter() : null;
 const graphemes = (s) => (segmenter ? Array.from(segmenter.segment(s), (x) => x.segment) : Array.from(s));
 
+const OBJ = 0xFFFC; // stands in for a wide/composite neutral (emoji…): it moves with the sentence as one unit
+
+// Per-cell text of the frame. V2 hands it over exactly (resolved chars + byte length per cell);
+// V1 only has the whole text with line breaks, split into graphemes and matched to the cells.
+function cellTexts(buf, w, h, ch) {
+  if (typeof buf.withResolvedChars === 'function') {
+    return buf.withResolvedChars({ addLineBreaks: false, cellLengths: true }, (bytes, _b, lens) => {
+      const out = new Array(w * h);
+      for (let i = 0, off = 0; i < w * h; i++) { const n = lens[i]; out[i] = n ? decoder.decode(bytes.subarray(off, off + n)) : ''; off += n; }
+      return out;
+    });
+  }
+  const lines = decoder.decode(buf.getRealCharBytes(true)).split('\n');
+  const out = new Array(w * h).fill('');
+  for (let y = 0; y < h; y++) {
+    const gs = graphemes(lines[y] || ''), o = y * w;
+    let gi = 0;
+    for (let x = 0; x < w; x++) {
+      if (isCont(ch[o + x])) continue;
+      if (gi >= gs.length) { out[o] = null; break; } // didn't line up: leave the row alone
+      out[o + x] = gs[gi++];
+    }
+    if (gi !== gs.length) out[o] = null;
+  }
+  return out;
+}
+
 // OpenTUI keeps non-ASCII text (Arabic included) as ids into a grapheme pool, so the real text is
-// read once per frame with getRealCharBytes, and changed cells are written back with setCell —
-// the native side then keeps the pool's reference counts right.
+// read once per frame, and changed cells are written back with setCell / drawText — the native
+// side then keeps the pool's reference counts right.
+// A wide cell (emoji, CJK) is one unit of two cells: rows are reordered unit by unit, then laid
+// back out cell by cell, so an emoji travels with its sentence instead of splitting it.
 function fixFrame(buf, RGBA, cursor) {
   const w = buf.width, h = buf.height, B = buf.buffers;
   if (!w || !h) return;
@@ -24,38 +56,45 @@ function fixFrame(buf, RGBA, cursor) {
   const rows = [];
   for (let y = 0; y < h; y++) {
     const o = y * w;
-    for (let x = 0; x < w; x++) { const c = ch[o + x]; if (((c & FLAGS) && (c & FLAGS) !== CONT) || isRtl(c)) { rows.push(y); break; } }
+    for (let x = 0; x < w; x++) { const c = ch[o + x]; if (isGrapheme(c) || isRtl(c)) { rows.push(y); break; } }
   }
   if (!rows.length) return;
-  const lines = decoder.decode(buf.getRealCharBytes(true)).split('\n');
+  const text = cellTexts(buf, w, h, ch);
   for (const y of rows) {
-    const o = y * w, gs = graphemes(lines[y] || '');
-    const cps = new Array(w), extra = new Array(w), str = new Array(w);
-    let gi = 0, rtl = false;
+    const o = y * w;
+    if (text[o] === null) continue;
+    const units = [], unitOf = new Array(w);
+    let rtl = false;
     for (let x = 0; x < w; x++) {
-      const c = ch[o + x];
-      if ((c & FLAGS) === CONT) { cps[x] = FRAME; continue; }
-      const g = gs[gi++];
-      if (g === undefined) { gi = -1; break; }
-      str[x] = g;
-      const cp = g.codePointAt(0), len = cp > 0xFFFF ? 2 : 1;
-      const wide = x + 1 < w && (ch[o + x + 1] & FLAGS) === CONT;
-      if (isRtl(cp)) { cps[x] = cp; extra[x] = g.slice(len); rtl = true; } // letter (+ its harakat)
-      else cps[x] = wide || g.length > len ? FRAME : cp;
+      if (isCont(ch[o + x])) { unitOf[x] = units.length - 1; if (units.length) units[units.length - 1].width++; continue; }
+      const g = text[o + x] || ' ', cp = g.codePointAt(0), len = cp > 0xFFFF ? 2 : 1;
+      unitOf[x] = units.length;
+      if (isRtl(cp)) { rtl = true; units.push({ x, width: 1, cp, str: g, extra: g.slice(len) }); continue; }
+      const glued = g.length > len && !isFrame(cp);
+      units.push({ x, width: 1, cp: glued ? (isLtr(cp) ? 0x41 : OBJ) : cp, str: g, keep: glued });
     }
-    if (!rtl || gi !== gs.length) continue; // nothing to do, or the text didn't line up with the cells
-    const bgKey = new Array(w);
-    for (let x = 0; x < w; x++) { const i = (o + x) * sb; bgKey[x] = bg[i] + ',' + bg[i + 1] + ',' + bg[i + 2] + ',' + bg[i + 3]; }
+    if (!rtl) continue;
+    for (const u of units) if (u.width > 1 && !isFrame(u.cp)) { u.keep = true; if (u.cp !== 0x41) u.cp = isLtr(u.cp) ? 0x41 : OBJ; }
+    const n = units.length, cps = units.map((u) => u.cp);
+    const bgKey = units.map((u) => { const i = (o + u.x) * sb; return bg[i] + ',' + bg[i + 1] + ',' + bg[i + 2] + ',' + bg[i + 3]; });
     const r = fixRow(cps, { bg: bgKey });
     if (!r) continue;
-    if (cursor && cursor.y === y) cursor.x = cursorColumn(r, cursor.x);
+    const startAt = new Array(n); // visual unit index → its first cell
+    for (let v = 0, X = 0; v < n; v++) { startAt[v] = X; X += units[r.map[v]].width; }
+    if (cursor && cursor.y === y) {
+      const cx = cursor.x;
+      const ui = cx < w ? unitOf[cx] : n + (cx - w);
+      const vu = cursorColumn(r, ui);
+      cursor.x = vu < n ? startAt[vu] : w + (vu - n);
+    }
     const F = fg.slice(o * sf, (o + w) * sf), G = bg.slice(o * sb, (o + w) * sb), A = at.slice(o * sa, (o + w) * sa);
-    for (let x = 0; x < w; x++) {
-      const s = r.map[x];
-      if (cps[s] === FRAME && s === x) continue;
-      const out = cps[s] === FRAME ? str[s] : String.fromCodePoint(r.chars[x]) + (extra[s] || '');
-      if (s === x && out === str[x]) continue;
-      buf.setCell(x, y, out, new RGBA(F.subarray(s * sf, s * sf + 4)), new RGBA(G.subarray(s * sb, s * sb + 4)), A[s * sa]);
+    for (let v = 0; v < n; v++) {
+      const u = units[r.map[v]], X = startAt[v], sx = u.x;
+      const out = u.keep || isFrame(u.cp) || u.cp === FRAME ? u.str : String.fromCodePoint(r.chars[v]) + (u.extra || '');
+      if (X === sx && out === (text[o + sx] || ' ')) continue;
+      const f = new RGBA(F.subarray(sx * sf, sx * sf + 4)), b = new RGBA(G.subarray(sx * sb, sx * sb + 4)), m = A[sx * sa];
+      if (u.width > 1 && typeof buf.drawText === 'function') buf.drawText(out, X, y, f, b, m);
+      else buf.setCell(X, y, out, f, b, m);
     }
   }
 }
