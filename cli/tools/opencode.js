@@ -30,20 +30,50 @@ function writeArabicFile(dir, enabled) {
 }
 
 // ── Arabic DISPLAY inside OpenCode itself (any terminal): a TUI plugin that reorders + joins Arabic on
-// screen. Nothing is sent to the model. Registered in tui.json; /rtl inside OpenCode toggles it.
+// screen. Nothing is sent to the model. V1: listed in tui.json; V2: plugins/abdalgani-arabic/. /rtl toggles it.
 import { PLUGIN_FILE, pluginSource } from '../opencode-arabic-plugin.js';
 
-export function installArabicDisplayPlugin(dir) {
+const V2_SERVER_STUB = "// abdalgani-setup: the Arabic display lives in tui.js — nothing runs on the server\nexport default { id: 'abdalgani.arabic-display', setup() {} };\n";
+export const V2_PLUGIN_DIR = (dir) => path.join(dir, 'plugins', 'abdalgani-arabic');
+
+const ours = (p) => String(Array.isArray(p) ? p[0] : (p && typeof p === 'object' ? p.package : p)).includes(PLUGIN_FILE);
+
+/** Drop our entry from a plugin list in a JSON(C) file (no-op when absent). */
+function dropPluginEntry(file, key) {
+  if (!fs.existsSync(file)) return;
+  const cfg = readJson(file, null);
+  if (!cfg || !Array.isArray(cfg[key]) || !cfg[key].some(ours)) return;
+  cfg[key] = cfg[key].filter((p) => !ours(p));
+  writeJson(file, cfg);
+}
+
+/**
+ * V1 loads TUI plugins listed in tui.json (`plugin`, a file:// spec).
+ * V2 ignores tui.json (it only migrates it once into cli.json) and discovers plugin folders under
+ * <config>/plugins/<name>/ with a `tui.js` entry — so that's where V2 gets it, with no config edit.
+ * The same file works for both (it exports `tui` for V1 and `setup` for V2).
+ */
+export function installArabicDisplayPlugin(dir, { v2 = false } = {}) {
+  const jsonc = path.join(dir, 'tui.jsonc'), json = path.join(dir, 'tui.json');
+  const tuiFile = !fs.existsSync(json) && fs.existsSync(jsonc) ? jsonc : json;
+  const v2Dir = V2_PLUGIN_DIR(dir);
+  if (v2) {
+    const file = path.join(v2Dir, 'tui.js');
+    writeText(file, pluginSource(), { backup: false });
+    // the server only lists a plugin folder that has a server entry; this one does nothing
+    writeText(path.join(v2Dir, 'index.js'), V2_SERVER_STUB, { backup: false });
+    dropPluginEntry(tuiFile, 'plugin');                       // would be migrated into cli.json as a broken entry
+    dropPluginEntry(path.join(dir, 'cli.json'), 'plugins');   // left there by an earlier migration
+    return file;
+  }
+  fs.rmSync(v2Dir, { recursive: true, force: true });
   const file = path.join(dir, 'abdalgani', PLUGIN_FILE);
   writeText(file, pluginSource(), { backup: false });
-  const spec = pathToFileURL(file).href;
-  const jsonc = path.join(dir, 'tui.jsonc'), json = path.join(dir, 'tui.json');
-  const target = !fs.existsSync(json) && fs.existsSync(jsonc) ? jsonc : json;
-  const tui = readJson(target, {});
-  const plugins = (Array.isArray(tui.plugin) ? tui.plugin : []).filter((p) => !String(Array.isArray(p) ? p[0] : p).includes(PLUGIN_FILE));
+  const tui = readJson(tuiFile, {});
+  const plugins = (Array.isArray(tui.plugin) ? tui.plugin : []).filter((p) => !ours(p));
   tui.$schema = tui.$schema || 'https://opencode.ai/tui.json';
-  tui.plugin = [...plugins, spec];
-  writeJson(target, tui);
+  tui.plugin = [...plugins, pathToFileURL(file).href];
+  writeJson(tuiFile, tui);
   return file;
 }
 
@@ -106,7 +136,7 @@ export function configureOpenCode(ctx) {
   applyArabic(out, { v2, arabicDefault: !!ctx.arabic, dir });
   writeArabicFile(dir, !!ctx.arabic);
   writeJson(file, out);
-  installArabicDisplayPlugin(dir);
+  installArabicDisplayPlugin(dir, { v2 });
   log.dim(`   ${tr('صيغة الإعداد', 'Config schema')}: OpenCode V${v2 ? 2 : 1} · ${tr('النموذج', 'model')}: ${PROVIDER_ID}/${ctx.model}`);
   log.dim(`   ${tr('العربية', 'Arabic')}: ${tr('عرض صحيح داخل OpenCode بأي طرفية ✓ (/rtl للإيقاف)', 'correct display inside OpenCode in any terminal ✓ (/rtl toggles)')} · /ar ${tr('و', 'and')} /en ${ctx.arabic ? tr('· عربي افتراضياً ✓', '· Arabic by default ✓') : ''}`);
 }

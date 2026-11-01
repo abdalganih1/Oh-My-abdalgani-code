@@ -60,16 +60,15 @@ function fixFrame(buf, RGBA, cursor) {
   }
 }
 
-const tui = async (api) => {
-  if (process.env.ABDALGANI_ARABIC_DISPLAY === '0') return;
-  const renderer = api.renderer;
-  let on = api.kv.get('abdalgani.arabic_display', true);
-  const RGBA = api.theme.current.text.constructor;
+// The renderer hook, shared by both OpenCode generations. Returns its cleanup.
+function start(renderer, RGBA, isOn) {
   // The text box puts the terminal cursor at its LOGICAL column while drawing (before our hook);
   // remember that, and after reordering move the cursor to where that spot now is on screen.
   // V1 sets it from JS (caught by the wrapper below); V2 may set it natively, so the renderer's
   // cursor state is read too — anything that isn't the position we applied ourselves is fresh.
-  const setCursor = renderer.setCursorPosition.bind(renderer);
+  const own = Object.prototype.hasOwnProperty.call(renderer, 'setCursorPosition');
+  const prev = renderer.setCursorPosition;
+  const setCursor = prev.bind(renderer);
   let logical = null, applied = null;
   renderer.setCursorPosition = (x, y, visible = true) => { logical = { x, y, visible }; applied = null; setCursor(x, y, visible); };
   const readCursor = () => {
@@ -79,7 +78,7 @@ const tui = async (api) => {
   };
   const restore = () => { if (applied && logical) { setCursor(logical.x, logical.y, logical.visible); applied = null; } };
   const fn = (buf) => {
-    if (!on) { restore(); return; }
+    if (!isOn()) { restore(); return; }
     readCursor();
     const cur = logical && logical.visible ? { x: logical.x - 1, y: logical.y - 1 } : null; // 1-based → cells
     try { fixFrame(buf, RGBA, cur); } catch { if (cur) cur.x = logical.x - 1; }
@@ -89,20 +88,72 @@ const tui = async (api) => {
     else if (!applied || applied.x !== want || applied.y !== logical.y) { setCursor(want, logical.y, true); applied = { x: want, y: logical.y }; }
   };
   renderer.addPostProcessFn(fn);
-  api.lifecycle.onDispose(() => { renderer.removePostProcessFn(fn); delete renderer.setCursorPosition; });
+  return () => {
+    renderer.removePostProcessFn(fn);
+    if (own) renderer.setCursorPosition = prev; else delete renderer.setCursorPosition;
+    renderer.requestRender?.();
+  };
+}
+
+const off = () => process.env.ABDALGANI_ARABIC_DISPLAY === '0';
+const TOGGLE = (on) => (on ? 'عرض العربي مفعّل' : 'Arabic display off');
+
+// The colour class (OpenTUI RGBA) is taken from any theme colour, so the plugin needs no imports.
+function findRGBA(theme, depth = 0) {
+  if (!theme || typeof theme !== 'object' || depth > 3) return null;
+  if (theme.buffer instanceof Uint16Array || theme.buffer instanceof Float32Array) return theme.constructor;
+  for (const v of Object.values(theme)) { const c = findRGBA(v, depth + 1); if (c) return c; }
+  return null;
+}
+
+// OpenCode V1: { id, tui(api) }, loaded from tui.json
+const tui = async (api) => {
+  if (off()) return;
+  let on = api.kv.get('abdalgani.arabic_display', true);
+  const stop = start(api.renderer, api.theme.current.text.constructor, () => on);
+  api.lifecycle.onDispose(stop);
   // /rtl toggles it (in case a screen looks odd), remembered between runs
   api.command?.register(() => [{
     title: on ? 'Arabic display: off (عرض العربي: إيقاف)' : 'Arabic display: on (عرض العربي: تشغيل)',
     value: 'abdalgani.rtl', category: 'abdalgani', slash: { name: 'rtl' },
     onSelect: (dialog) => {
       on = !on; api.kv.set('abdalgani.arabic_display', on); dialog?.clear?.();
-      api.ui.toast({ variant: 'info', message: on ? 'عرض العربي مفعّل' : 'Arabic display off' });
-      renderer.requestRender?.();
+      api.ui.toast({ variant: 'info', message: TOGGLE(on) });
+      api.renderer.requestRender?.();
     },
   }]);
 };
 
-export default { id: 'abdalgani-arabic-display', tui };
+// OpenCode V2: { id, setup(context) } in <config>/plugins/<name>/tui.js, discovered automatically
+const setup = (ctx) => {
+  if (off()) return;
+  const RGBA = findRGBA(ctx.theme);
+  if (!RGBA) return;
+  let on = true, save = null;
+  try {
+    const [state, update] = ctx.storage.store('display', { initial: { on: true } });
+    on = state?.on !== false;
+    save = (v) => update((d) => { d.on = v; });
+  } catch {}
+  const stop = start(ctx.renderer, RGBA, () => on);
+  try {
+    ctx.keymap.layer(() => ({
+      mode: 'global',
+      commands: [{
+        id: 'abdalgani.rtl', title: 'Arabic display on/off (عرض العربي)', group: 'abdalgani', palette: true, slash: { name: 'rtl' },
+        run: () => {
+          on = !on;
+          try { save?.(on); } catch {}
+          try { ctx.ui.toast.show({ message: TOGGLE(on), variant: 'info' }); } catch {}
+          ctx.renderer.requestRender?.();
+        },
+      }],
+    }));
+  } catch {}
+  return stop;
+};
+
+export default { id: 'abdalgani.arabic-display', tui, setup };
 `;
 
 /** The plugin file's text: bidi.js (exports dropped) + the renderer hook. */

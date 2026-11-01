@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'abd-home-'));
 process.env.HOME = home; process.env.USERPROFILE = home;
@@ -86,11 +87,46 @@ test('OpenCode Arabic display plugin: written + registered in tui.json, keeps ot
   assert.equal(tui.plugin[0], 'some-plugin');
   assert.match(tui.plugin[1], /^file:\/\/.*abdalgani-arabic-display\.js$/);
   const mod = await import(`${tui.plugin[1]}?t=${Date.now()}`);
-  assert.equal(mod.default.id, 'abdalgani-arabic-display');
+  assert.equal(mod.default.id, 'abdalgani.arabic-display');
   assert.equal(typeof mod.default.tui, 'function');
+  assert.equal(typeof mod.default.setup, 'function'); // V2 shape too
   assert.ok(fs.readFileSync(file, 'utf8').includes('function fixRow'));
   // inside our WezTerm (it does bidi itself) the plugin stands down
   assert.match(ar.WEZTERM_LUA, /ABDALGANI_ARABIC_DISPLAY = '0'/);
+});
+
+test('OpenCode V2: plugin folder discovered under plugins/, stale tui.json/cli.json entries removed, setup hooks the renderer', async () => {
+  const { installArabicDisplayPlugin, V2_PLUGIN_DIR } = await import('../cli/tools/opencode.js');
+  const dir = path.join(home, '.config', 'opencode-v2');
+  fs.mkdirSync(dir, { recursive: true });
+  const old = 'file:///x/abdalgani/abdalgani-arabic-display.js';
+  fs.writeFileSync(path.join(dir, 'tui.json'), JSON.stringify({ theme: 'nord', plugin: ['keep-me', old] }));
+  fs.writeFileSync(path.join(dir, 'cli.json'), JSON.stringify({ theme: { name: 'nord' }, plugins: ['keep-me', old] }));
+  const file = installArabicDisplayPlugin(dir, { v2: true });
+  assert.equal(file, path.join(V2_PLUGIN_DIR(dir), 'tui.js'));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tui.json'), 'utf8')).plugin, ['keep-me']);
+  const cli = JSON.parse(fs.readFileSync(path.join(dir, 'cli.json'), 'utf8'));
+  assert.deepEqual(cli.plugins, ['keep-me']);
+  assert.equal(cli.theme.name, 'nord');
+  const server = await import(`${pathToFileURL(path.join(V2_PLUGIN_DIR(dir), 'index.js')).href}?t=${Date.now()}`);
+  assert.equal(server.default.id, 'abdalgani.arabic-display');
+  const mod = await import(`${pathToFileURL(file).href}?t=${Date.now()}`);
+  // fake V2 context: setup adds a post-process hook + /rtl, and its cleanup removes them
+  class RGBA { constructor(b) { this.buffer = new Uint16Array(b); } }
+  const fns = [], layers = [];
+  const renderer = { addPostProcessFn: (f) => fns.push(f), removePostProcessFn: (f) => fns.splice(fns.indexOf(f), 1), setCursorPosition() {} };
+  const stop = mod.default.setup({
+    renderer, theme: { text: { base: new RGBA([1, 2, 3, 4]) } },
+    storage: { store: () => [{ on: true }, () => {}] }, keymap: { layer: (f) => layers.push(f()) }, ui: { toast: { show() {} } },
+  });
+  assert.equal(fns.length, 1);
+  assert.equal(layers[0].commands[0].slash.name, 'rtl');
+  stop();
+  assert.equal(fns.length, 0);
+  assert.equal(Object.hasOwn(renderer, 'setCursorPosition'), true); // the original is put back
+  // switching back to V1 removes the V2 folder
+  installArabicDisplayPlugin(dir);
+  assert.equal(fs.existsSync(V2_PLUGIN_DIR(dir)), false);
 });
 
 test('bidi: Arabic paragraphs align right inside their box; the cursor follows the visual order', async () => {
