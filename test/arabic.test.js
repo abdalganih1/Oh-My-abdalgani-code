@@ -201,3 +201,9 @@ test('first screen: the terminal mode picked there drives every Arabic string an
   assert.equal(fs.existsSync(V2_PLUGIN_DIR(dir)), false);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tui.json'), 'utf8')).plugin, ['keep-me']);
 });
+
+test('bidi: punctuation at the end of an English word inside brackets stays with the word', async () => {
+  const { displayLine } = await import('../cli/bidi.js');
+  assert.equal(displayLine('مفتاح (sk-abd-…)'), '(sk-abd-…) ' + displayLine('مفتاح'));
+  assert.equal(displayLine('افتح file.js.'), '.file.js ' + displayLine('افتح')); // a sentence-final dot still goes to the end
+});

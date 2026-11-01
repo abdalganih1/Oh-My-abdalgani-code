@@ -68,6 +68,15 @@ export function visualOrder(cps) {
   const base = firstStrong === 'R' ? 'R' : 'L';
   // resolve neutrals: between equal sides → that side (digits count as L), else the base direction
   const dir = t.map((x) => (x === 'D' ? 'L' : x));
+  // punctuation glued to the end of an LTR word right before a closing bracket stays with the word:
+  // "(sk-abd-…)" — plain UBA would push "-…" to the far side of the word
+  const CLOSE = new Set([0x29, 0x5D, 0x7D]), OPEN = new Set([0x28, 0x5B, 0x7B]);
+  for (let i = 1; i < n; i++) {
+    if (dir[i] !== 'N' || dir[i - 1] !== 'L') continue;
+    let j = i; while (j < n && dir[j] === 'N' && !isSpace(cps[j]) && !CLOSE.has(cps[j]) && !OPEN.has(cps[j])) j++;
+    if (j > i && j < n && CLOSE.has(cps[j])) for (let k = i; k < j; k++) dir[k] = 'L';
+    i = j;
+  }
   for (let i = 0; i < n; i++) {
     if (dir[i] !== 'N') continue;
     let j = i; while (j < n && dir[j] === 'N') j++;
