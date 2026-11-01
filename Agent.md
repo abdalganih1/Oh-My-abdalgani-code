@@ -11,6 +11,8 @@ setup.js                  نقطة الدخول (npm start) → cli/main.js
 cli/
   main.js                 الوسائط، القوائم التفاعلية، الوضع headless، --status/--sync
   arabic.js               حزمة العربي (WezTerm + launchers + /ar)
+  bidi.js                 ترتيب + وصل الأحرف العربية لسطر خلايا (بدون imports — بينسخ جوا البلغن)
+  opencode-arabic-plugin.js  بلغن TUI لـ OpenCode: بيصلّح العربي على الشاشة (postProcess)
   schedule.js             التحديث التلقائي (schtasks / cron / systemd)
   core.js                 ثوابت (BASE_URL, ALIASES)، ملفات، مفتاح محفوظ، persistEnv
   gateway.js              /v1/models + /api/me للتحقق من المفتاح وجلب نماذج الطالب
@@ -58,6 +60,7 @@ test/cli.test.js          اختبارات كتّاب الإعداد
 - **compat لكل مزوّد** بدل حالات خاصة بالكود: أي مزوّد جديد يرفض بارامتر ← عدّل `providers.compat` (أو أضف مفتاح جديد لـ `applyCompat` مع اختبار).
 - **OpenCode بالعربي:** أوامر `/ar` و `/en` (`commands` بـ V2، `command` بـ V1) + ملف `abdalgani-arabic.md` بـ `instructions` عند اختيار "عربي افتراضياً".
 - **دورة الحياة** (`gateway/src/lifecycle.js`): Cron كل 30د. لا تؤرشف إلا بفشل متواصل ≥ 6 ساعات بلا نجاح (ليميت 5 ساعات شائع). دوال تقبل `now` للاختبار — اختبر أي تعديل بـ `gateway/test/lifecycle.test.js`.
+- **عرض العربي داخل OpenCode** (`cli/opencode-arabic-plugin.js` + `cli/bidi.js`): بلغن TUI بينكتب بـ `~/.config/opencode/abdalgani/` وبيتسجّل بـ `tui.json`. بيشتغل بـ `renderer.addPostProcessFn`: بيقرأ النص الحقيقي (`getRealCharBytes`، لأن OpenTUI بيخزّن العربي كـ grapheme ids) وبيكتب الخلايا المعدّلة بـ `setCell`. الشاشة بس، النص المرسل للنموذج ما بيتغيّر. `/rtl` للتبديل، و`ABDALGANI_ARABIC_DISPLAY=0` بيوقفه (إعداد WezTerm تبعنا بيحطه لأنه WezTerm بيعمل bidi لحاله).
 - **حزمة العربي** (`cli/arabic.js`): العرض عبر WezTerm (bidi + shaping) + أوامر `<tool>-ar`، والردود بـ /ar /en. Claude Code مستثنى. لا تكتب فوق إعداد WezTerm خاص بالمستخدم.
 - **التحديث التلقائي عند الطالب** (`cli/schedule.js`): Task Scheduler (ويندوز) / cron أو systemd timer (لينكس/ماك) ← `--sync --quiet` يكتب فقط عند تغيّر الكتالوج.
 - **التقارير** (`gateway/src/reports.js` + `web/src/ui/charts.jsx`): SVG بدون مكتبات، حسب قواعد مهارة dataviz (محور واحد، tooltip لكل علامة، جدول مع كل رسم، ألوان مُتحقق منها فاتح/داكن). أي رقم مالي = µ$ صحيح. التواريخ داخل نص عربي تُعزل بـ LRI/PDI.

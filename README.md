@@ -51,7 +51,7 @@ irm https://api.abdalgani.com/install.ps1 | iex; abdalgani-setup
 
 | الأداة | ملاحظة |
 |---|---|
-| **OpenCode 2** ⭐ | الأنسب. فيه حزمة العربي (`/ar` و `/en`) |
+| **OpenCode 2** ⭐ | الأنسب. بيعرض العربي صح بأي طرفية، وفيه `/ar` و `/en` |
 | **Claude Code** ⭐ | Opus ← `abd-think` · Sonnet ← `abd-main` · Haiku ← `abd-fast` |
 | **Hermes Agent** ⭐ | التبديل داخله: `/model custom:abdalgani:<id>` |
 | Codex CLI · Kilo CLI · Pi · Qwen Code · Goose · Aider · OpenClaw · Kimi Code | كلها مدعومة |
@@ -67,8 +67,11 @@ abdalgani-setup --auto-sync on   # تحديث تلقائي كل 6 ساعات (م
 
 ### 🇸🇦 العربي
 
+- **OpenCode بيعرض العربي صح بأي طرفية:** اللي بتكتبه وردود النموذج بيظهروا بالاتجاه الصحيح والأحرف موصولة (مش "ابحرم").
+  هالشي بيصير بالشاشة بس، يعني النص اللي بيوصل للنموذج ما بيتغيّر. إذا شاشة طلعت غريبة، اكتب `/rtl` لتوقفه أو ترجّعه.
+  إذا كنت مثبّت من قبل، أعد أمر التثبيت (بيحدّث الأداة وبيضيفه).
 - **الرد بالعربي:** داخل OpenCode و Pi اكتب `/ar` لترجع الردود بالعربي (والكود يضل إنجليزي). و`/en` بترجّعها إنجليزي.
-- **العرض الصحيح بالطرفية:** الطرفيات العادية بتقطّع الأحرف العربية. `abdalgani-setup --arabic-display` بيثبّت WezTerm مضبوط، وبيعطيك أوامر `opencode-ar` و`pi-ar` و`hermes-ar`.
+- **باقي الأدوات (Pi، Hermes…):** `abdalgani-setup --arabic-display` بيثبّت WezTerm مضبوط، وبيعطيك أوامر `pi-ar` و`hermes-ar`.
 
 ### استخدام مباشر من الكود (أي SDK)
 

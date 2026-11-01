@@ -61,3 +61,34 @@ test('systemd fallback units (distros without cron)', async () => {
   assert.match(u.timer, /OnUnitActiveSec=6h/);
   assert.match(u.timer, /WantedBy=timers\.target/);
 });
+
+test('bidi: Arabic rows are reordered + joined; English words and numbers keep their order', async () => {
+  const { displayLine, fixRow } = await import('../cli/bidi.js');
+  assert.equal(displayLine('مرحبا'), 'ﺎﺒﺣﺮﻣ');
+  assert.equal(displayLine('استخدم git الآن'), 'ﻥﺂﻟﺍ git ﻡﺪﺨﺘﺳﺍ');
+  assert.equal(displayLine('العدد 123 هنا'), 'ﺎﻨﻫ 123 ﺩﺪﻌﻟﺍ');
+  assert.equal(displayLine('(تجربة)'), '(ﺔﺑﺮﺠﺗ)'); // brackets mirrored
+  assert.equal(displayLine('run npm install ثم شغل'), 'run npm install ﻞﻐﺷ ﻢﺛ'); // English sentence: only the Arabic run flips
+  assert.equal(displayLine('│ مرحبا بك   │ sidebar'), '│ ﻚﺑ ﺎﺒﺣﺮﻣ   │ sidebar'); // UI frames + column gaps stay put
+  assert.equal(fixRow(Array.from('plain english', (c) => c.codePointAt(0))), null);
+});
+
+test('OpenCode Arabic display plugin: written + registered in tui.json, keeps other plugins, loads as a TUI module', async () => {
+  const { installArabicDisplayPlugin } = await import('../cli/tools/opencode.js');
+  const dir = path.join(home, '.config', 'opencode');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'tui.json'), JSON.stringify({ theme: 'nord', plugin: ['some-plugin'] }));
+  const file = installArabicDisplayPlugin(dir);
+  installArabicDisplayPlugin(dir); // idempotent
+  const tui = JSON.parse(fs.readFileSync(path.join(dir, 'tui.json'), 'utf8'));
+  assert.equal(tui.theme, 'nord');
+  assert.equal(tui.plugin.length, 2);
+  assert.equal(tui.plugin[0], 'some-plugin');
+  assert.match(tui.plugin[1], /^file:\/\/.*abdalgani-arabic-display\.js$/);
+  const mod = await import(`${tui.plugin[1]}?t=${Date.now()}`);
+  assert.equal(mod.default.id, 'abdalgani-arabic-display');
+  assert.equal(typeof mod.default.tui, 'function');
+  assert.ok(fs.readFileSync(file, 'utf8').includes('function fixRow'));
+  // inside our WezTerm (it does bidi itself) the plugin stands down
+  assert.match(ar.WEZTERM_LUA, /ABDALGANI_ARABIC_DISPLAY = '0'/);
+});

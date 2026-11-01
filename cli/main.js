@@ -34,7 +34,8 @@ Headless:      node setup.js --tool <Name[,Name]> [--model abd-main] [--effort h
   --api-key     gateway key (else ABDALGANI_API_KEY env, else the saved key)
   --no-install  only write config, never install the tool
   --upgrade     upgrade OpenCode V1 → V2 if found
-  --arabic      Arabic pack: correct Arabic display in the terminal (WezTerm + <tool>-ar launchers)
+  --arabic      Arabic pack: correct Arabic display in the terminal (OpenCode: built in, any terminal;
+                other tools: WezTerm + <tool>-ar launchers)
                 and Arabic replies by default in OpenCode (/ar and /en are always added, also in pi)
   --arabic-display  only the display part (WezTerm + launchers)
   --auto-sync   on | off — refresh your tools' model lists every 6h (Task Scheduler / cron)

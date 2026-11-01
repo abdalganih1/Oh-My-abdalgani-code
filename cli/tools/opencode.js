@@ -1,5 +1,7 @@
 // OpenCode (V1 + V2 schemas), KiloCLI and EH Code (both on the V1 schema).
+import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { HOME, API_URL, PROVIDER_ID, ALIASES, readJson, writeJson, writeText, log, tr } from '../core.js';
 
 // ── Arabic mode (only for students who install through this tool): /ar + /en + optional default ──
@@ -25,6 +27,24 @@ export function applyArabic(config, { v2, arabicDefault, dir }) {
 
 function writeArabicFile(dir, enabled) {
   if (enabled) writeText(ARABIC_FILE(dir), `# Language\n\n${ARABIC_RULE}\n`, { backup: false });
+}
+
+// ── Arabic DISPLAY inside OpenCode itself (any terminal): a TUI plugin that reorders + joins Arabic on
+// screen. Nothing is sent to the model. Registered in tui.json; /rtl inside OpenCode toggles it.
+import { PLUGIN_FILE, pluginSource } from '../opencode-arabic-plugin.js';
+
+export function installArabicDisplayPlugin(dir) {
+  const file = path.join(dir, 'abdalgani', PLUGIN_FILE);
+  writeText(file, pluginSource(), { backup: false });
+  const spec = pathToFileURL(file).href;
+  const jsonc = path.join(dir, 'tui.jsonc'), json = path.join(dir, 'tui.json');
+  const target = !fs.existsSync(json) && fs.existsSync(jsonc) ? jsonc : json;
+  const tui = readJson(target, {});
+  const plugins = (Array.isArray(tui.plugin) ? tui.plugin : []).filter((p) => !String(Array.isArray(p) ? p[0] : p).includes(PLUGIN_FILE));
+  tui.$schema = tui.$schema || 'https://opencode.ai/tui.json';
+  tui.plugin = [...plugins, spec];
+  writeJson(target, tui);
+  return file;
 }
 
 const EFFORTS = ['low', 'medium', 'high'];
@@ -86,8 +106,9 @@ export function configureOpenCode(ctx) {
   applyArabic(out, { v2, arabicDefault: !!ctx.arabic, dir });
   writeArabicFile(dir, !!ctx.arabic);
   writeJson(file, out);
+  installArabicDisplayPlugin(dir);
   log.dim(`   ${tr('صيغة الإعداد', 'Config schema')}: OpenCode V${v2 ? 2 : 1} · ${tr('النموذج', 'model')}: ${PROVIDER_ID}/${ctx.model}`);
-  log.dim(`   ${tr('العربية', 'Arabic')}: /ar ${tr('و', 'and')} /en ${ctx.arabic ? tr('· عربي افتراضياً ✓', '· Arabic by default ✓') : ''}`);
+  log.dim(`   ${tr('العربية', 'Arabic')}: ${tr('عرض صحيح داخل OpenCode بأي طرفية ✓ (/rtl للإيقاف)', 'correct display inside OpenCode in any terminal ✓ (/rtl toggles)')} · /ar ${tr('و', 'and')} /en ${ctx.arabic ? tr('· عربي افتراضياً ✓', '· Arabic by default ✓') : ''}`);
 }
 
 export function configureKilo(ctx) {

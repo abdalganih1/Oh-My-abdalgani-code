@@ -1,5 +1,6 @@
 // "Arabic pack" for every CLI tool installed through us (Claude Code already handles Arabic):
-//  1. display — terminals render Arabic left-to-right with unjoined letters. WezTerm implements
+//  1. display — terminals render Arabic left-to-right with unjoined letters. OpenCode fixes this
+//     itself through our TUI plugin (cli/opencode-arabic-plugin.js, any terminal). For the other tools: WezTerm implements
 //     bidi (bidi_enabled) + HarfBuzz shaping, so we install/configure it and add `<tool>-ar`
 //     launchers that open the tool inside it. Works on Windows, Linux and macOS.
 //  2. language — /ar and /en commands (OpenCode commands, pi prompt templates) and an optional
@@ -25,6 +26,8 @@ local config = wezterm.config_builder and wezterm.config_builder() or {}
 -- Arabic: bidirectional layout + shaping (joined letters), auto-detected per line
 config.bidi_enabled = true
 config.bidi_direction = 'AutoLeftToRight'
+-- WezTerm already reorders Arabic here, so OpenCode's own Arabic-display plugin stands down
+config.set_environment_variables = { ABDALGANI_ARABIC_DISPLAY = '0' }
 
 -- fonts that carry Arabic glyphs on Windows / macOS / Linux (first one found wins per glyph)
 config.font = wezterm.font_with_fallback({
@@ -80,8 +83,8 @@ export function writeWezTermConfig() {
   }
   const side = path.join(HOME, '.config', 'wezterm', 'abdalgani-arabic.lua');
   writeText(side, WEZTERM_LUA, { backup: false });
-  log.warn(tr(`⚠️ عندك إعداد WezTerm خاص (${existing}) — ما لمسته. أضف له هالسطرين:`, `⚠️ You have your own WezTerm config (${existing}) — left untouched. Add these two lines:`));
-  console.log('     config.bidi_enabled = true\n     config.bidi_direction = \'AutoLeftToRight\'');
+  log.warn(tr(`⚠️ عندك إعداد WezTerm خاص (${existing}) — ما لمسته. أضف له هالأسطر:`, `⚠️ You have your own WezTerm config (${existing}) — left untouched. Add these lines:`));
+  console.log('     config.bidi_enabled = true\n     config.bidi_direction = \'AutoLeftToRight\'\n     config.set_environment_variables = { ABDALGANI_ARABIC_DISPLAY = \'0\' }');
   return { file: side, merged: true };
 }
 
