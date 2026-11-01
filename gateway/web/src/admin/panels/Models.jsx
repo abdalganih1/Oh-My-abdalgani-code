@@ -1,6 +1,6 @@
 // Models & routing: prices, status, groups and which providers serve each model.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Brain, Coins, Combine, Cpu, Eye, Layers, Pencil, Plus, RefreshCcw, Route, Search, Sparkles, Trash2, TriangleAlert, CircleOff } from 'lucide-react';
+import { ArrowLeft, Brain, Combine, Cpu, Eye, Layers, Pencil, Plus, RefreshCcw, Route, Search, Sparkles, Trash2, TriangleAlert, CircleOff } from 'lucide-react';
 import { Badge, Button, Card, DataTable, Empty, Input, Segmented, Select, Stat, Tip, cn, toast, useConfirm } from '../../ui/index.js';
 import { STATUS, priceLabel, tokens } from '../../lib/format.js';
 import { useAsync, usePersisted } from '../../lib/hooks.js';
@@ -8,10 +8,9 @@ import { api, useAdmin } from '../ctx.js';
 import { NEW_MODEL, useModelEditor } from './cfg/ModelEditor.jsx';
 import OpenRouterDialog from './cfg/OpenRouterDialog.jsx';
 import MergeDialog from './cfg/MergeDialog.jsx';
-import { duplicateGroups } from './cfg/shared.js';
+import { duplicateGroups, isBundle } from './cfg/shared.js';
 
 const isFree = (m) => (m.pricing_mode === 'request' ? !m.price_request : !m.price_in && !m.price_out && m.pricing_mode !== 'provider');
-const MODE_BADGE = { auto: 'تلقائي', provider: 'حسب المزوّد' };
 const needsRestore = (m) => m.status === 'archived' || m.routes.some((r) => r.archived_at);
 
 function Routes({ m, provName }) {
@@ -76,6 +75,15 @@ export default function Models() {
   }, [data, openModel]);
   useEffect(() => { if (data && pending.current.length) { pending.current = []; openModel(NEW_MODEL, true); } }, [data, openModel]);
 
+  const refreshPrices = async () => {
+    setBusy('prices');
+    try {
+      const r = await api.post('/api/admin/pricing/refresh');
+      if (r.unmatched?.length) toast.warning(`انحدّث ${r.models} نموذج. ما لقيت سعر لـ: ${r.unmatched.join('، ')} — بيضل على آخر سعر، أو حطله سعر يدوي من المحرر.`, { duration: 12000 });
+      else toast.success(`انحدّثت أسعار ${r.models} نموذج من OpenRouter`);
+      await reload();
+    } catch (e) { toast.error(e.message); } finally { setBusy(''); }
+  };
   const restore = async (m) => {
     setBusy(`r:${m.id}`);
     try { await api.post(`/api/admin/models/${encodeURIComponent(m.id)}/restore`); toast.success('رجع للخدمة'); await reload(); } catch (e) { toast.error(e.message); } finally { setBusy(''); }
@@ -104,7 +112,7 @@ export default function Models() {
     { key: 'status', header: 'الحالة', cell: (m) => { const s = STATUS[m.status]; return s ? <Badge tone={s.tone} dot>{s.label}</Badge> : <Badge>{m.status}</Badge>; } },
     { key: 'price', header: 'السعر', mobileFull: true, cell: (m) => (
       <div className="max-w-[260px] text-[12.5px] leading-relaxed text-fg-2 max-sm:max-w-none">
-        {MODE_BADGE[m.pricing_mode] && m.pricing_mode === 'auto' ? <Badge tone="accent" className="me-1.5 h-5 text-[10.5px]">{MODE_BADGE[m.pricing_mode]}</Badge> : null}
+        {isBundle(m) ? <Badge tone="accent" className="me-1.5 h-5 text-[10.5px]">عدة نماذج</Badge> : null}
         {priceLabel(m)}{m.markup_pct ? <span className="text-accent-ink"> +{m.markup_pct}%</span> : null}
         {isFree(m) && <Badge tone="warn" className="ms-1.5 h-5 text-[10.5px]">مجاني!</Badge>}
       </div>
@@ -137,10 +145,10 @@ export default function Models() {
       </div>
 
       <Card title="النماذج" icon={Layers}
-        subtitle={<>وضع التسعير: <b>لكل توكن</b> = جدولك لكل مليون توكن · <b>لكل طلب</b> = سعر ثابت · <b>حسب المزوّد</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك · <b>تلقائي</b> = نموذج تحته عدة نماذج (مثل fast)، كل طلب بسعر OpenRouter للنموذج اللي ردّ. النسبة الإضافية تنضاف فوق.</>}
+        subtitle={<>وضع التسعير: <b>تلقائي</b> (الافتراضي) = السعر بيتحدد لحاله من OpenRouter ويتحدث كل 30 دقيقة · <b>لكل توكن</b> = جدولك لكل مليون توكن · <b>لكل طلب</b> = سعر ثابت · <b>حسب المزوّد</b> = الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك النسبة الإضافية تنضاف فوق.</>}
         actions={<>
           <Button icon={Combine} disabled={!data} onClick={() => setMerge({})}>دمج</Button>
-          <Button icon={Coins} onClick={() => setOrOpen(true)}>أسعار OpenRouter</Button>
+          <Button icon={RefreshCcw} loading={busy === 'prices'} onClick={refreshPrices}>حدّث الأسعار</Button>
           <Button variant="primary" icon={Plus} disabled={!data} onClick={() => openModel(NEW_MODEL, true)}>نموذج جديد</Button>
         </>}>
         {dups.length > 0 && (

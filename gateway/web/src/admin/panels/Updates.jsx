@@ -255,7 +255,7 @@ function prefill(m) {
   return {
     id: m.upstream_id.split('/').pop().replace(/[:]/g, '-').toLowerCase(), name: m.name || '', group_id: '',
     context_length: m.context_length || 128000, max_output: m.max_output || 16384,
-    pricing_mode: free ? 'token' : m.provider_id === 'openrouter' ? 'provider' : 'token',
+    pricing_mode: free ? 'token' : 'auto',
     price_in: free ? 0 : (m.price_in || 0) / M, price_out: free ? 0 : (m.price_out || 0) / M,
     price_cache_read: free ? 0 : (m.price_cache_read || 0) / M, price_cache_write: free ? 0 : (m.price_cache_write || 0) / M,
     price_request: 0, reasoning: !!(m.reasoning ?? 1), vision: !!m.vision,
@@ -325,9 +325,11 @@ function PublishModal({ item, onClose, onDone }) {
           <Field label="الاسم"><Input value={f.name} onChange={set('name')} placeholder={f.id} /></Field>
           <Field label="الفئة"><Select value={f.group_id} onChange={set('group_id')} options={groupOpts} aria-label="الفئة" /></Field>
           <Field label="طريقة التسعير">
-            <Segmented full value={f.pricing_mode} onChange={set('pricing_mode')} options={[{ value: 'token', label: 'بالتوكن' }, { value: 'provider', label: 'حسب المزوّد' }, { value: 'request', label: 'بالطلب' }]} />
+            <Segmented full value={f.pricing_mode} onChange={set('pricing_mode')} options={[{ value: 'auto', label: 'تلقائي' }, { value: 'token', label: 'بالتوكن' }, { value: 'provider', label: 'حسب المزوّد' }, { value: 'request', label: 'بالطلب' }]} />
           </Field>
-          {f.pricing_mode === 'request' ? (
+          {f.pricing_mode === 'auto' ? (
+            <p className="rounded-xl bg-accent-soft/60 px-3 py-2.5 text-[12.5px] text-fg-2 sm:col-span-2">السعر بيتحدد لحاله من OpenRouter (أو من سعر المزوّد) وبيتحدث كل 30 دقيقة — ما في شي تعبّيه.</p>
+          ) : f.pricing_mode === 'request' ? (
             <Field label="السعر لكل طلب ($)" className="sm:col-span-2"><Input type="number" step="any" min="0" className="ltr" value={f.price_request} onChange={set('price_request')} /></Field>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-4">
@@ -338,7 +340,7 @@ function PublishModal({ item, onClose, onDone }) {
             </div>
           )}
           {f.pricing_mode === 'provider' && <p className="-mt-2 text-[12px] text-muted sm:col-span-2">الطالب بيدفع الكلفة الحقيقية اللي بيرجعها المزوّد؛ الأسعار فوق للتقدير والحجز المسبق.</p>}
-          {f.pricing_mode !== 'request' && Number(f.price_in) === 0 && Number(f.price_out) === 0 && !item?.free && (
+          {f.pricing_mode !== 'request' && f.pricing_mode !== 'auto' && Number(f.price_in) === 0 && Number(f.price_out) === 0 && !item?.free && (
             <div className="flex items-start gap-2 rounded-2xl border border-warn/25 bg-warn-soft px-3.5 py-2.5 text-[12.5px] text-warn sm:col-span-2">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />سعر صفر = أي طالب عنده رصيد بيستخدمه مجاناً.
             </div>

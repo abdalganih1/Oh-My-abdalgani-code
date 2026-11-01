@@ -43,16 +43,17 @@ export const SECRET_STYLE = { WebkitTextSecurity: 'disc', textSecurity: 'disc' }
 /** "anthropic/claude-sonnet-5.5:thinking" → "claude-sonnet-5-5": the same model across providers (mirrors src/prices.js). */
 export const modelKey = (x) => String(x || '').toLowerCase().split('/').pop().replace(/^~/, '')
   .replace(/:(free|thinking|beta|extended|nitro|floor)$/, '').replace(/[._:\s]+/g, '-');
-// a multi-model bundle (auto pricing, e.g. `fast`) is never "the same model" as one of its members
-const keysOf = (m) => new Set((m.pricing_mode === 'auto' ? [m.id] : [m.id, ...(m.routes || []).map((r) => r.upstream_model)]).map(modelKey));
+/** A bundle (e.g. `fast`) serves several DIFFERENT upstream models — it is never "the same model" as one of them. */
+export const isBundle = (m) => new Set((m.routes || []).map((r) => modelKey(r.upstream_model))).size > 1;
+const keysOf = (m) => new Set((isBundle(m) ? [m.id] : [m.id, ...(m.routes || []).map((r) => r.upstream_model)]).map(modelKey));
 /** An existing model that is (very likely) the same as `draft` — by id or by any upstream model id. */
 export function findTwin(models, draft) {
   const want = keysOf(draft);
-  return (models || []).find((m) => m.id !== draft.id && m.status !== 'archived' && m.pricing_mode !== 'auto' && [...keysOf(m)].some((k) => want.has(k))) || null;
+  return (models || []).find((m) => m.id !== draft.id && m.status !== 'archived' && !isBundle(m) && [...keysOf(m)].some((k) => want.has(k))) || null;
 }
 /** Groups of live models that look like duplicates of each other (merge candidates). */
 export function duplicateGroups(models) {
-  const live = (models || []).filter((m) => m.status !== 'archived' && m.pricing_mode !== 'auto');
+  const live = (models || []).filter((m) => m.status !== 'archived' && !isBundle(m));
   const seen = new Set(), out = [];
   for (const m of live) {
     if (seen.has(m.id)) continue;

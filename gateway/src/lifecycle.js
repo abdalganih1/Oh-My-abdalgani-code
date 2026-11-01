@@ -105,7 +105,8 @@ async function autoPublish(env, provider, pm, policy, t) {
   if (await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(id).first()) id = `${id}-${provider.id}`;
   if (await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(id).first()) return null;
   const group = policy.group && (await db.prepare('SELECT 1 FROM model_groups WHERE id = ?').bind(policy.group).first()) ? policy.group : null;
-  let mode = policy.pricing_mode || 'token';
+  // prices follow OpenRouter automatically, unless the provider policy sets a real price of its own
+  let mode = policy.pricing_mode === 'provider' || (policy.pricing_mode === 'request' && policy.price_request > 0) ? policy.pricing_mode : 'auto';
   if (pm.free) mode = 'token';
   const priceIn = pm.free ? 0 : pm.price_in || 0, priceOut = pm.free ? 0 : pm.price_out || 0;
   await db.batch([
@@ -277,6 +278,7 @@ export async function runMaintenance(env, { now = nowSec(), sync = true } = {}) 
   }
   summary.health = await checkHealth(env, cfg, now);
   summary.models = await reconcileModels(env, cfg, now);
+  try { const { refreshAutoPrices } = await import('./prices.js'); summary.prices = await refreshAutoPrices(env.DB); } catch (e) { summary.prices = { error: e.message }; }
   try { summary.alerts = await runDetectors(env, await getSecurity(env.DB, true), now); } catch (e) { summary.alerts = { error: e.message }; }
   await env.DB.prepare('DELETE FROM events WHERE created_at < ?').bind(now - 90 * 86400).run();
   summary.notified = await notifyPending(env);

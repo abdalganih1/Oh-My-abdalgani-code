@@ -99,7 +99,7 @@ test('admin creates user + provider keys + prices', async () => {
   // flat $0.01/request on glm-5.2
   const models = (await admin('GET', '/models')).data;
   const g = models.find((m) => m.id === 'glm-5.2');
-  assert.equal((await admin('POST', '/models', { ...g, price_request: 10_000 })).status, 200);
+  assert.equal((await admin('POST', '/models', { ...g, pricing_mode: 'request', price_request: 10_000 })).status, 200);
   // the default alias target (glm-5.3) billed the same way so spend-based tests stay deterministic
   const g53 = models.find((m) => m.id === 'glm-5.3');
   assert.equal((await admin('POST', '/models', { ...g53, pricing_mode: 'request', price_request: 10_000 })).status, 200);
@@ -690,4 +690,23 @@ test('merge: the same model from two providers becomes one model with both route
   const add = await admin('POST', '/models/claude-sonnet-5-5/routes', { provider_id: 'zai', upstream_model: 'claude-sonnet-5-5' });
   assert.equal(add.data.added, true);
   assert.equal((await admin('POST', '/models/claude-sonnet-5-5/routes', { provider_id: 'zai', upstream_model: 'claude-sonnet-5-5' })).data.added, false);
+});
+
+test('auto is the default: no prices typed, OpenRouter → provider catalog → last known (never silently free)', async () => {
+  // new model, no pricing at all → auto, priced from OpenRouter by name
+  await admin('POST', '/models', { id: 'plain-glm', name: 'Plain', routes: [{ provider_id: 'zai', upstream_model: 'glm-5.3' }] });
+  let m = (await admin('GET', '/models')).data.find((x) => x.id === 'plain-glm');
+  assert.equal(m.pricing_mode, 'auto'); assert.equal(m.price_in, 69_900);
+  // not on OpenRouter, but the provider publishes a price → that price
+  const t = Math.floor(Date.now() / 1000);
+  await env.DB.prepare("INSERT INTO provider_models (provider_id, upstream_id, price_in, price_out, first_seen, last_seen) VALUES ('openai', 'only-here', 3000000, 9000000, ?, ?)").bind(t, t).run();
+  await admin('POST', '/models', { id: 'only-here', name: 'Only here', routes: [{ provider_id: 'openai', upstream_model: 'only-here' }] });
+  m = (await admin('GET', '/models')).data.find((x) => x.id === 'only-here');
+  assert.equal(m.routes[0].price_ref, 'provider:openai'); assert.equal(m.price_out, 9_000_000);
+  // the provider stops publishing it → the last known price stays (no free model)
+  await env.DB.prepare("DELETE FROM provider_models WHERE upstream_id = 'only-here'").run();
+  const r = await admin('POST', '/pricing/refresh');
+  assert.equal(r.status, 200);
+  m = (await admin('GET', '/models')).data.find((x) => x.id === 'only-here');
+  assert.equal(m.price_out, 9_000_000);
 });

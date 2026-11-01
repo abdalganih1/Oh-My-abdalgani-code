@@ -289,6 +289,7 @@ export async function handleAdmin(request, env, ctx, path) {
     });
     return json({ models: out, catalog: catalog.map(({ id, name, price_in, price_out, price_cache_read, price_cache_write }) => ({ id, name, price_in, price_out, price_cache_read, price_cache_write })) });
   }
+  if (a === 'pricing' && b === 'refresh' && method === 'POST') return json(await refreshAutoPrices(db));
   if (a === 'pricing' && b === 'apply' && method === 'POST') {
     const body = await readJson(request);
     need(Array.isArray(body.items) && body.items.length && body.items.length <= 500, 'items required');
@@ -330,7 +331,7 @@ export async function handleAdmin(request, env, ctx, path) {
     if (method === 'POST') {
       const m = await readJson(request);
       need(ID_RE.test(m.id || ''), 'invalid model id');
-      need(['token', 'request', 'provider', 'auto'].includes(m.pricing_mode || 'token'), 'pricing_mode must be token|request|provider|auto');
+      need(['token', 'request', 'provider', 'auto'].includes(m.pricing_mode || 'auto'), 'pricing_mode must be token|request|provider|auto');
       need(['new', 'active', 'legacy', 'hidden', 'archived'].includes(m.status || 'active'), 'status must be new|active|legacy|hidden|archived');
       // a model the admin adds shows as "new" to students for the first days (the cron expires it)
       if (!(await db.prepare('SELECT 1 FROM models WHERE id = ?').bind(m.id).first()) && (!m.status || m.status === 'active')) m.status = 'new';
@@ -342,7 +343,7 @@ export async function handleAdmin(request, env, ctx, path) {
            price_cache_read=excluded.price_cache_read, price_cache_write=excluded.price_cache_write, price_request=excluded.price_request, markup_pct=excluded.markup_pct, custom_order=excluded.custom_order,
            status=excluded.status, description=excluded.description, sort=excluded.sort`
       ).bind(m.id, m.name || m.id, m.group_id || null, toInt(m.context_length, 128000), toInt(m.max_output, 8192), m.reasoning ? 1 : 0,
-        m.pricing_mode || 'token', toInt(m.price_in), toInt(m.price_out), toInt(m.price_cache_read), toInt(m.price_request), toInt(m.markup_pct),
+        m.pricing_mode || 'auto', toInt(m.price_in), toInt(m.price_out), toInt(m.price_cache_read), toInt(m.price_request), toInt(m.markup_pct),
         m.status || 'active', m.description || null, toInt(m.sort, 100), m.vision ? 1 : 0, toInt(m.price_cache_write), m.custom_order ? 1 : 0)];
       if (Array.isArray(m.routes)) {
         stmts.push(db.prepare('DELETE FROM model_routes WHERE model_id = ?').bind(m.id));
@@ -357,7 +358,7 @@ export async function handleAdmin(request, env, ctx, path) {
         });
       }
       await db.batch(stmts);
-      if ((m.pricing_mode || 'token') === 'auto') {
+      if ((m.pricing_mode || 'auto') === 'auto') {
         try { const r = await refreshAutoPrices(db, { modelId: m.id }); return json({ ok: true, auto: r }); } catch (e) { return json({ ok: true, auto: { error: e.message } }); }
       }
       return json({ ok: true });

@@ -68,10 +68,14 @@ export async function handleMe(request, env, ctx, path, sec = {}) {
   if (a === 'models' && method === 'GET') {
     const subs = await loadSubscriptions(db, user.id);
     const groups = (await db.prepare('SELECT * FROM model_groups').all()).results;
+    // auto-priced bundles (e.g. `fast`) cost "up to" the dearest route — tell the student the price varies
+    const { results: varies } = await db.prepare("SELECT model_id FROM model_routes WHERE enabled = 1 AND archived_at IS NULL AND price_in IS NOT NULL GROUP BY model_id HAVING COUNT(DISTINCT price_in) > 1 OR COUNT(DISTINCT price_out) > 1").all();
+    const vary = new Set(varies.map((r) => r.model_id));
     const models = (await allModels()).map((m) => ({
       id: m.id, name: m.name, group_id: m.group_id, status: m.status, description: m.description,
       context_length: m.context_length, max_output: m.max_output, reasoning: !!m.reasoning, vision: !!m.vision,
       pricing_mode: m.pricing_mode, price_in: m.price_in, price_out: m.price_out, price_request: m.price_request, markup_pct: m.markup_pct,
+      price_varies: m.pricing_mode === 'auto' && vary.has(m.id),
       created_at: m.created_at, archived_at: m.archived_at, archived_reason: m.archived_reason,
       available: m.status !== 'archived' && subs.some((s) => isSubUsable(s, m)),
     }));

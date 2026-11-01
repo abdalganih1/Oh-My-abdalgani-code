@@ -30,7 +30,7 @@ export default function MergeDialog({ open, models, initial, onClose, onDone, pr
   useEffect(() => {
     if (!target) return;
     const unpriced = (m) => (m.pricing_mode === 'request' ? !m.price_request : !m.price_in && !m.price_out && m.pricing_mode !== 'provider');
-    setPricing(unpriced(target) ? (sources.find((s) => !unpriced(s))?.id || into) : into);
+    setPricing(target.pricing_mode === 'auto' ? into : unpriced(target) ? (sources.find((s) => !unpriced(s))?.id || into) : into);
   }, [into, from.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const k = target ? modelKey(target.id) : '';
@@ -76,7 +76,9 @@ export default function MergeDialog({ open, models, initial, onClose, onDone, pr
         </div>
         {target && from.length > 0 && (
           <>
-            <div className="rounded-2xl border border-line bg-sunken/50 p-3.5">
+            {target.pricing_mode === 'auto' && pricing === into ? (
+              <p className="rounded-xl bg-accent-soft/60 px-3 py-2.5 text-[12.5px] text-fg-2">التسعير تلقائي: بيتحدد لحاله من OpenRouter لكل مسار.</p>
+            ) : <div className="rounded-2xl border border-line bg-sunken/50 p-3.5">
               <div className="mb-2 text-[13px] font-semibold">التسعير بعد الدمج</div>
               <div className="flex flex-col gap-1.5">
                 {[target, ...sources].map((m) => (
@@ -86,7 +88,7 @@ export default function MergeDialog({ open, models, initial, onClose, onDone, pr
                   </label>
                 ))}
               </div>
-            </div>
+            </div>}
             <div>
               <div className="mb-1.5 text-[13px] font-semibold">المسارات بعد الدمج</div>
               <div className="flex flex-col gap-1">

@@ -42,7 +42,11 @@ export const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأ
 
 export function priceLabel(m) {
   if (m.pricing_mode === 'request') return m.price_request ? `${usdPrecise(m.price_request)} لكل طلب` : 'غير مسعّر';
-  if (m.pricing_mode === 'auto') return m.price_in || m.price_out ? `حسب النموذج اللي بيرد · حتى ${usdPrecise(m.price_in)} دخل · ${usdPrecise(m.price_out)} خرج — لكل مليون توكن` : 'تلقائي (OpenRouter) — ما انحسب بعد';
+  if (m.pricing_mode === 'auto') {
+    if (!m.price_in && !m.price_out) return 'السعر عم ينحسب…';
+    const varies = m.price_varies ?? (m.routes ? new Set(m.routes.filter((r) => r.enabled && r.price_in != null).map((r) => `${r.price_in}|${r.price_out}`)).size > 1 : false);
+    return `${varies ? 'حسب النموذج اللي بيرد · حتى ' : ''}${usdPrecise(m.price_in)} دخل · ${usdPrecise(m.price_out)} خرج — لكل مليون توكن`;
+  }
   const base = m.pricing_mode === 'provider' ? 'حسب المزوّد' : '';
   if (!m.price_in && !m.price_out) return base || 'غير مسعّر';
   return `${base ? base + ' · ' : ''}${usdPrecise(m.price_in)} دخل · ${usdPrecise(m.price_out)} خرج — لكل مليون توكن`;

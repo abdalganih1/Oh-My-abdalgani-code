@@ -22,10 +22,10 @@ const mkRoute = (r = {}) => ({
 const d3 = (v) => `$${(+(v / M).toFixed(4))}`;
 
 export const PRICING_MODES = [
+  { value: 'auto', label: 'تلقائي', hint: 'السعر بيتحدد لحاله: سعر OpenRouter لكل نموذج (وإذا مش موجود عليه، سعر المزوّد نفسه). كل طلب بينحسب بسعر النموذج اللي فعلياً ردّ، والأسعار بتتحدث لحالها كل 30 دقيقة. ما في شي تعبّيه.' },
   { value: 'token', label: 'لكل توكن', hint: 'جدولك لكل مليون توكن' },
   { value: 'request', label: 'لكل طلب', hint: 'سعر ثابت لكل طلب' },
   { value: 'provider', label: 'حسب المزوّد', hint: 'الكلفة الفعلية اللي بيرجعها المزوّد (OpenRouter) وإلا جدولك' },
-  { value: 'auto', label: 'تلقائي', hint: 'كل طلب بينحسب بسعر OpenRouter للنموذج اللي فعلياً ردّ (من المسار اللي خدم). مثالي لنموذج مثل fast تحته عدة نماذج — الأسعار بتتحدث لحالها كل 30 دقيقة.' },
 ];
 
 function RouteRow({ r, i, n, custom, providers, onChange, onRemove, onMove, auto, orHit, listId }) {
@@ -67,7 +67,7 @@ function RouteRow({ r, i, n, custom, providers, onChange, onRemove, onMove, auto
                 </>
               ) : (
                 <>
-                  <span className="text-warn">{r.upstream_model ? 'ما لقيت هالنموذج على OpenRouter' : 'اختار النموذج لينحسب سعره'}</span>
+                  <span className="text-warn">{r.upstream_model ? 'مش على OpenRouter — بياخد سعر المزوّد إذا منشور، وإلا آخر سعر معروف' : 'اختار النموذج لينحسب سعره'}</span>
                   {r.upstream_model && <button type="button" className="ms-auto text-accent-ink underline-offset-2 hover:underline" onClick={() => onChange({ manual: true })}>حط سعر يدوي</button>}
                 </>
               )}
@@ -111,7 +111,7 @@ function ModelDialog({ state, onClose, providers, onSaved, getModels }) {
   const names = shown.filter((r) => r.upstream_model.trim() || r.provider_id).map((r) => providers.find((p) => p.id === r.provider_id)?.name).filter(Boolean);
   const patch = (k, p) => setRoutes((rs) => rs.map((x) => (x.k === k ? { ...x, ...p } : x)));
   const move = (i, d) => setRoutes(() => { const a = [...shown]; const j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; });
-  const mode = f.pricing_mode || 'token';
+  const mode = f.pricing_mode || 'auto';
   const [orCat, setOrCat] = useState(null);
   const [provCat, setProvCat] = useState({});
   const [merging, setMerging] = useState(false);
@@ -275,7 +275,7 @@ export function useModelEditor({ providers, getModels, onSaved }) {
     }
     const form = {};
     for (const k of FIELDS) form[k] = USD.includes(k) ? toDollars(m[k]) : (m[k] ?? '');
-    form.status = form.status || 'new'; form.pricing_mode = form.pricing_mode || 'token';
+    form.status = form.status || 'new'; form.pricing_mode = form.pricing_mode || 'auto';
     form.reasoning = !!m.reasoning; form.vision = !!m.vision; form.custom_order = !!m.custom_order;
     const routes = (m.routes || []).map(mkRoute);
     if (!routes.length) routes.push(mkRoute({ provider_id: providers?.[0]?.id }));
@@ -286,13 +286,13 @@ export function useModelEditor({ providers, getModels, onSaved }) {
 }
 
 /** Defaults for a brand-new model. */
-export const NEW_MODEL = { status: 'new', pricing_mode: 'token', context_length: 128000, max_output: 16384, sort: 100, routes: [] };
+export const NEW_MODEL = { status: 'new', pricing_mode: 'auto', context_length: 128000, max_output: 16384, sort: 100, routes: [] };
 
 /** Turn an upstream catalog entry (discover / updates) into a model draft. */
 export function draftFromUpstream(m, providerId) {
   return {
     id: m.id.split('/').pop().replace(/[:]/g, '-'), name: m.name, context_length: m.context_length || 128000, max_output: m.max_output || 16384,
-    pricing_mode: providerId === 'openrouter' ? 'provider' : 'token', price_in: m.price_in || 0, price_out: m.price_out || 0, price_cache_read: m.price_cache_read || 0, price_cache_write: m.price_cache_write || 0,
+    pricing_mode: m.free ? 'token' : 'auto', price_in: m.price_in || 0, price_out: m.price_out || 0, price_cache_read: m.price_cache_read || 0, price_cache_write: m.price_cache_write || 0,
     status: 'new', reasoning: m.reasoning ?? true, vision: !!m.vision, routes: [{ provider_id: providerId, upstream_model: m.id }],
   };
 }
