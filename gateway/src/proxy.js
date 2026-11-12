@@ -74,7 +74,29 @@ function modeFor(clientFormat, route) {
   return route.openai_base_url ? { mode: 'native', format: 'openai' } : null;
 }
 
+// failover deadlines; the last option left gets longer ones (failing fast there helps nobody)
 const UPSTREAM_FIRST_BYTE_S = 60, UPSTREAM_TOTAL_S = 100;
+const UPSTREAM_FIRST_BYTE_LAST_S = 180, UPSTREAM_TOTAL_LAST_S = 300;
+const RATE_LIMIT_RETRIES = 2;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Delay before retrying a 429: honour a short Retry-After, else back off 1.5s, 3s. */
+export function retryDelayMs(retryAfter, attempt) {
+  const s = Number(retryAfter);
+  if (Number.isFinite(s) && s > 0) return Math.min(s, 8) * 1000;
+  return 1500 * (attempt + 1);
+}
+
+/** An SSE error event in the client's own format, sent when the upstream stream breaks. */
+export function streamErrorEvent(clientFormat) {
+  const message = 'The provider connection dropped mid-answer. Please retry.';
+  if (clientFormat === 'anthropic') {
+    return `event: error\ndata: ${JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message } })}\n\n`;
+  }
+  if (clientFormat === 'responses') {
+    return `event: error\ndata: ${JSON.stringify({ type: 'error', code: 'upstream_error', message, param: null })}\n\n`;
+  }
+  return `data: ${JSON.stringify({ error: { message, type: 'upstream_error', code: 'stream_interrupted' } })}\n\n`;
+}
 
 export async function handleCompletion(request, env, ctx, clientFormat, sec = {}) {
   const started = Date.now();
@@ -121,11 +143,17 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
   }).then((r) => { noteSpend(r.upstreamCost); return r; });
 
   let lastStatus = 503, lastError = 'No provider key available for this model';
+  const rateLimitRetries = new Map();
   let tried = 0;
   // same student → same key (provider prompt caches are per account), different students spread by weight
-  for await (const { route, key, secret } of attempts(env, routes, { seed: user.id })) {
+  const plan = [];
+  for await (const a of attempts(env, routes, { seed: user.id })) if (modeFor(clientFormat, a.route)) plan.push(a);
+  for (let i = 0; i < plan.length; i++) {
+    const { route, key, secret } = plan[i];
     const m = modeFor(clientFormat, route);
-    if (!m) continue;
+    // nothing left to fail over to → be patient with a slow provider instead of cutting it off at 60s
+    const isLast = i === plan.length - 1;
+    const waitS = body.stream ? (isLast ? UPSTREAM_FIRST_BYTE_LAST_S : UPSTREAM_FIRST_BYTE_S) : (isLast ? UPSTREAM_TOTAL_LAST_S : UPSTREAM_TOTAL_S);
     tried++;
     const routeInfo = { provider_id: route.id, key_id: key.id, upstream_model: route.upstream_model, billing: route.billing, cost_in: route.cost_in, cost_out: route.cost_out,
       price_in: route.r_price_in, price_out: route.r_price_out, price_cache_read: route.r_price_cache_read, price_cache_write: route.r_price_cache_write };
@@ -138,7 +166,7 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
     let upstream;
     // a provider that hangs (NVIDIA queues can sit >2 min) must not hold the student: give up and fail over
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), (body.stream ? UPSTREAM_FIRST_BYTE_S : UPSTREAM_TOTAL_S) * 1000);
+    const timer = setTimeout(() => ac.abort(), waitS * 1000);
     try {
       upstream = await fetch(upstreamUrl(route, m.format), {
         method: 'POST',
@@ -150,7 +178,7 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
     } catch (e) {
       clearTimeout(timer);
       const timedOut = ac.signal.aborted;
-      lastStatus = timedOut ? 504 : 502; lastError = timedOut ? `timeout: no response from ${route.id} within ${body.stream ? UPSTREAM_FIRST_BYTE_S : UPSTREAM_TOTAL_S}s` : `network error: ${e.message}`;
+      lastStatus = timedOut ? 504 : 502; lastError = timedOut ? `timeout: no response from ${route.id} within ${waitS}s` : `network error: ${e?.message || e}`;
       ctx.waitUntil(markKeyFailure(env.DB, key.id, 0, lastError));
       ctx.waitUntil(recordFail(env.DB, route.id, route.route_id, 0, lastError));
       continue;
@@ -161,6 +189,15 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
       lastStatus = upstream.status; lastError = text.slice(0, 1000);
       if (countsAsFailure(upstream.status)) ctx.waitUntil(recordFail(env.DB, route.id, route.route_id, upstream.status, text));
       if (isRetryable(upstream.status)) {
+        // a 429 burst on the only key left (Z.ai: "1302 Rate limit reached") clears in seconds:
+        // wait and retry the same key instead of failing the student and parking the key
+        const r = rateLimitRetries.get(key.id) || 0;
+        if (upstream.status === 429 && isLast && r < RATE_LIMIT_RETRIES) {
+          rateLimitRetries.set(key.id, r + 1);
+          await sleep(retryDelayMs(upstream.headers.get('retry-after'), r));
+          i--; tried--;
+          continue;
+        }
         ctx.waitUntil(markKeyFailure(env.DB, key.id, upstream.status, text));
         continue;
       }
@@ -199,7 +236,10 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
 
     const pump = (async () => {
       const reader = upstream.body.getReader();
-      let errMsg = null;
+      let errMsg = null, clientGone = false;
+      const send = async (bytes) => {
+        try { await writer.write(bytes); } catch { clientGone = true; throw new Error('client disconnected'); }
+      };
       try {
         for (;;) {
           const { done, value } = await reader.read();
@@ -217,12 +257,15 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
               if (conv) outText += conv.push(obj);
             }
           }
-          if (conv) { if (outText) await writer.write(encoder.encode(outText)); }
-          else await writer.write(value);
+          if (conv) { if (outText) await send(encoder.encode(outText)); }
+          else await send(value);
         }
-        if (conv) await writer.write(encoder.encode(conv.finish()));
+        if (conv) await send(encoder.encode(conv.finish()));
       } catch (e) {
-        errMsg = `stream aborted: ${e.message}`;
+        errMsg = clientGone ? 'client disconnected' : `stream aborted: ${e?.message || e || 'unknown error'}`;
+        try { reader.cancel().catch(() => {}); } catch { /* already closed */ }
+        // the provider dropped mid-answer: say so in-band, or the tool takes a cut-off reply as complete
+        if (!clientGone) { try { await writer.write(encoder.encode(streamErrorEvent(clientFormat))); } catch { /* client gone */ } }
       } finally {
         try { await writer.close(); } catch { /* client went away */ }
         await finish(routeInfo, 200, usage, errMsg);

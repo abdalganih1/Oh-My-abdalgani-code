@@ -10,6 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const env = { DB: new D1Shim().migrate(path.join(here, '..', 'migrations')), ADMIN_TOKEN: 'admin-secret', ENCRYPTION_KEY: 'enc-secret' };
 const realFetch = globalThis.fetch;
 const upstreamCalls = [];
+let burstSeen = 0;
 
 // ── mock upstreams ──
 function sseBody(frames) {
@@ -22,6 +23,14 @@ globalThis.fetch = async (url, init = {}) => {
   const auth = init.headers?.authorization || init.headers?.['x-api-key'];
   upstreamCalls.push({ url, body, auth });
   if (auth?.includes('ratelimited')) return new Response('{"error":"rate"}', { status: 429 });
+  if (body?.model === 'burst-once' && !burstSeen++) return Response.json({ error: { code: '1302', message: 'Rate limit reached for requests' } }, { status: 429 });
+  if (body?.model === 'drops-mid-stream') {
+    let sent = false;
+    return new Response(new ReadableStream({ pull(c) {
+      if (sent) return c.error(new Error('Network connection lost.'));
+      sent = true; c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ id: 'c', choices: [{ delta: { content: 'Hal' } }] })}\n\n`));
+    } }), { headers: { 'content-type': 'text/event-stream' } });
+  }
   if (body?.model === 'no-balance-upstream') return Response.json({ error: { code: '1113', message: 'Insufficient balance or no resource package. Please recharge.' } }, { status: 429 });
   if (url === 'https://openrouter.ai/api/v1/models' && !auth) {
     return Response.json({ data: [
@@ -709,4 +718,35 @@ test('auto is the default: no prices typed, OpenRouter → provider catalog → 
   assert.equal(r.status, 200);
   m = (await admin('GET', '/models')).data.find((x) => x.id === 'only-here');
   assert.equal(m.price_out, 9_000_000);
+});
+
+test('resilience: a 429 burst on the only key is retried, a briefly-cooling key is still used, a dropped stream says so', async () => {
+  await admin('POST', '/models', { id: 'solo-burst', name: 'Solo', status: 'active', pricing_mode: 'token', price_in: 1000, price_out: 1000,
+    routes: [{ provider_id: 'openrouter', upstream_model: 'burst-once' }] });
+  const orKey = (await admin('GET', '/providers')).data.find((p) => p.id === 'openrouter').keys[0];
+  await admin('PATCH', `/keys/${orKey.id}`, { reset: true });
+  upstreamCalls.length = 0;
+  const msg = { messages: [{ role: 'user', content: 'x' }] };
+  let r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'solo-burst', ...msg } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(upstreamCalls.filter((c) => c.body?.model === 'burst-once').length, 2, 'same key retried after the 429');
+  assert.ok(!(await admin('GET', '/providers')).data.find((p) => p.id === 'openrouter').keys[0].cooling, 'a cleared burst does not park the key');
+
+  // the only key is parked by a recent blip → still tried instead of an instant 503
+  await env.DB.prepare('UPDATE provider_keys SET cooldown_until = ? WHERE id = ?').bind(Math.floor(Date.now() / 1000) + 20, orKey.id).run();
+  r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'solo-burst', ...msg } });
+  assert.equal(r.status, 200, r.text);
+  // …but a key parked for an hour (bad key / no credit) is not
+  await env.DB.prepare('UPDATE provider_keys SET cooldown_until = ? WHERE id = ?').bind(Math.floor(Date.now() / 1000) + 3600, orKey.id).run();
+  r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'solo-burst', ...msg } });
+  assert.equal(r.status, 503);
+  await admin('PATCH', `/keys/${orKey.id}`, { reset: true });
+
+  await admin('POST', '/models', { id: 'solo-drop', name: 'Drop', status: 'active', pricing_mode: 'token', price_in: 1000, price_out: 1000,
+    routes: [{ provider_id: 'openrouter', upstream_model: 'drops-mid-stream' }] });
+  r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'solo-drop', stream: true, ...msg } });
+  assert.match(r.text, /Hal/);
+  assert.match(r.text, /"code":"stream_interrupted"/, 'the client is told the answer was cut off');
+  r = await call('POST', '/v1/messages', { token: userKey, body: { model: 'solo-drop', stream: true, max_tokens: 10, ...msg } });
+  assert.match(r.text, /event: error/);
 });

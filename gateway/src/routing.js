@@ -68,7 +68,33 @@ export function stableRand(str) {
   return ((h >>> 0) + 0.5) / 4294967296;
 }
 
+/** Cooldowns this short come from a blip (429 burst, timeout, 5xx), not a dead key. */
+export const TRANSIENT_COOLDOWN_S = 120;
+
+/** Keys parked only by a short, transient cooldown — soonest to recover first. */
+export async function loadTransientKeys(db, providerId) {
+  const { results } = await db.prepare(
+    'SELECT * FROM provider_keys WHERE provider_id = ? AND enabled = 1 AND cooldown_until > ? AND cooldown_until <= ? ORDER BY cooldown_until ASC, id ASC'
+  ).bind(providerId, now(), now() + TRANSIENT_COOLDOWN_S).all();
+  return results || [];
+}
+
 export async function* attempts(env, routes, { maxKeysPerRoute = 3, seed = null } = {}) {
+  let yielded = 0;
+  for await (const a of freshAttempts(env, routes, { maxKeysPerRoute, seed })) { yielded++; yield a; }
+  if (yielded) return;
+  // every key is cooling down: one blip on a single-key provider used to fail every request for
+  // the next minute (503). A transiently-parked key is still worth a try before giving up.
+  for (const route of routes) {
+    const [key] = await loadTransientKeys(env.DB, route.id);
+    if (!key) continue;
+    let secret;
+    try { secret = await decryptSecret(key.key_enc, env.ENCRYPTION_KEY); } catch { continue; }
+    yield { route, key, secret, lastResort: true };
+  }
+}
+
+async function* freshAttempts(env, routes, { maxKeysPerRoute, seed }) {
   for (const route of routes) {
     const loaded = await loadKeys(env.DB, route.id);
     // with a seed every key gets a fixed per-student draw, still weighted → sticky but balanced
