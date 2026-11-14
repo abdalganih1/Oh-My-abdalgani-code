@@ -40,6 +40,8 @@ export function usageFromAnthropic(u, prev = null) {
 }
 const ZERO = { prompt: 0, completion: 0, cached: 0, cacheWrite: 0, providerCost: null };
 
+export const isZai = (route) => route.id === 'zai' || /(^|\.)z\.ai\/|bigmodel\.cn\//.test(route.openai_base_url || '');
+
 function buildUpstreamBody(clientFormat, m, body, route, model) {
   let out;
   if (clientFormat === 'responses') out = responsesToChatRequest(body, route.upstream_model).chat;
@@ -52,6 +54,9 @@ function buildUpstreamBody(clientFormat, m, body, route, model) {
   if (m.format === 'openai' && route.id === 'openrouter') out.usage = { include: true };
   // tools send a reasoning effort to every model; non-reasoning upstreams reject it with 400
   if (!model.reasoning) { delete out.reasoning_effort; delete out.reasoning; if (m.format === 'anthropic') delete out.thinking; }
+  // Z.ai holds a whole tool call back until it is complete: writing a big file meant minutes of
+  // silence, then a dropped connection ("Response ended unexpectedly"). tool_stream streams it.
+  if (m.format === 'openai' && out.stream && out.tools?.length && out.tool_stream === undefined && isZai(route)) out.tool_stream = true;
   if (m.format === 'openai') applyCompat(out, route);
   return out;
 }

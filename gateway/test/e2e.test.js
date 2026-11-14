@@ -750,3 +750,14 @@ test('resilience: a 429 burst on the only key is retried, a briefly-cooling key 
   r = await call('POST', '/v1/messages', { token: userKey, body: { model: 'solo-drop', stream: true, max_tokens: 10, ...msg } });
   assert.match(r.text, /event: error/);
 });
+
+test('z.ai: streamed tool calls ask for tool_stream (no minutes of silence while a big file is written)', async () => {
+  upstreamCalls.length = 0;
+  const tools = [{ type: 'function', function: { name: 'write', parameters: { type: 'object', properties: {} } } }];
+  const msg = { model: 'abdalgani/glm-5.2', messages: [{ role: 'user', content: 'x' }] };
+  await call('POST', '/v1/chat/completions', { token: userKey, body: { ...msg, stream: true, tools } });
+  await call('POST', '/v1/chat/completions', { token: userKey, body: { ...msg, stream: true } });
+  await call('POST', '/v1/chat/completions', { token: userKey, body: { ...msg, tools } });
+  const zai = upstreamCalls.filter((c) => c.url.startsWith('https://api.z.ai') && c.url.endsWith('/chat/completions'));
+  assert.deepEqual(zai.map((c) => c.body.tool_stream), [true, undefined, undefined]);
+});
