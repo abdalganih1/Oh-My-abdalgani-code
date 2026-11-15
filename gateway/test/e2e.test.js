@@ -403,10 +403,16 @@ test('security: reservation stops over-spending and parallel double-spend', asyn
 });
 
 test('security: daily caps (dollars and tokens) and global budget kill switch', async () => {
-  await setSecurity({ user_daily_tokens: 1000 });
+  await setSecurity({ user_daily_tokens: 5_000_000 });
+  // paid usage is bounded by the dollar cap only — the token cap must not stop it
+  const paid = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(paid.status, 200);
+  // free (zero-cost) tokens do count
+  await env.DB.prepare("INSERT INTO usage_logs (user_id, model_id, status, prompt_tokens, completion_tokens, cost, created_at) VALUES (?, 'free-x', 200, 4000000, 1000000, 0, ?)").bind(userId, Math.floor(Date.now() / 1000)).run();
   const r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
   assert.equal(r.status, 429);
-  assert.match(r.data.error.message, /Daily token limit/);
+  assert.match(r.data.error.message, /free-model token limit/);
+  await env.DB.prepare("DELETE FROM usage_logs WHERE model_id = 'free-x'").run();
   await setSecurity({ user_daily_tokens: 0, global_daily_upstream_usd: 0.000001 });
   const g = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'glm-5.2', messages: [{ role: 'user', content: 'x' }] } });
   assert.equal(g.status, 503);

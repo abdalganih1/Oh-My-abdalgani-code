@@ -150,15 +150,16 @@ export async function checkSpendCaps(env, user, cfg) {
     // the student's own caps (daily is mandatory, clamped to the admin maximum)
     const maxCap = Math.round((cfg.user_cap_max_usd || 50) * 1e6);
     const daily = Math.min(user.daily_cap > 0 ? user.daily_cap : Math.round((cfg.user_cap_default_usd || 5) * 1e6), maxCap);
-    const r = await db.prepare('SELECT COALESCE(SUM(cost), 0) c, COALESCE(SUM(prompt_tokens + completion_tokens), 0) t FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, dayStart).first();
+    const r = await db.prepare('SELECT COALESCE(SUM(cost), 0) c, COALESCE(SUM(CASE WHEN cost = 0 THEN prompt_tokens + completion_tokens ELSE 0 END), 0) t FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, dayStart).first();
     if (r.c >= daily) throw new HttpError(429, `Daily spending cap reached ($${(daily / 1e6).toFixed(2)}). It resets at 00:00 UTC — you can change your cap in the dashboard.`, 'daily_limit');
     if (user.monthly_cap > 0) {
       const d = new Date(now() * 1000); const monthStart = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000);
       const m = await db.prepare('SELECT COALESCE(SUM(cost), 0) c FROM usage_logs WHERE user_id = ? AND created_at >= ?').bind(user.id, monthStart).first();
       if (m.c >= user.monthly_cap) throw new HttpError(429, `Monthly spending cap reached ($${(user.monthly_cap / 1e6).toFixed(2)}) — change it in the dashboard.`, 'monthly_limit');
     }
-    // token cap also protects zero-priced models, which never move the dollar counter
-    if (cfg.user_daily_tokens > 0 && r.t >= cfg.user_daily_tokens) throw new HttpError(429, `Daily token limit reached (${(cfg.user_daily_tokens / 1e6).toFixed(1)}M). It resets at 00:00 UTC.`, 'daily_limit');
+    // token cap protects zero-priced models, which never move the dollar counter — paid usage is
+    // already bounded by the dollar cap, so it must not count here (a $50 cap died at 15M cached tokens)
+    if (cfg.user_daily_tokens > 0 && r.t >= cfg.user_daily_tokens) throw new HttpError(429, `Daily free-model token limit reached (${(cfg.user_daily_tokens / 1e6).toFixed(1)}M). Paid models still work; it resets at 00:00 UTC.`, 'daily_limit');
   }
   if (cfg.global_daily_upstream_usd > 0) {
     const day = String(dayStart);
