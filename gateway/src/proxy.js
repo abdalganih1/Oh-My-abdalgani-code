@@ -3,7 +3,7 @@ import { authUser } from './auth.js';
 import { orderedSubscriptions, loadSubscriptions, settle, isSubUsable, estimateReservation, reserve } from './billing.js';
 import { afterAuth, checkSpendCaps, scrub, noteSpend } from './security.js';
 import {
-  resolveModel, loadRoutes, attempts, isRetryable, markKeyFailure, markKeySuccess,
+  resolveModel, loadRoutes, attempts, isRetryable, isRequestBlock, markKeyFailure, markKeySuccess,
   upstreamHeaders, upstreamUrl, getGlobalAliases, applyCompat,
 } from './routing.js';
 import { anthropicToOpenAIRequest, openAIToAnthropicResponse, OpenAIToAnthropicStream, SSEParser } from './translate.js';
@@ -203,7 +203,8 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
           i--; tried--;
           continue;
         }
-        ctx.waitUntil(markKeyFailure(env.DB, key.id, upstream.status, text));
+        // a request-level block says nothing about the key: try the next one, keep this one live
+        if (!isRequestBlock(upstream.status, text)) ctx.waitUntil(markKeyFailure(env.DB, key.id, upstream.status, text));
         continue;
       }
       // client error (400/404/422): don't burn other keys, relay it

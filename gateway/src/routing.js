@@ -111,6 +111,17 @@ async function* freshAttempts(env, routes, { maxKeysPerRoute, seed }) {
 /** Should we fail over to the next key/route for this upstream status? */
 export const isRetryable = (status) => status === 401 || status === 402 || status === 403 || status === 408 || status === 429 || status >= 500;
 
+/**
+ * A 403 that rejects this *request* (where it came from), not the key: a Cloudflare WAF page
+ * ("Attention Required!") or Anthropic's regional "Request not allowed". Parking the key for it
+ * shut the model off for every student for an hour because of one request.
+ */
+export function isRequestBlock(status, text) {
+  if (status !== 403) return false;
+  const t = String(text || '').trimStart();
+  return t.startsWith('<') || /request not allowed|attention required/i.test(t);
+}
+
 export function cooldownFor(status) {
   if (status === 401 || status === 403) return 3600; // bad / revoked key → park for an hour
   if (status === 402) return 3600;                    // provider out of credit

@@ -24,6 +24,7 @@ globalThis.fetch = async (url, init = {}) => {
   upstreamCalls.push({ url, body, auth });
   if (auth?.includes('ratelimited')) return new Response('{"error":"rate"}', { status: 429 });
   if (body?.model === 'burst-once' && !burstSeen++) return Response.json({ error: { code: '1302', message: 'Rate limit reached for requests' } }, { status: 429 });
+  if (body?.model === 'waf-blocked') return new Response('<!DOCTYPE html><title>Attention Required! | Cloudflare</title>', { status: 403, headers: { 'content-type': 'text/html' } });
   if (body?.model === 'drops-mid-stream') {
     let sent = false;
     return new Response(new ReadableStream({ pull(c) {
@@ -755,6 +756,19 @@ test('resilience: a 429 burst on the only key is retried, a briefly-cooling key 
   assert.match(r.text, /"code":"stream_interrupted"/, 'the client is told the answer was cut off');
   r = await call('POST', '/v1/messages', { token: userKey, body: { model: 'solo-drop', stream: true, max_tokens: 10, ...msg } });
   assert.match(r.text, /event: error/);
+});
+
+test('resilience: a 403 that blocks the request (WAF page / region) never parks the key for everyone', async () => {
+  await admin('POST', '/models', { id: 'solo-waf', name: 'Waf', status: 'active', pricing_mode: 'token', price_in: 1000, price_out: 1000,
+    routes: [{ provider_id: 'openrouter', upstream_model: 'waf-blocked' }] });
+  const keyOf = async () => (await admin('GET', '/providers')).data.find((p) => p.id === 'openrouter').keys[0];
+  await admin('PATCH', `/keys/${(await keyOf()).id}`, { reset: true });
+  const r = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'solo-waf', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(r.status, 403);
+  assert.doesNotMatch(r.text, /DOCTYPE/, 'students never see the raw provider page');
+  assert.ok(!(await keyOf()).cooling, 'the key stays live for the next request');
+  const ok = await call('POST', '/v1/chat/completions', { token: userKey, body: { model: 'solo-burst', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(ok.status, 200, ok.text);
 });
 
 test('z.ai: streamed tool calls ask for tool_stream (no minutes of silence while a big file is written)', async () => {
