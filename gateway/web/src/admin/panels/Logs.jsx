@@ -2,12 +2,13 @@
 // range totals, a details drawer and CSV of what is loaded.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarRange, Download, Eraser, FileWarning, Gauge, List, Search, Timer, TrendingUp, Users as UsersIcon, Wallet } from 'lucide-react';
-import { Badge, Button, Card, CopyButton, DataTable, Input, Segmented, Select, Sheet, Stat, CountUp, cn, toast } from '../../ui/index.js';
+import { Badge, Button, Card, CopyButton, DataTable, Input, MobileViewToggle, Segmented, Select, Sheet, Stat, CountUp, cn, toast } from '../../ui/index.js';
 import { useDebounced, usePersisted } from '../../lib/hooks.js';
 import { csvBlob, saveBlob } from '../../lib/api.js';
-import { TZ, dateInput, fromDateInput, int, ms, pct, time, tokens, usdPrecise } from '../../lib/format.js';
+import { TZ, dateInput, fromDateInput, hhmm, int, ms, pct, time, tokens, usdPrecise } from '../../lib/format.js';
 import { api } from '../ctx.js';
 
+const shortModel = (m) => String(m || '').replace(/^(claude|anthropic|openai|google|meta-llama)[-/]/i, '');
 const RANGES = { '1h': 3600, '24h': 86400, '7d': 7 * 86400, '30d': 30 * 86400, '90d': 90 * 86400 };
 const EP = { '/v1/chat/completions': 'chat', '/v1/messages': 'messages', '/v1/responses': 'responses' };
 const STATUS_OPTS = [
@@ -75,6 +76,7 @@ export default function Logs() {
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
   const [sel, setSel] = useState(null);
+  const [view, setView] = usePersisted('abd:logsView', 'cards');
   const [lists, setLists] = useState({ users: [], providers: [], models: [] });
   const seq = useRef(0);
 
@@ -132,18 +134,23 @@ export default function Logs() {
   const margin = sum ? sum.cost - sum.upstream : 0;
 
   const columns = useMemo(() => [
-    { key: 'time', header: 'الوقت', cell: (r) => <span className="font-mono text-[12.5px] text-muted">{time(r.created_at)}</span>, width: 96 },
-    { key: 'user', header: 'الطالب', primary: true, cell: (r) => <span className="font-medium">{r.user_name || `#${r.user_id}`}</span> },
-    { key: 'model', header: 'النموذج', mobileFull: true, cell: (r) => (
+    { key: 'time', header: 'الوقت', cell: (r) => <span className="font-mono text-[12.5px] text-muted">{time(r.created_at)}</span>, width: 96,
+      line: (r) => <span className="text-muted num">{hhmm(r.created_at)}</span> },
+    { key: 'user', header: 'الطالب', primary: true, cell: (r) => <span className="font-medium">{r.user_name || `#${r.user_id}`}</span>,
+      line: (r) => <span className="block max-w-[5.5rem] truncate font-medium">{r.user_name || `#${r.user_id}`}</span> },
+    { key: 'model', header: 'النموذج', mobileFull: true, lineGrow: true,
+      line: (r) => <span dir="ltr" className="block truncate text-end font-mono text-[11.5px]">{shortModel(r.model_id)}</span>, cell: (r) => (
       <span className="font-mono text-[12.5px] ltr">{r.requested_model && r.requested_model !== r.model_id && <span className="text-muted">{r.requested_model} → </span>}{r.model_id}</span>
     ) },
-    { key: 'provider', header: 'المزوّد', cell: (r) => <span className="text-[13px]">{r.provider_id || '—'}</span> },
+    { key: 'provider', header: 'المزوّد', lineHide: true, cell: (r) => <span className="text-[13px]">{r.provider_id || '—'}</span> },
     { key: 'ep', header: 'الصيغة', hideOnMobile: true, cell: (r) => <span className="text-xs text-muted">{EP[r.endpoint] || r.endpoint}</span> },
-    { key: 'in', header: 'دخل', align: 'end', cell: (r) => tokens(r.prompt_tokens) },
-    { key: 'out', header: 'خرج', align: 'end', cell: (r) => tokens(r.completion_tokens) },
+    { key: 'in', header: 'دخل', align: 'end', cell: (r) => tokens(r.prompt_tokens),
+      line: (r) => <span className="text-fg-2 ltr">{tokens(r.prompt_tokens)}/{tokens(r.completion_tokens)}</span> },
+    { key: 'out', header: 'خرج', align: 'end', lineHide: true, cell: (r) => tokens(r.completion_tokens) },
     { key: 'cost', header: 'كلفة', align: 'end', cell: (r) => usdPrecise(r.cost) },
-    { key: 'ms', header: 'ms', align: 'end', cell: (r) => <span className="text-muted">{r.latency_ms ?? ''}</span> },
-    { key: 'st', header: 'حالة', cell: (r) => <StatusBadge st={r.status} /> },
+    { key: 'ms', header: 'ms', align: 'end', lineHide: true, cell: (r) => <span className="text-muted">{r.latency_ms ?? ''}</span> },
+    { key: 'st', header: 'حالة', cell: (r) => <StatusBadge st={r.status} />,
+      line: (r) => <span className={cn('font-semibold num', r.status < 400 ? 'text-ok' : r.status === 429 || r.status === 402 ? 'text-warn' : 'text-bad')}>{r.status}</span> },
   ], []);
 
   return (
@@ -183,7 +190,8 @@ export default function Logs() {
       </div>
 
       <Card spotlight={false} pad={false} bodyClassName="p-3 sm:p-4">
-        <DataTable columns={columns} rows={rows} loading={loading} onRowClick={setSel}
+        <MobileViewToggle value={view} onChange={setView} className="mb-3" />
+        <DataTable mobileView={view} columns={columns} rows={rows} loading={loading} onRowClick={setSel}
           groupBy={(r) => dayKey(r.created_at)} groupLabel={(g) => DAY_FMT.format(new Date(`${g}T12:00:00`))}
           rowClassName={(r) => (r.status >= 400 ? 'shadow-[inset_-3px_0_0_var(--bad)]' : '')}
           empty={{ icon: List, title: 'ما في طلبات', text: 'ما في طلبات بهالفترة وهالفلاتر' }} />

@@ -1,15 +1,32 @@
 // DataTable — a real table on desktop, stacked cards on phones (same column definitions).
 // columns: [{ key, header, cell?(row,i), align?: 'end'|'center', className?, width?,
-//             primary?: true (card title on mobile), hideOnMobile?: true, mobileFull?: true }]
+//             primary?: true (card title on mobile), hideOnMobile?: true, mobileFull?: true,
+//             line?(row) (compact render in the one-line view), lineHide?: true, lineGrow?: true }]
+// mobileView: 'cards' (default) | 'line' (one dense row per item) | 'table' (the full table, scrolls sideways)
 import { Fragment } from 'react';
 import { motion } from 'motion/react';
+import { LayoutList, Rows3, Table2 } from 'lucide-react';
 import { useMedia } from '../lib/hooks.js';
-import { cn, Empty, Skeleton } from './core.jsx';
+import { cn, Empty, Segmented, Skeleton } from './core.jsx';
+
+export const MOBILE_QUERY = '(max-width: 760px)';
+const VIEWS = [
+  { value: 'cards', label: 'بطاقات', icon: LayoutList },
+  { value: 'line', label: 'سطر', icon: Rows3 },
+  { value: 'table', label: 'جدول', icon: Table2 },
+];
+/** View picker for DataTable's phone layouts — renders nothing on wide screens. */
+export function MobileViewToggle({ value, onChange, className }) {
+  const mobile = useMedia(MOBILE_QUERY);
+  if (!mobile) return null;
+  return <Segmented size="sm" value={value} onChange={onChange} options={VIEWS} className={className} />;
+}
 
 const val = (c, r, i) => (c.cell ? c.cell(r, i) : r[c.key]);
 
-export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowClick, empty, loading, className, dense, maxHeight, groupBy, groupLabel, rowClassName, stickyHeader = true }) {
-  const mobile = useMedia('(max-width: 760px)');
+export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowClick, empty, loading, className, dense, maxHeight, groupBy, groupLabel, rowClassName, stickyHeader = true, mobileView = 'cards' }) {
+  const mobile = useMedia(MOBILE_QUERY);
+  const view = mobile ? mobileView : 'table';
   if (loading && !rows?.length) {
     return <div className={cn('space-y-2', className)}>{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-11" />)}</div>;
   }
@@ -22,7 +39,30 @@ export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowCl
     groups.at(-1).items.push([r, i]);
   });
 
-  if (mobile) {
+  if (view === 'line') {
+    const cols = columns.filter((c) => !c.hideOnMobile && !c.lineHide);
+    return (
+      <div className={cn('min-w-0 overflow-auto rounded-xl border border-line', className)} style={maxHeight ? { maxHeight } : undefined}>
+        {groups.map(({ g, items }, gi) => (
+          <Fragment key={gi}>
+            {groupBy && <div className="sticky top-0 z-[1] border-b border-line bg-solid/95 px-2.5 py-1.5 text-[11.5px] font-semibold text-muted backdrop-blur">{groupLabel ? groupLabel(g) : g}</div>}
+            {items.map(([r, i]) => (
+              <div key={rowKey(r, i)} onClick={onRowClick ? () => onRowClick(r) : undefined}
+                className={cn('flex min-w-0 items-center gap-2 whitespace-nowrap border-b border-line/70 px-2.5 py-2 text-[12px] last:border-0', onRowClick && 'cursor-pointer active:bg-accent-soft/60', rowClassName?.(r))}>
+                {cols.map((c) => (
+                  <div key={c.key} className={cn('min-w-0', c.lineGrow ? 'flex-1' : 'shrink-0', c.align === 'end' && 'num')}>
+                    {c.line ? c.line(r, i) : val(c, r, i)}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    );
+  }
+
+  if (view === 'cards') {
     const primary = columns.find((c) => c.primary) || columns[0];
     const rest = columns.filter((c) => c !== primary && !c.hideOnMobile);
     return (
@@ -72,7 +112,7 @@ export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowCl
                   tabIndex={onRowClick ? 0 : undefined} onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter') onRowClick(r); } : undefined}
                   className={cn('border-b border-line/70 transition-colors last:border-0 hover:bg-accent-soft/50', onRowClick && 'cursor-pointer focus-visible:bg-accent-soft focus-visible:outline-none', rowClassName?.(r))}>
                   {columns.map((c) => (
-                    <td key={c.key} className={cn('px-3.5 align-middle', dense ? 'py-2' : 'py-3', c.align === 'end' && 'text-end num', c.align === 'center' && 'text-center', c.className)}>{val(c, r, i)}</td>
+                    <td key={c.key} className={cn('px-3.5 align-middle', dense ? 'py-2' : 'py-3', mobile && 'whitespace-nowrap', c.align === 'end' && 'text-end num', c.align === 'center' && 'text-center', c.className)}>{val(c, r, i)}</td>
                   ))}
                 </motion.tr>
               ))}

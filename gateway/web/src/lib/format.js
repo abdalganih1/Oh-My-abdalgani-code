@@ -23,6 +23,7 @@ export const ms = (v) => (v == null ? '—' : v < 1000 ? `${Math.round(v)}ms` : 
 export const date = (ts) => (ts ? iso(new Date(ts * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })) : '—');
 export const day = (ts) => (ts ? iso(new Date(ts * 1000).toLocaleDateString('en-GB', { dateStyle: 'medium' })) : '—');
 export const time = (ts) => iso(new Date(ts * 1000).toLocaleTimeString('en-GB'));
+export const hhmm = (ts) => iso(new Date(ts * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
 const REL = new Intl.RelativeTimeFormat('ar', { numeric: 'auto' });
 export function ago(ts) {
   if (!ts) return '—';

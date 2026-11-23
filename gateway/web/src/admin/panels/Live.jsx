@@ -5,12 +5,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Activity, AlertTriangle, Clock, Coins, Cpu, Globe, Hash, Monitor, Pause, Play, Radio, Trash2, User, Zap } from 'lucide-react';
 import {
-  Badge, Button, Card, CopyButton, DataTable, Empty, Input, Select, Sheet, Switch, Tip, cn,
+  Badge, Button, Card, CopyButton, DataTable, Empty, Input, MobileViewToggle, Select, Sheet, Switch, Tip, cn,
 } from '../../ui/index.js';
-import { useAsync, useDebounced, useVisible } from '../../lib/hooks.js';
-import { date, int, ms, time, tokens, usdPrecise } from '../../lib/format.js';
+import { useAsync, useDebounced, usePersisted, useVisible } from '../../lib/hooks.js';
+import { date, hhmm, int, ms, time, tokens, usdPrecise } from '../../lib/format.js';
 import { api } from '../ctx.js';
 
+const shortModel = (m) => String(m || '').replace(/^(claude|anthropic|openai|google|meta-llama)[-/]/i, '');
 const MAX_ROWS = 500, BASE = 5000, IDLE = 10 * 60 * 1000;
 
 const CSS = `
@@ -32,6 +33,7 @@ export default function Live() {
   const [fresh, setFresh] = useState(() => new Set());
   const [status, setStatus] = useState({ text: 'جارٍ الاتصال…', tone: 'neutral' });
   const [open, setOpen] = useState(null);
+  const [view, setView] = usePersisted('abd:liveView', 'cards');
   const S = useRef({ after: 0, backoff: BASE, lastAct: Date.now(), gen: 0, filterKey: '' });
 
   // user activity keeps the poller alive
@@ -105,27 +107,32 @@ export default function Live() {
   }, [rows]);
 
   const columns = [
-    { key: 'time', header: 'الوقت', cell: (r) => <span className="whitespace-nowrap text-[12.5px] text-fg-2 num">{time(r.created_at)}</span> },
+    { key: 'time', header: 'الوقت', cell: (r) => <span className="whitespace-nowrap text-[12.5px] text-fg-2 num">{time(r.created_at)}</span>,
+      line: (r) => <span className="text-muted num">{hhmm(r.created_at)}</span> },
     { key: 'user', header: 'الطالب', primary: true, cell: (r) => (
       <div className="flex min-w-0 items-center gap-2">
         <StatusDot ok={r.status < 400} />
         <span className="truncate font-medium">{r.user_name || r.user_id}</span>
       </div>
+    ), line: (r) => (
+      <span className="flex max-w-[5.5rem] items-center gap-1.5"><StatusDot ok={r.status < 400} /><span className="truncate font-medium">{r.user_name || r.user_id}</span></span>
     ) },
-    { key: 'model', header: 'النموذج', mobileFull: true, cell: (r) => (
+    { key: 'model', header: 'النموذج', mobileFull: true, lineGrow: true,
+      line: (r) => <span dir="ltr" className="block truncate text-end font-mono text-[11.5px]">{shortModel(r.model_id)}</span>, cell: (r) => (
       <span className="font-mono text-[12px] ltr">
         {r.requested_model && r.requested_model !== r.model_id && <span className="text-muted">{r.requested_model} → </span>}{r.model_id}
       </span>
     ) },
-    { key: 'provider', header: 'المزوّد', cell: (r) => <span className="text-[12.5px]">{r.provider_id || '—'}</span> },
-    { key: 'in', header: 'دخل', align: 'end', cell: (r) => tokens(r.prompt_tokens) },
-    { key: 'out', header: 'خرج', align: 'end', cell: (r) => tokens(r.completion_tokens) },
+    { key: 'provider', header: 'المزوّد', lineHide: true, cell: (r) => <span className="text-[12.5px]">{r.provider_id || '—'}</span> },
+    { key: 'in', header: 'دخل', align: 'end', cell: (r) => tokens(r.prompt_tokens),
+      line: (r) => <span className="text-fg-2 ltr">{tokens(r.prompt_tokens)}/{tokens(r.completion_tokens)}</span> },
+    { key: 'out', header: 'خرج', align: 'end', lineHide: true, cell: (r) => tokens(r.completion_tokens) },
     { key: 'cost', header: 'كلفة', align: 'end', cell: (r) => usdPrecise(r.cost) },
     { key: 'ms', header: 'ms', align: 'end', hideOnMobile: true, cell: (r) => <span className="text-[12.5px]">{r.latency_ms ?? ''}</span> },
     { key: 'ip', header: 'IP', hideOnMobile: true, cell: (r) => <span className="font-mono text-[11.5px] text-muted ltr">{r.ip || ''}</span> },
     { key: 'status', header: 'حالة', cell: (r) => (
       <Tip content={r.error || null}><span><Badge tone={r.status < 400 ? 'ok' : 'bad'} className="num">{r.status}</Badge></span></Tip>
-    ) },
+    ), line: (r) => <span className={cn('font-semibold num', r.status < 400 ? 'text-ok' : 'text-bad')}>{r.status}</span> },
   ];
 
   return (
@@ -173,7 +180,8 @@ export default function Live() {
       </div>
 
       <Card pad={false} bodyClassName="p-2 sm:p-3">
-        <DataTable rows={rows} columns={columns} rowKey={(r) => r.id} onRowClick={setOpen} loading={!loaded && running && visible} dense maxHeight="70vh"
+        <MobileViewToggle value={view} onChange={setView} className="mb-2" />
+        <DataTable mobileView={view} rows={rows} columns={columns} rowKey={(r) => r.id} onRowClick={setOpen} loading={!loaded && running && visible} dense maxHeight="70vh"
           rowClassName={(r) => cn(fresh.has(r.id) && 'abd-live-fresh', r.status >= 400 && 'bg-bad-soft/40')}
           empty={<Empty icon={Zap} title="ما في طلبات بعد" text={running ? 'أول ما يوصل طلب جديد بيظهر هون فوراً.' : 'السجل موقوف — اضغط استئناف.'}
             action={!running && <Button variant="primary" icon={Play} onClick={toggle}>استئناف</Button>} />} />
