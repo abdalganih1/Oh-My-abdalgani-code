@@ -52,6 +52,25 @@ globalThis.fetch = async (url, init = {}) => {
     }
     return Response.json({ id: 'c', model: body.model, choices: [{ message: { role: 'assistant', content: 'pong' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 500, cost: 0.02 } });
   }
+  if (url.endsWith('/v1/messages') && body?.model === 'claude-cache-mock') {
+    const usage = { input_tokens: 10, cache_read_input_tokens: 9000, cache_creation_input_tokens: 500, output_tokens: 30 };
+    if (body.stream) {
+      return new Response(sseBody([
+        `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { id: 'msg_1', usage: { ...usage, output_tokens: 1 } } })}\n\n`,
+        `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })}\n\n`,
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Look' } })}\n\n`,
+        `event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`,
+        `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'toolu_9', name: 'read', input: {} } })}\n\n`,
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"path":' } })}\n\n`,
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '"a.txt"}' } })}\n\n`,
+        `event: content_block_stop\ndata: {"type":"content_block_stop","index":1}\n\n`,
+        `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 30 } })}\n\n`,
+        `event: message_stop\ndata: {"type":"message_stop"}\n\n`,
+      ]), { headers: { 'content-type': 'text/event-stream' } });
+    }
+    return Response.json({ id: 'msg_2', type: 'message', role: 'assistant', model: body.model, stop_reason: 'tool_use', usage,
+      content: [{ type: 'text', text: 'Look' }, { type: 'tool_use', id: 'toolu_9', name: 'read', input: { path: 'a.txt' } }] });
+  }
   if (url.endsWith('/v1/messages')) {
     if (body.stream) {
       return new Response(sseBody([
@@ -791,4 +810,56 @@ test('a model asked for under another spelling (claude-sonnet-5-5 vs claude-sonn
   }
   const miss = await call('POST', '/v1/chat/completions', { token: pk, body: { model: 'demo-model-7-2', messages: [{ role: 'user', content: 'x' }] } });
   assert.equal(miss.status, 404);
+});
+
+test('claude via /v1/chat/completions goes to native /v1/messages with prompt caching, reply comes back in OpenAI format', async () => {
+  await admin('POST', '/providers/anthropic/keys', { label: 'an', key: 'sk-ant-good' });
+  await admin('POST', '/models', { id: 'claude-cache-test', name: 'Cache test', status: 'active', pricing_mode: 'token', price_in: 2_000_000, price_out: 10_000_000, price_cache_read: 200_000, price_cache_write: 2_500_000,
+    routes: [{ provider_id: 'anthropic', upstream_model: 'claude-cache-mock' }] });
+  const pk = (await admin('POST', '/playground/key')).data.api_key;
+  const tools = [{ type: 'function', function: { name: 'read', description: 'read a file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }];
+  const messages = [
+    { role: 'system', content: 'You are Hermes.' },
+    { role: 'user', content: [{ type: 'text', text: 'open a.txt' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] },
+    { role: 'assistant', content: null, tool_calls: [{ id: 'toolu_1', type: 'function', function: { name: 'read', arguments: '{"path":"b.txt"}' } }] },
+    { role: 'tool', tool_call_id: 'toolu_1', content: 'hello' },
+    { role: 'user', content: 'now a.txt' },
+  ];
+  upstreamCalls.length = 0;
+  const r = await call('POST', '/v1/chat/completions', { token: pk, body: { model: 'claude-cache-test', messages, tools, temperature: 0.7, reasoning_effort: 'high', max_tokens: 4000 } });
+  assert.equal(r.status, 200, r.text);
+  const up = upstreamCalls.at(-1);
+  assert.equal(up.url, 'https://api.anthropic.com/v1/messages');
+  assert.deepEqual(up.body.cache_control, { type: 'ephemeral' });
+  assert.deepEqual(up.body.system, [{ type: 'text', text: 'You are Hermes.', cache_control: { type: 'ephemeral' } }]);
+  assert.equal(up.body.temperature, undefined);
+  assert.deepEqual(up.body.output_config, { effort: 'high' });
+  assert.equal(up.body.max_tokens, 4000);
+  assert.deepEqual(up.body.messages.map((m) => m.role), ['user', 'assistant', 'user']);
+  assert.deepEqual(up.body.messages[0].content[1], { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } });
+  assert.deepEqual(up.body.messages[1].content[0], { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: 'b.txt' } });
+  assert.deepEqual(up.body.messages[2].content.map((b) => b.type), ['tool_result', 'text']);
+  assert.equal(up.body.tools[0].input_schema.properties.path.type, 'string');
+  assert.equal(r.data.object, 'chat.completion');
+  assert.equal(r.data.choices[0].finish_reason, 'tool_calls');
+  assert.deepEqual(r.data.choices[0].message.tool_calls[0], { id: 'toolu_9', type: 'function', function: { name: 'read', arguments: '{"path":"a.txt"}' } });
+  assert.equal(r.data.usage.prompt_tokens, 9510);
+  assert.equal(r.data.usage.prompt_tokens_details.cached_tokens, 9000);
+  let log = (await admin('GET', '/logs?model=claude-cache-test')).data.rows[0];
+  assert.equal(log.cached_tokens, 9000);
+  assert.equal(log.cost, Math.ceil((10 * 2_000_000 + 9000 * 200_000 + 500 * 2_500_000 + 30 * 10_000_000) / 1e6));
+
+  const s = await call('POST', '/v1/chat/completions', { token: pk, body: { model: 'claude-cache-test', messages, tools, stream: true } });
+  assert.equal(s.status, 200, s.text);
+  const chunks = s.text.split('\n\n').filter((f) => f.startsWith('data: ') && f !== 'data: [DONE]').map((f) => JSON.parse(f.slice(6)));
+  assert.ok(s.text.trim().endsWith('data: [DONE]'));
+  assert.equal(chunks.map((c) => c.choices[0]?.delta?.content || '').join(''), 'Look');
+  const args = chunks.flatMap((c) => c.choices[0]?.delta?.tool_calls || []).map((t) => t.function.arguments).join('');
+  assert.equal(args, '{"path":"a.txt"}');
+  assert.equal(chunks.find((c) => c.choices[0]?.delta?.tool_calls?.[0]?.id)?.choices[0].delta.tool_calls[0].id, 'toolu_9');
+  assert.equal(chunks.find((c) => c.choices[0]?.finish_reason)?.choices[0].finish_reason, 'tool_calls');
+  assert.equal(chunks.at(-1).usage.prompt_tokens_details.cached_tokens, 9000);
+  log = (await admin('GET', '/logs?model=claude-cache-test')).data.rows[0];
+  assert.equal(log.cached_tokens, 9000);
+  assert.equal(log.completion_tokens, 30);
 });

@@ -7,6 +7,7 @@ import {
   upstreamHeaders, upstreamUrl, getGlobalAliases, applyCompat,
 } from './routing.js';
 import { anthropicToOpenAIRequest, openAIToAnthropicResponse, OpenAIToAnthropicStream, SSEParser } from './translate.js';
+import { openAIToAnthropicRequest, anthropicToOpenAIResponse, AnthropicToOpenAIStream } from './openai2anthropic.js';
 import { responsesToChatRequest, chatToResponsesResponse, ChatToResponsesStream } from './responses.js';
 import { json, apiError, readJson, HttpError } from './util.js';
 import { recordOk, recordFail, countsAsFailure } from './lifecycle.js';
@@ -45,6 +46,7 @@ export const isZai = (route) => route.id === 'zai' || /(^|\.)z\.ai\/|bigmodel\.c
 function buildUpstreamBody(clientFormat, m, body, route, model) {
   let out;
   if (clientFormat === 'responses') out = responsesToChatRequest(body, route.upstream_model).chat;
+  else if (m.mode === 'translate' && m.format === 'anthropic') out = openAIToAnthropicRequest(body, route.upstream_model, { maxOutput: model.max_output || 32000 });
   else if (m.mode === 'translate') out = anthropicToOpenAIRequest(body, route.upstream_model, { keepCache: keepsCacheControl(route) });
   else {
     out = { ...body, model: route.upstream_model };
@@ -76,7 +78,16 @@ function modeFor(clientFormat, route) {
     if (route.openai_base_url) return { mode: 'translate', format: 'openai' };
     return null;
   }
+  // Claude over its native API: Anthropic's OpenAI-compatible endpoint never prompt-caches
+  if (route.anthropic_base_url && prefersNativeMessages(route)) return { mode: 'translate', format: 'anthropic' };
   return route.openai_base_url ? { mode: 'native', format: 'openai' } : null;
+}
+
+/** Serve OpenAI chat clients through /v1/messages? Claude models by default; compat.native_messages overrides. */
+function prefersNativeMessages(route) {
+  let c = null; try { c = route.compat ? JSON.parse(route.compat).native_messages : null; } catch { /* bad JSON */ }
+  if (typeof c === 'boolean') return c;
+  return /claude/i.test(route.upstream_model || '');
 }
 
 // failover deadlines; the last option left gets longer ones (failing fast there helps nobody)
@@ -244,7 +255,7 @@ async function runCompletion(request, env, ctx, clientFormat, sec, { user, keyId
     if (!isStream) {
       const data = await upstream.json().finally(() => clearTimeout(timer));
       let usage, out;
-      if (m.format === 'anthropic') { usage = usageFromAnthropic(data.usage); out = { ...data, model: model.id }; }
+      if (m.format === 'anthropic') { usage = usageFromAnthropic(data.usage); out = clientFormat === 'openai' ? anthropicToOpenAIResponse(data, model.id) : { ...data, model: model.id }; }
       else {
         usage = usageFromOpenAI(data.usage);
         out = clientFormat === 'responses' ? chatToResponsesResponse(data, model.id, body, customTools)
@@ -261,6 +272,7 @@ async function runCompletion(request, env, ctx, clientFormat, sec, { user, keyId
     const decoder = new TextDecoder();
     const parser = new SSEParser();
     const conv = clientFormat === 'responses' ? new ChatToResponsesStream(model.id, body, customTools)
+      : m.mode === 'translate' && m.format === 'anthropic' ? new AnthropicToOpenAIStream(model.id, { includeUsage: true })
       : m.mode === 'translate' ? new OpenAIToAnthropicStream(model.id) : null;
     let usage = null;
 
@@ -282,6 +294,7 @@ async function runCompletion(request, env, ctx, clientFormat, sec, { user, keyId
             if (m.format === 'anthropic') {
               if (obj.type === 'message_start') usage = usageFromAnthropic(obj.message?.usage, usage);
               else if (obj.type === 'message_delta') usage = usageFromAnthropic(obj.usage, usage);
+              if (conv) outText += conv.push(obj);
             } else {
               if (obj.usage) usage = usageFromOpenAI(obj.usage);
               if (conv) outText += conv.push(obj);
