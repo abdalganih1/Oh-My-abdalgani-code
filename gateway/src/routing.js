@@ -1,5 +1,6 @@
 // OpenRouter-style routing: public model → ordered routes → weighted key pool with cooldowns.
 import { decryptSecret, now, HttpError } from './util.js';
+import { modelKey } from './prices.js';
 
 export const MODEL_PREFIXES = ['abdalgani/', 'abd/'];
 export const MAIN_ALIAS = 'abd-main';
@@ -28,6 +29,13 @@ export async function resolveModel(db, userId, requested) {
   }
   // an alias must never break because its target was archived: last resort = abd-main's target
   if ((alias || globals[name]) && dead(model) && name !== MAIN_ALIAS && globals[MAIN_ALIAS]) model = await get(globals[MAIN_ALIAS]);
+  // same model, different spelling ("claude-sonnet-5-5" vs "claude-sonnet-5.5", "anthropic/…"): match on the normalized name
+  if (!model && !alias && !globals[name]) {
+    const k = modelKey(name);
+    const { results } = await db.prepare("SELECT * FROM models WHERE status != 'hidden'").all();
+    const hits = results.filter((m) => modelKey(m.id) === k);
+    model = hits.find((m) => m.status !== 'archived') || hits[0] || null;
+  }
   if (!model) throw new HttpError(404, `Model "${requested}" does not exist. See GET /v1/models`, 'not_found_error');
   if (model.status === 'archived') {
     throw new HttpError(410, `Model "${model.id}" is archived (${model.archived_reason || 'no longer served'}). Pick another model in the dashboard or use abd-main.`, 'model_archived');

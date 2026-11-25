@@ -781,3 +781,14 @@ test('z.ai: streamed tool calls ask for tool_stream (no minutes of silence while
   const zai = upstreamCalls.filter((c) => c.url.startsWith('https://api.z.ai') && c.url.endsWith('/chat/completions'));
   assert.deepEqual(zai.map((c) => c.body.tool_stream), [true, undefined, undefined]);
 });
+
+test('a model asked for under another spelling (claude-sonnet-5-5 vs claude-sonnet-5.5) still resolves', async () => {
+  await admin('POST', '/models', { id: 'demo-model-7.1', name: 'Dotted', routes: [{ provider_id: 'zai', upstream_model: 'glm-5.3' }] });
+  const pk = (await admin('POST', '/playground/key')).data.api_key;
+  for (const asked of ['demo-model-7-1', 'abd/demo_model_7.1', 'vendor/demo-model-7-1']) {
+    const res = await call('POST', '/v1/chat/completions', { token: pk, body: { model: asked, messages: [{ role: 'user', content: 'spelling ' + asked }] } });
+    assert.equal(res.status, 200, asked + ' ' + res.text);
+  }
+  const miss = await call('POST', '/v1/chat/completions', { token: pk, body: { model: 'demo-model-7-2', messages: [{ role: 'user', content: 'x' }] } });
+  assert.equal(miss.status, 404);
+});
