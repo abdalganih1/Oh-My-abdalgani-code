@@ -56,10 +56,18 @@ export async function recordOk(db, providerId, routeId, t = nowSec()) {
   ]);
 }
 
+// a transient failure (overload, timeout, 5xx) after an hour of silence starts a new streak:
+// two short bursts a day apart with no traffic between are not "failing for 22h"
+const STREAK_GAP_S = 3600;
+const isTransient = (status) => !status || status === 408 || status === 429 || status >= 500;
+
 export async function recordFail(db, providerId, routeId, status, message, t = nowSec()) {
   const err = `${status || 'ERR'} ${String(message || '').slice(0, 200)}`;
-  const stmts = [db.prepare('UPDATE providers SET first_fail_at = COALESCE(first_fail_at, ?), last_fail_at = ?, last_fail_error = ? WHERE id = ?').bind(t, t, err, providerId)];
-  if (routeId != null) stmts.push(db.prepare('UPDATE model_routes SET first_fail_at = COALESCE(first_fail_at, ?), last_fail_at = ?, last_fail_error = ? WHERE id = ?').bind(t, t, err, routeId));
+  const reset = isTransient(status) ? 1 : 0;
+  const first = 'first_fail_at = CASE WHEN ? = 1 AND last_fail_at IS NOT NULL AND last_fail_at < ? THEN ? ELSE COALESCE(first_fail_at, ?) END';
+  const args = [reset, t - STREAK_GAP_S, t, t];
+  const stmts = [db.prepare(`UPDATE providers SET ${first}, last_fail_at = ?, last_fail_error = ? WHERE id = ?`).bind(...args, t, err, providerId)];
+  if (routeId != null) stmts.push(db.prepare(`UPDATE model_routes SET ${first}, last_fail_at = ?, last_fail_error = ? WHERE id = ?`).bind(...args, t, err, routeId));
   await db.batch(stmts);
 }
 

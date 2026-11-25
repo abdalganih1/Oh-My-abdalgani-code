@@ -130,6 +130,22 @@ test('provider failing for 6h with no success → archived; a 5h rate-limit is t
   assert.notEqual((await model('cool-model-free')).status, 'archived');
 });
 
+test('two overload bursts a day apart with no traffic between never archive (Z.ai 524s)', async () => {
+  const t = T0 + 25 * D;
+  const route = await env.DB.prepare("SELECT id FROM model_routes WHERE provider_id = 'zai' LIMIT 1").first();
+  await recordFail(env.DB, 'zai', route.id, 524, 'error code: 524', t);
+  await recordFail(env.DB, 'zai', route.id, 429, 'rate limited', t + 60);
+  await recordFail(env.DB, 'zai', route.id, 524, 'error code: 524', t + 22 * H);
+  await runMaintenance(env, { now: t + 22 * H + 60, sync: false });
+  assert.equal((await env.DB.prepare("SELECT archived_at FROM providers WHERE id='zai'").first()).archived_at, null);
+  // ...but steady 5xx under real traffic for 6h still archives
+  for (let h = 0; h <= 6 * 2; h++) await recordFail(env.DB, 'zai', route.id, 503, 'down', t + 24 * H + h * 1800);
+  const p = await env.DB.prepare("SELECT first_fail_at, last_fail_at FROM providers WHERE id='zai'").first();
+  assert.equal(p.last_fail_at - p.first_fail_at, 6 * H);
+  await env.DB.prepare("UPDATE providers SET first_fail_at = NULL, last_fail_at = NULL WHERE id='zai'").run();
+  await env.DB.prepare('UPDATE model_routes SET first_fail_at = NULL, last_fail_at = NULL WHERE id = ?').bind(route.id).run();
+});
+
 test('route failing 6h while its provider serves other models → only that route archived', async () => {
   const t = T0 + 30 * D;
   const r51 = await env.DB.prepare("SELECT id FROM model_routes WHERE model_id = 'glm-5.1'").first();
