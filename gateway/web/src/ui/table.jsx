@@ -1,11 +1,13 @@
 // DataTable — a real table on desktop, stacked cards on phones (same column definitions).
 // columns: [{ key, header, cell?(row,i), align?: 'end'|'center', className?, width?,
 //             primary?: true (card title on mobile), hideOnMobile?: true, mobileFull?: true,
-//             line?(row) (compact render in the one-line view), lineHide?: true, lineGrow?: true }]
+//             line?(row) (compact render in the one-line view), lineHide?: true, lineGrow?: true,
+//             sort?(row) → value to sort by (default row[key]); sortable?: false to turn it off }]
+// Clicking a column header sorts: descending → ascending → original order.
 // mobileView: 'cards' (default) | 'line' (one dense row per item) | 'table' (the full table, scrolls sideways)
-import { Fragment } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { LayoutList, Rows3, Table2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsUpDown, LayoutList, Rows3, Table2 } from 'lucide-react';
 import { useMedia } from '../lib/hooks.js';
 import { cn, Empty, Segmented, Skeleton } from './core.jsx';
 
@@ -23,10 +25,34 @@ export function MobileViewToggle({ value, onChange, className }) {
 }
 
 const val = (c, r, i) => (c.cell ? c.cell(r, i) : r[c.key]);
+const sortVal = (c, r) => (c.sort ? c.sort(r) : r[c.key]);
+const isPrim = (v) => typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean';
+const canSort = (c, rows) => c.sortable !== false && !!c.header && (c.sort || rows.some((r) => isPrim(r[c.key])));
+const collator = new Intl.Collator('ar', { numeric: true, sensitivity: 'base' });
+/** Empty values (null/undefined/'') always go last, whichever direction. */
+function compare(a, b) {
+  const ea = a == null || a === '', eb = b == null || b === '';
+  if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'boolean' || typeof b === 'boolean') return Number(a) - Number(b);
+  return collator.compare(String(a), String(b));
+}
 
 export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowClick, empty, loading, className, dense, maxHeight, groupBy, groupLabel, rowClassName, stickyHeader = true, mobileView = 'cards' }) {
   const mobile = useMedia(MOBILE_QUERY);
   const view = mobile ? mobileView : 'table';
+  const [sort, setSort] = useState(null); // { key, dir: 'asc' | 'desc' }
+  const sortCol = sort && !groupBy ? columns.find((c) => c.key === sort.key) : null;
+  rows = useMemo(() => {
+    if (!sortCol || !rows?.length) return rows;
+    const m = sort.dir === 'asc' ? 1 : -1;
+    return rows.map((r, i) => [r, i]).sort(([a, ia], [b, ib]) => {
+      const va = sortVal(sortCol, a), vb = sortVal(sortCol, b);
+      const ea = va == null || va === '', eb = vb == null || vb === '';
+      return (ea || eb ? compare(va, vb) : m * compare(va, vb)) || ia - ib;
+    }).map(([r]) => r);
+  }, [rows, sortCol, sort?.dir]);
+  const toggleSort = (c) => setSort((s) => (s?.key !== c.key ? { key: c.key, dir: 'desc' } : s.dir === 'desc' ? { key: c.key, dir: 'asc' } : null));
   if (loading && !rows?.length) {
     return <div className={cn('space-y-2', className)}>{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-11" />)}</div>;
   }
@@ -95,10 +121,24 @@ export function DataTable({ columns, rows, rowKey = (r, i) => r.id ?? i, onRowCl
       <table className="w-full border-collapse text-[13.5px]">
         <thead className={cn(stickyHeader && 'sticky top-0 z-[1]')}>
           <tr className="bg-sunken/90 backdrop-blur">
-            {columns.map((c) => (
-              <th key={c.key} style={c.width ? { width: c.width } : undefined}
-                className={cn('whitespace-nowrap border-b border-line px-3.5 py-2.5 text-start text-[11.5px] font-semibold tracking-wide text-muted', c.align === 'end' && 'text-end', c.align === 'center' && 'text-center', c.thClassName)}>{c.header}</th>
-            ))}
+            {columns.map((c) => {
+              const sortable = !groupBy && canSort(c, rows);
+              const active = sortable && sort?.key === c.key;
+              const Icon = active ? (sort.dir === 'asc' ? ArrowUp : ArrowDown) : ChevronsUpDown;
+              return (
+                <th key={c.key} style={c.width ? { width: c.width } : undefined}
+                  aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  className={cn('whitespace-nowrap border-b border-line px-3.5 py-2.5 text-start text-[11.5px] font-semibold tracking-wide text-muted', c.align === 'end' && 'text-end', c.align === 'center' && 'text-center', c.thClassName)}>
+                  {sortable ? (
+                    <button type="button" onClick={() => toggleSort(c)} title="ترتيب"
+                      className={cn('group inline-flex items-center gap-1 rounded hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40', active && 'text-fg')}>
+                      {c.header}
+                      <Icon size={12} className={cn('shrink-0', active ? 'opacity-100' : 'opacity-0 group-hover:opacity-60')} />
+                    </button>
+                  ) : c.header}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>

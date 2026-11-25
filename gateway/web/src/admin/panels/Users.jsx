@@ -60,7 +60,7 @@ export default function Users() {
 
   const columns = [
     {
-      key: 'name', header: 'الطالب', primary: true,
+      key: 'name', header: 'الطالب', primary: true, sort: (u) => u.name,
       cell: (u) => (
         <div className="flex min-w-0 items-center gap-3">
           <Avatar name={u.name} seed={u.id} size={38} dim={!!u.disabled} />
@@ -72,7 +72,7 @@ export default function Users() {
       ),
     },
     {
-      key: 'balance', header: 'الرصيد', width: 190,
+      key: 'balance', header: 'الرصيد', width: 190, sort: (u) => u.usd_left || 0,
       cell: (u) => (
         <div className="min-w-[120px]">
           <div className="flex items-baseline justify-between gap-2 text-[13px]">
@@ -87,7 +87,7 @@ export default function Users() {
     },
     { key: 'keys', header: 'مفاتيح', align: 'center', hideOnMobile: true, cell: (u) => <span className={cn('num', !u.keys && 'text-muted')}>{u.keys}</span> },
     {
-      key: 'last', header: 'آخر نشاط',
+      key: 'last', header: 'آخر نشاط', sort: (u) => u.last_request || null,
       cell: (u) => (
         <Tip content={u.last_request ? date(u.last_request) : null}>
           <span className="inline-flex items-center gap-1.5 text-[12.5px]">
@@ -98,7 +98,7 @@ export default function Users() {
       ),
     },
     {
-      key: 'status', header: 'الحالة', mobileFull: true,
+      key: 'status', header: 'الحالة', mobileFull: true, sort: (u) => (u.approved === 0 ? 0 : u.disabled ? 1 : 2),
       cell: (u) => (
         <div className="flex flex-wrap items-center gap-1.5">
           {u.approved === 0
