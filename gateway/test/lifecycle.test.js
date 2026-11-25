@@ -170,3 +170,14 @@ test('a global alias whose target is archived falls back to abd-main instead of 
   const fast = (await call('GET', '/api/me', student)).data.aliases.find((a) => a.alias === 'abd-fast');
   assert.equal(fast.fallback, true); assert.equal(fast.model_id, 'glm-5.2'); assert.equal(fast.archived_model_id, 'glm-5.1');
 });
+
+test('a request turned away before reaching a provider (archived model) still shows in the log', async () => {
+  await env.DB.prepare("UPDATE models SET status = 'archived', archived_reason = 'test' WHERE id = 'glm-5.1'").run();
+  const r = await call('POST', '/v1/chat/completions', student, { model: 'glm-5.1', messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(r.status, 410);
+  const nf = await call('POST', '/v1/chat/completions', student, { model: 'no-such-model', messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(nf.status, 404);
+  const { results } = await env.DB.prepare('SELECT model_id, status, error, provider_id, charged FROM usage_logs ORDER BY id DESC LIMIT 2').all();
+  assert.deepEqual(results.map((x) => [x.model_id, x.status, x.provider_id, x.charged]), [['no-such-model', 404, null, 0], ['glm-5.1', 410, null, 0]]);
+  assert.match(results[1].error, /archived/);
+});

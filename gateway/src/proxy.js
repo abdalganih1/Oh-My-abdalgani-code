@@ -103,13 +103,36 @@ export function streamErrorEvent(clientFormat) {
   return `data: ${JSON.stringify({ error: { message, type: 'upstream_error', code: 'stream_interrupted' } })}\n\n`;
 }
 
+const ENDPOINTS = { anthropic: '/v1/messages', responses: '/v1/responses' };
+
 export async function handleCompletion(request, env, ctx, clientFormat, sec = {}) {
   const started = Date.now();
-  const { user, keyId } = await authUser(request, env, ctx);
+  const auth = await authUser(request, env, ctx);
+  const st = {};
+  try {
+    return await runCompletion(request, env, ctx, clientFormat, sec, auth, started, st);
+  } catch (e) {
+    // a request turned away before (or without) reaching a provider — archived/unknown model,
+    // no balance, caps, loop guard — still belongs in the admin's log, and any hold is refunded
+    if (!st.settled) {
+      const model = st.model || { id: String(st.requested || '-').slice(0, 120) };
+      ctx.waitUntil(settle(env.DB, {
+        user: auth.user, keyId: auth.keyId, model, routeInfo: null, endpoint: ENDPOINTS[clientFormat] || '/v1/chat/completions',
+        status: e instanceof HttpError ? e.status : 500, usage: ZERO, requestedModel: st.requested, latency: Date.now() - started,
+        error: e?.message || String(e), subscriptionId: st.subId ?? null, reserved: st.reserved || 0, ip: sec.ip || null, deviceId: st.deviceId || null,
+      }).catch(() => {}));
+    }
+    throw e;
+  }
+}
+
+async function runCompletion(request, env, ctx, clientFormat, sec, { user, keyId }, started, st) {
   const cfg = sec.cfg || {};
   const { device } = await afterAuth(request, env, ctx, { user, keyId, ip: sec.ip, cfg });
+  st.deviceId = device?.id || null;
   await checkSpendCaps(env, user, cfg);
   const body = await readJson(request);
+  st.requested = typeof body?.model === 'string' ? body.model : null;
   // runaway-agent guard: the same last turn resent again and again → pause this student briefly
   if (cfg.loop_guard_repeats > 0 && noteRequest(user.id, await fingerprint(body), cfg)) {
     await pauseForLoop(env.DB, user, cfg, 'loop');
@@ -117,6 +140,7 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
   }
   const model = await resolveModel(env.DB, user.id, body.model);
   const requestedName = body.model;
+  st.model = model;
 
   const candidates = orderedSubscriptions(await loadSubscriptions(env.DB, user.id), model);
   if (!candidates.length) {
@@ -129,7 +153,7 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
   let sub = null, reserved = 0;
   for (const c of candidates) {
     const held = await reserve(env.DB, c, estimateReservation(model, body, c, cfg.min_reserve_output_tokens || 1024));
-    if (held !== null) { sub = c; reserved = held; break; }
+    if (held !== null) { sub = c; reserved = held; st.subId = c.id; st.reserved = held; break; }
   }
   if (!sub) throw new HttpError(402, 'Your remaining balance is too low for this request. Start a new (shorter) conversation or redeem a coupon.', 'insufficient_quota');
 
@@ -139,9 +163,9 @@ export async function handleCompletion(request, env, ctx, clientFormat, sec = {}
   if (pin) routes = routes.filter((r) => r.route_id === pin);
   if (!routes.length) throw new HttpError(503, `Model "${model.id}" has no active route`, 'service_unavailable');
 
-  const endpoint = { anthropic: '/v1/messages', responses: '/v1/responses' }[clientFormat] || '/v1/chat/completions';
+  const endpoint = ENDPOINTS[clientFormat] || '/v1/chat/completions';
   const customTools = clientFormat === 'responses' ? responsesToChatRequest(body, '').customTools : null;
-  const finish = (routeInfo, status, usage, error) => settle(env.DB, {
+  const finish = (routeInfo, status, usage, error) => (st.settled = true) && settle(env.DB, {
     user, keyId, model, routeInfo, endpoint, status, usage: usage || ZERO, requestedModel: requestedName,
     providerCostUsd: usage?.providerCost ?? null, latency: Date.now() - started, error, subscriptionId: sub.id,
     reserved, ip: sec.ip || null, deviceId: device?.id || null,
